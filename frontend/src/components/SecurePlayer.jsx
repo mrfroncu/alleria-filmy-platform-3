@@ -34,6 +34,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
   const [showControls, setShowControls] = useState(true);
   const [showQuality, setShowQuality] = useState(false);
   const [captureDetected, setCaptureDetected] = useState(false);
+  const [buffered, setBuffered] = useState(0);
   const controlsTimer = useRef(null);
 
   // Load hls.js dynamically
@@ -203,17 +204,25 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
     const onPause = () => setPlaying(false);
     const onTime = () => setCurrentTime(video.currentTime);
     const onDur = () => setDuration(video.duration);
+    const onProgress = () => {
+      if (video.buffered.length > 0 && video.duration > 0) {
+        const end = video.buffered.end(video.buffered.length - 1);
+        setBuffered((end / video.duration) * 100);
+      }
+    };
 
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
     video.addEventListener('timeupdate', onTime);
     video.addEventListener('loadedmetadata', onDur);
+    video.addEventListener('progress', onProgress);
 
     return () => {
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
       video.removeEventListener('timeupdate', onTime);
       video.removeEventListener('loadedmetadata', onDur);
+      video.removeEventListener('progress', onProgress);
     };
   }, []);
 
@@ -366,8 +375,14 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
           {/* Progress bar */}
           <div className="mb-3 cursor-pointer group/bar" onClick={seek}>
             <div className="h-1 group-hover/bar:h-2 bg-white/20 rounded-full transition-all relative">
+              {/* Buffer bar */}
               <div
-                className="h-full bg-indigo-500 rounded-full relative"
+                className="absolute inset-y-0 left-0 bg-white/20 rounded-full"
+                style={{ width: `${buffered}%` }}
+              />
+              {/* Playback bar */}
+              <div
+                className="h-full bg-indigo-500 rounded-full relative z-10"
                 style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }}
               >
                 <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow opacity-0 group-hover/bar:opacity-100 transition-opacity" />
