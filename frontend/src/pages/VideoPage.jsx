@@ -23,7 +23,16 @@ export default function VideoPage() {
   const [nextVideo, setNextVideo] = useState(null);
   const [fadeKey, setFadeKey] = useState(0);
   const [canEdit, setCanEdit] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false); // triggers re-animation on video change
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editUsers, setEditUsers] = useState([]);
+
+  const openEditModal = async () => {
+    try {
+      const users = await api.getAllUsers();
+      setEditUsers(users);
+    } catch (e) { setEditUsers([]); }
+    setShowEditModal(true);
+  }; // triggers re-animation on video change
 
   useEffect(() => {
     setLoading(true);
@@ -167,7 +176,7 @@ export default function VideoPage() {
             </h1>
             {canEdit && (
               <button
-                onClick={() => setShowEditModal(true)}
+                onClick={() => openEditModal()}
                 className="shrink-0 p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all duration-300"
                 title="Edytuj film"
               >
@@ -317,17 +326,16 @@ export default function VideoPage() {
       )}
 
       {/* Edit Modal */}
-      {showEditModal && (
-        <VideoModal
-          video={video}
-          onClose={() => setShowEditModal(false)}
-          onSaved={() => {
-            setShowEditModal(false);
-            // Reload video data
-            api.getVideo(id).then(v => setVideo(v)).catch(() => {});
-          }}
-        />
-      )}
+      <VideoModal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        video={showEditModal ? video : null}
+        users={editUsers}
+        onSaved={() => {
+          setShowEditModal(false);
+          api.getVideo(id).then(v => setVideo(v)).catch(() => {});
+        }}
+      />
     </div>
   );
 }

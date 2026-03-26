@@ -25,7 +25,7 @@ function SmartThumbnail({ ytId, customSrc, alt }) {
   );
 }
 
-export default function VideoModal({ isOpen, onClose, video, users, onSaved }) {
+export default function VideoModal({ isOpen, onClose, video, users = [], onSaved }) {
   const isEdit = !!video;
   const [title, setTitle] = useState('');
   const [authorId, setAuthorId] = useState('');
