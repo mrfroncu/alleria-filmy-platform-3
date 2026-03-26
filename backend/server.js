@@ -115,8 +115,8 @@ app.get('/api/config', (req, res) => {
 });
 
 // Version info
-const APP_VERSION = '1.3.1';
-const FRONTEND_VERSION = '1.3.1';
+const APP_VERSION = '1.4.0';
+const FRONTEND_VERSION = '1.4.0';
 app.get('/api/version', (req, res) => {
   res.json({ version: APP_VERSION, frontend: FRONTEND_VERSION, component: 'alleria-filmy' });
 });

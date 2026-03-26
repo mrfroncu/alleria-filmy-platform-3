@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowLeft, Film, Heart } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, Film, Heart, Pencil } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, youtubeToEmbed } from '../utils/helpers';
+import { useAuth } from '../contexts/AuthContext';
 import SecurePlayer from '../components/SecurePlayer';
+import VideoModal from '../components/VideoModal';
 
 export default function VideoPage() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const fromCategory = searchParams.get('from') || '';
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [video, setVideo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeSource, setActiveSource] = useState('main');
@@ -18,7 +21,9 @@ export default function VideoPage() {
   const [favLoading, setFavLoading] = useState(false);
   const [prevVideo, setPrevVideo] = useState(null);
   const [nextVideo, setNextVideo] = useState(null);
-  const [fadeKey, setFadeKey] = useState(0); // triggers re-animation on video change
+  const [fadeKey, setFadeKey] = useState(0);
+  const [canEdit, setCanEdit] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false); // triggers re-animation on video change
 
   useEffect(() => {
     setLoading(true);
@@ -37,6 +42,19 @@ export default function VideoPage() {
       setVideo(v);
       setIsFav(f.isFavorite);
       setError(null);
+
+      // Check edit permissions: admin/dev always can, editors if category matches
+      const isAdmin = user?.role === 'admin' || user?.role === 'dev';
+      if (isAdmin) {
+        setCanEdit(true);
+      } else if (v.category_id) {
+        api.getCategories().then(cats => {
+          const cat = cats.find(c => c.id === v.category_id);
+          setCanEdit(cat?.canEdit || false);
+        }).catch(() => setCanEdit(false));
+      } else {
+        setCanEdit(false);
+      }
 
       // Then load context list for prev/next (non-blocking)
       const listParams = fromCategory ? { category: fromCategory } : {};
@@ -147,6 +165,15 @@ export default function VideoPage() {
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display flex-1">
               {video.title}
             </h1>
+            {canEdit && (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="shrink-0 p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all duration-300"
+                title="Edytuj film"
+              >
+                <Pencil className="w-5 h-5" />
+              </button>
+            )}
             <button
               onClick={toggleFav}
               disabled={favLoading}
@@ -287,6 +314,19 @@ export default function VideoPage() {
             {video.description}
           </div>
         </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && (
+        <VideoModal
+          video={video}
+          onClose={() => setShowEditModal(false)}
+          onSaved={() => {
+            setShowEditModal(false);
+            // Reload video data
+            api.getVideo(id).then(v => setVideo(v)).catch(() => {});
+          }}
+        />
       )}
     </div>
   );
