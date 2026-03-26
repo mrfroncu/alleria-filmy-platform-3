@@ -32,6 +32,8 @@ export const api = {
     if (params.tags) q.set('tags', params.tags);
     if (params.author) q.set('author', params.author);
     if (params.sort) q.set('sort', params.sort);
+    if (params.include_transcoding) q.set('include_transcoding', '1');
+    if (params.category) q.set('category', params.category);
     return request(`/videos?${q}`);
   },
   getVideo: (id) => request(`/videos/${id}`),
@@ -43,16 +45,92 @@ export const api = {
   getTags: (search) => request(`/tags${search ? `?search=${encodeURIComponent(search)}` : ''}`),
   deleteTag: (id) => request(`/tags/${id}`, { method: 'DELETE' }),
 
+  // Categories
+  getCategories: () => request('/categories'),
+  createCategory: (data) => request('/categories', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
+  updateCategory: (id, data) => request(`/categories/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
+  deleteCategory: (id) => request(`/categories/${id}`, { method: 'DELETE' }),
+  setCategoryAccess: (id, data) => request(`/categories/${id}/access`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
+
+  // Video access
+  getVideoAccess: (id) => request(`/videos/${id}/access`),
+  setVideoAccess: (id, data) => request(`/videos/${id}/access`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
+
+  // Bulk actions
+  bulkVideos: (data) => request('/videos/bulk', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
+
   // Authors
   getAuthors: () => request('/authors'),
 
   // Users
   getUsers: () => request('/users'),
   getAllUsers: () => request('/users/all'),
+  deleteUser: (id) => request(`/users/${id}`, { method: 'DELETE' }),
 
-  // Logs
-  getWatchLogs: () => request('/logs/watch'),
-  getLoginLogs: () => request('/logs/login'),
+  // Logs (paginated)
+  getWatchLogs: (page = 1) => request(`/logs/watch?page=${page}`),
+  getLoginLogs: (page = 1) => request(`/logs/login?page=${page}`),
+  clearWatchLogs: () => request('/logs/watch/clear', { method: 'DELETE' }),
+  clearLoginLogs: () => request('/logs/login/clear', { method: 'DELETE' }),
+
+  // Config
+  getConfig: () => request('/config'),
+
+  // Streaming (chunked upload)
+  streamUploadInit: (data) => request('/stream/upload/init', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }),
+  streamUploadChunk: (formData) => fetch('/api/stream/upload/chunk', {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+  }).then(r => r.json()),
+  streamUploadComplete: (upload_id) => request('/stream/upload/complete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ upload_id }),
+  }),
+  uploadStream: (formData) => request('/stream/upload', { method: 'POST', body: formData }),
+  streamStatus: (videoId) => request(`/stream/status/${videoId}`),
+  streamCheck: (dbVideoId) => request(`/stream/check/${dbVideoId}`),
+  streamCleanupList: () => request('/stream/cleanup'),
+  streamCleanupPurge: (data) => request('/stream/cleanup', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
+  streamToken: (videoId) => request(`/stream/token/${videoId}`),
+  deleteStream: (videoId) => request(`/stream/video/${videoId}`, { method: 'DELETE' }),
+
+  // Favorites
+  getFavorites: () => request('/favorites'),
+  addFavorite: (videoId) => request(`/favorites/${videoId}`, { method: 'POST' }),
+  removeFavorite: (videoId) => request(`/favorites/${videoId}`, { method: 'DELETE' }),
+  checkFavorite: (videoId) => request(`/favorites/check/${videoId}`),
+
+  // History
+  getHistory: () => request('/history'),
+
+  // Stats
+  getStats: () => request('/stats'),
+
+  // Profile
+  getProfile: () => request('/profile'),
+  updateProfile: (data) => request('/profile', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }),
 
   // Debug
   exportDB: () => request('/debug/export'),
@@ -62,6 +140,11 @@ export const api = {
     body: JSON.stringify(data),
   }),
   clearDB: () => request('/debug/clear', { method: 'POST' }),
+  execSQL: (query) => request('/debug/sql', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+  }),
   createUser: (data) => request('/debug/create-user', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

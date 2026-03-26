@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   alleria-filmy:
     build: .
@@ -14,7 +12,30 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+    depends_on:
+      - streaming
+
+  streaming:
+    build: ./streaming
+    container_name: alleria-streaming
+    volumes:
+      # Default: Docker volume. To use custom path (e.g. NFS/Tailscale mount):
+      # Replace with: - /mnt/user/alleria-streaming:/data
+      - stream-data:/data
+    environment:
+      - STREAM_SECRET=${STREAM_SECRET:-alleria-stream-key}
+      - STREAM_PORT=4000
+      - ALLOWED_ORIGIN=${ALLOWED_ORIGIN:-*}
+      - STREAM_PUBLIC_URL=${STREAM_PUBLIC_URL:-http://localhost:3000/stream}
+      # Custom storage paths (optional — defaults to /data subdirs)
+      # - STREAM_DATA_DIR=/data
+      # - STREAM_MEDIA_DIR=/mnt/user/alleria-streaming/videos
+    restart: unless-stopped
+    expose:
+      - "4000"
 
 volumes:
   alleria-data:
+    driver: local
+  stream-data:
     driver: local

@@ -5,11 +5,12 @@ import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
 
 export default function VideosPage() {
-  const { authorId, tagId } = useParams();
+  const { authorId, tagId, categorySlug } = useParams();
   const navigate = useNavigate();
   const [videos, setVideos] = useState([]);
   const [tags, setTags] = useState([]);
   const [authors, setAuthors] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState('');
@@ -17,10 +18,14 @@ export default function VideosPage() {
   const [selectedAuthor, setSelectedAuthor] = useState(authorId || '');
   const [sort, setSort] = useState('newest');
   const [showFilters, setShowFilters] = useState(false);
+  const [page, setPage] = useState(1);
+
+  // Display config — videosPerPage should be a multiple of gridColumns (default 3)
+  const [config, setConfig] = useState({ videosPerPage: 12, gridColumns: 3 });
 
   useEffect(() => {
-    Promise.all([api.getTags(), api.getAuthors()])
-      .then(([t, a]) => { setTags(t); setAuthors(a); })
+    Promise.all([api.getTags(), api.getAuthors(), api.getCategories(), api.getConfig()])
+      .then(([t, a, c, cfg]) => { setTags(t); setAuthors(a); setCategories(c); if (cfg) setConfig(cfg); })
       .catch(console.error);
   }, []);
 
@@ -35,12 +40,13 @@ export default function VideosPage() {
     if (search) params.search = search;
     if (selectedTags.length > 0) params.tags = selectedTags.join(',');
     if (selectedAuthor) params.author = selectedAuthor;
+    if (categorySlug) params.category = categorySlug;
 
     api.getVideos(params)
-      .then(setVideos)
+      .then(v => { setVideos(v); setPage(1); })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [search, selectedTags, selectedAuthor, sort]);
+  }, [search, selectedTags, selectedAuthor, sort, categorySlug]);
 
   const toggleTag = (id) => {
     setSelectedTags(prev =>
@@ -63,10 +69,14 @@ export default function VideosPage() {
       {/* Header */}
       <div className="mb-10">
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">
-          Baza Filmów
+          {categorySlug
+            ? (categories.find(c => c.slug === categorySlug)?.name || categorySlug)
+            : 'Baza Filmów'}
         </h1>
         <p className="text-zinc-500 dark:text-zinc-400 text-base sm:text-lg">
-          Przeglądaj materiały wideo społeczności.
+          {categorySlug
+            ? (categories.find(c => c.slug === categorySlug)?.description || 'Filmy w tej kategorii.')
+            : 'Przeglądaj materiały wideo społeczności.'}
         </p>
       </div>
 
@@ -204,11 +214,15 @@ export default function VideosPage() {
           <p className="text-zinc-500 text-sm">Nie znaleziono filmów spełniających kryteria wyszukiwania.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {videos.map((video, idx) => (
+        <>
+          {/* Grid — GRID_COLUMNS from .env is the MAX on desktop.
+              Mobile: 1 col, Tablet (sm): 2 cols, Desktop (xl): env value */}
+          <style>{`@media(min-width:1280px){.video-grid{grid-template-columns:repeat(${config.gridColumns},minmax(0,1fr))!important}}`}</style>
+          <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 video-grid">
+            {videos.slice((page - 1) * config.videosPerPage, page * config.videosPerPage).map((video, idx) => (
             <Link
               key={video.id}
-              to={`/video/${video.id}`}
+              to={`/video/${video.id}${categorySlug ? `?from=${categorySlug}` : ''}`}
               className="card overflow-hidden group hover:shadow-2xl hover:shadow-indigo-500/10 dark:hover:shadow-indigo-500/5 transition-all duration-500 hover:-translate-y-1"
               style={{ animationDelay: `${idx * 50}ms` }}
             >
@@ -239,6 +253,13 @@ export default function VideosPage() {
                     {formatDateShort(video.publish_date)}
                   </span>
                 </div>
+                {video.category_name && (
+                  <div className="mb-2">
+                    <span className="inline-flex px-2 py-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 rounded-lg text-[10px] font-bold">
+                      {video.category_name}
+                    </span>
+                  </div>
+                )}
                 {video.tags && video.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {video.tags.slice(0, 4).map(tag => (
@@ -253,8 +274,54 @@ export default function VideosPage() {
                 )}
               </div>
             </Link>
-          ))}
-        </div>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          {videos.length > config.videosPerPage && (() => {
+            const totalPages = Math.ceil(videos.length / config.videosPerPage);
+            return (
+              <div className="flex items-center justify-center gap-2 mt-10">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-4 py-2 rounded-xl text-sm font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30 transition-all"
+                >
+                  ← Poprzednia
+                </button>
+                <div className="flex gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                    .reduce((acc, p, i, arr) => {
+                      if (i > 0 && p - arr[i - 1] > 1) acc.push('...');
+                      acc.push(p);
+                      return acc;
+                    }, [])
+                    .map((p, i) =>
+                      p === '...' ? (
+                        <span key={`dot-${i}`} className="px-2 py-2 text-zinc-400 text-sm">...</span>
+                      ) : (
+                        <button
+                          key={p}
+                          onClick={() => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                          className={`w-10 h-10 rounded-xl text-sm font-bold transition-all ${p === page ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}
+                        >
+                          {p}
+                        </button>
+                      )
+                    )}
+                </div>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="px-4 py-2 rounded-xl text-sm font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30 transition-all"
+                >
+                  Następna →
+                </button>
+              </div>
+            );
+          })()}
+        </>
       )}
     </div>
   );

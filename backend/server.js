@@ -48,11 +48,28 @@ const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 // Session store using SQLite
 const SQLiteStore = require('connect-sqlite3')(session);
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Increase timeout for large video uploads (30 min)
+app.use('/api/stream/upload', (req, res, next) => {
+  req.setTimeout(30 * 60 * 1000);
+  res.setTimeout(30 * 60 * 1000);
+  next();
+});
 
 // CRITICAL: trust reverse proxy (nginx, traefik, etc.) so req.protocol / req.ip work
 app.set('trust proxy', 1);
+
+// DRM security headers — restrict screen capture APIs
+app.use((req, res, next) => {
+  // Permissions-Policy: deny display capture for the whole page
+  res.set('Permissions-Policy', 'display-capture=(), screen-wake-lock=()');
+  // Prevent embedding in iframes (clickjacking + capture protection)
+  res.set('X-Frame-Options', 'SAMEORIGIN');
+  res.set('Content-Security-Policy', "frame-ancestors 'self'");
+  next();
+});
 
 const isProduction = process.env.NODE_ENV === 'production';
 const behindHttps = (process.env.DISCORD_REDIRECT_URI || '').startsWith('https://');
@@ -88,6 +105,38 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Public config for frontend display settings
+app.get('/api/config', (req, res) => {
+  res.json({
+    videosPerPage: parseInt(process.env.VIDEOS_PER_PAGE) || 12,
+    gridColumns: parseInt(process.env.GRID_COLUMNS) || 3,
+    logsPerPage: parseInt(process.env.LOGS_PER_PAGE) || 50,
+  });
+});
+
+// Version info
+const APP_VERSION = '1.3.0';
+const FRONTEND_VERSION = '1.3.0';
+app.get('/api/version', (req, res) => {
+  res.json({ version: APP_VERSION, frontend: FRONTEND_VERSION, component: 'alleria-filmy' });
+});
+
+// Proxy streaming version
+app.get('/api/version/streaming', async (req, res) => {
+  try {
+    const r = await fetch(`${STREAM_URL || 'http://streaming:4000'}/version`);
+    res.json(await r.json());
+  } catch (e) { res.json({ version: 'unavailable', component: 'streaming' }); }
+});
+
+// Streaming storage stats
+app.get('/api/stream/stats', requireDev, async (req, res) => {
+  try {
+    const r = await fetch(`${STREAM_URL}/stats`, { headers: { 'X-Stream-Token': STREAM_SECRET } });
+    res.json(await r.json());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ============ AUTH MIDDLEWARE ============
 function requireAuth(req, res, next) {
   if (!req.session.user) return res.status(401).json({ error: 'Unauthorized' });
@@ -113,6 +162,11 @@ function discordRedirectHandler(req, res) {
   if (!process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_REDIRECT_URI) {
     console.error('Discord auth failed: DISCORD_CLIENT_ID or DISCORD_REDIRECT_URI not set');
     return res.redirect('/login?error=config_missing');
+  }
+  // Save return URL so user gets redirected back after login
+  if (req.query.returnTo) {
+    req.session.returnTo = req.query.returnTo;
+    req.session.save(() => {});
   }
   const params = new URLSearchParams({
     client_id: process.env.DISCORD_CLIENT_ID,
@@ -205,13 +259,14 @@ async function discordCallbackHandler(req, res) {
     // Upsert user
     const existing = db.prepare('SELECT * FROM users WHERE discord_id = ?').get(discordUser.id);
     let userId;
+    const rolesJson = JSON.stringify(roles);
     if (existing) {
-      db.prepare(`UPDATE users SET username = ?, display_name = ?, avatar = ?, role = ?, last_login = datetime('now') WHERE discord_id = ?`)
-        .run(discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, role, discordUser.id);
+      db.prepare(`UPDATE users SET username = ?, display_name = ?, avatar = ?, role = ?, discord_roles = ?, last_login = datetime('now') WHERE discord_id = ?`)
+        .run(discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, role, rolesJson, discordUser.id);
       userId = existing.id;
     } else {
-      const result = db.prepare('INSERT INTO users (discord_id, username, display_name, avatar, role, auth_method) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(discordUser.id, discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, role, 'discord');
+      const result = db.prepare('INSERT INTO users (discord_id, username, display_name, avatar, role, auth_method, discord_roles) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(discordUser.id, discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, role, 'discord', rolesJson);
       userId = result.lastInsertRowid;
     }
 
@@ -223,7 +278,8 @@ async function discordCallbackHandler(req, res) {
       display_name: user.display_name,
       avatar: user.avatar,
       role: user.role,
-      auth_method: 'discord'
+      auth_method: 'discord',
+      discord_roles: roles
     };
 
     logLogin(userId, discordUser.username, 'discord', clientIp, 1, null);
@@ -236,8 +292,10 @@ async function discordCallbackHandler(req, res) {
         console.error('[AUTH] Session save error:', err);
         return res.redirect('/login?error=auth_failed');
       }
-      console.log('[AUTH] Session saved, redirecting to /');
-      res.redirect('/');
+      const returnTo = req.session.returnTo || '/';
+      delete req.session.returnTo;
+      console.log(`[AUTH] Session saved, redirecting to ${returnTo}`);
+      res.redirect(returnTo);
     });
 
   } catch (err) {
@@ -251,36 +309,142 @@ async function discordCallbackHandler(req, res) {
 app.get('/api/auth/discord/callback', discordCallbackHandler);
 app.get('/auth/discord/callback', discordCallbackHandler);
 
-// ============ TEAMSPEAK AUTH ============
+// ============ TEAMSPEAK 6 AUTH ============
+// Uses TS ServerQuery HTTP API (port 10080)
+// Auth: Basic Auth (username:password) + optional x-api-key
+// Endpoints: /{serverId}/clientlist, /{serverId}/clientinfo, /{serverId}/servergroupsbyclientid
 app.post('/api/auth/teamspeak', async (req, res) => {
-  const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+  const cleanIp = clientIp.replace('::ffff:', '');
+
+  const tsHost = process.env.TS6_HOST || process.env.TS_SERVER_HOST;
+  const tsQueryPort = process.env.TS6_QUERY_PORT || process.env.TS_API_PORT || '10080';
+  const tsUsername = process.env.TS6_USERNAME || process.env.TS_USERNAME || 'serveradmin';
+  const tsPassword = process.env.TS6_PASSWORD || process.env.TS_PASSWORD || '';
+  const tsApiKey = process.env.TS6_API_KEY || process.env.TS_API_KEY || '';
+  const tsServerId = process.env.TS6_SERVER_ID || process.env.TS_SERVER_ID || '1';
+
+  if (!tsHost) {
+    logLogin(null, 'unknown', 'teamspeak', clientIp, 0, 'TS6 not configured');
+    return res.status(500).json({ error: 'TeamSpeak nie jest skonfigurowany.' });
+  }
 
   try {
-    // In production, this would query the TS server via ServerQuery
-    // For now, we check if there's a user with matching IP in our DB that was verified
-    const user = db.prepare('SELECT * FROM users WHERE ts_ip = ? AND auth_method = "teamspeak"').get(clientIp);
-    
-    if (!user) {
-      logLogin(null, 'unknown', 'teamspeak', clientIp, 0, 'No TS user found with matching IP');
-      return res.status(401).json({ error: 'No TeamSpeak user found with your IP. Make sure you are connected to the TeamSpeak server.' });
+    const tsBaseUrl = `http://${tsHost}:${tsQueryPort}`;
+
+    // Build auth headers — Basic Auth + optional API key
+    const headers = { 'Content-Type': 'application/json' };
+    if (tsUsername && tsPassword) {
+      headers['Authorization'] = 'Basic ' + Buffer.from(`${tsUsername}:${tsPassword}`).toString('base64');
+    }
+    if (tsApiKey) {
+      headers['x-api-key'] = tsApiKey;
     }
 
+    console.log(`[TS6] Attempting auth for IP: ${cleanIp} via ${tsBaseUrl}/${tsServerId}`);
+
+    // Step 1: Get client list
+    const clientListRes = await fetch(`${tsBaseUrl}/${tsServerId}/clientlist`, { headers });
+    if (!clientListRes.ok) {
+      const errText = await clientListRes.text();
+      throw new Error(`TS6 clientlist failed (${clientListRes.status}): ${errText.slice(0, 200)}`);
+    }
+    const clientListData = await clientListRes.json();
+    const clients = clientListData.body || clientListData || [];
+
+    console.log(`[TS6] Got ${clients.length} clients, looking for IP ${cleanIp}`);
+
+    // Step 2: Find client by IP — need clientinfo for each to get IP
+    let matchedClient = null;
+    for (const client of clients) {
+      // Skip ServerQuery clients
+      if (client.client_type === 1) continue;
+
+      const clid = client.clid;
+      try {
+        const infoRes = await fetch(`${tsBaseUrl}/${tsServerId}/clientinfo?clid=${clid}`, { headers });
+        if (!infoRes.ok) continue;
+        const infoData = await infoRes.json();
+        const info = Array.isArray(infoData.body) ? infoData.body[0] : (infoData.body || infoData);
+
+        const cIp = info.connection_client_ip || '';
+        if (cIp === cleanIp || cIp === clientIp) {
+          matchedClient = { ...client, ...info };
+          break;
+        }
+      } catch (e) {
+        console.log(`[TS6] Error getting info for clid ${clid}: ${e.message}`);
+      }
+    }
+
+    if (!matchedClient) {
+      logLogin(null, 'unknown', 'teamspeak', clientIp, 0, `No TS client with IP ${cleanIp}`);
+      return res.status(401).json({ error: 'Nie znaleziono klienta TeamSpeak z Twoim IP. Upewnij się, że jesteś połączony z serwerem TS.' });
+    }
+
+    const tsNickname = matchedClient.client_nickname;
+    const tsUid = matchedClient.client_unique_identifier;
+    const tsDbId = matchedClient.client_database_id;
+    console.log(`[TS6] Matched client: "${tsNickname}" (uid: ${tsUid}, dbid: ${tsDbId})`);
+
+    // Step 3: Get server groups via client database ID
+    let groups = [];
+    try {
+      const sgRes = await fetch(`${tsBaseUrl}/${tsServerId}/servergroupsbyclientid?cldbid=${tsDbId}`, { headers });
+      if (sgRes.ok) {
+        const sgData = await sgRes.json();
+        const sgList = sgData.body || sgData || [];
+        groups = (Array.isArray(sgList) ? sgList : [sgList]).map(g => String(g.sgid));
+      }
+    } catch (e) {
+      console.log(`[TS6] Error getting groups: ${e.message}`);
+    }
+
+    console.log(`[TS6] User "${tsNickname}" groups: [${groups.join(', ')}]`);
+
+    const memberGroupId = process.env.TS6_MEMBER_GROUP_ID || process.env.TS_MEMBER_GROUP_ID;
+    const adminGroupId = process.env.TS6_ADMIN_GROUP_ID || process.env.TS_ADMIN_GROUP_ID;
+
+    const hasMemberGroup = memberGroupId ? groups.includes(String(memberGroupId)) : true;
+    const hasAdminGroup = adminGroupId ? groups.includes(String(adminGroupId)) : false;
+
+    if (!hasMemberGroup && !hasAdminGroup) {
+      logLogin(null, tsNickname, 'teamspeak', clientIp, 0, `Missing group (has: ${groups.join(',')})`);
+      return res.status(401).json({ error: 'Nie posiadasz wymaganej grupy na serwerze TeamSpeak.' });
+    }
+
+    let role = 'member';
+    if (hasAdminGroup) role = 'admin';
+
+    // Upsert user
+    let existing = db.prepare('SELECT * FROM users WHERE ts_uid = ?').get(tsUid);
+    if (!existing) existing = db.prepare("SELECT * FROM users WHERE ts_ip = ? AND auth_method = 'teamspeak'").get(cleanIp);
+
+    let userId;
+    if (existing) {
+      db.prepare(`UPDATE users SET username=?, display_name=?, role=?, ts_ip=?, ts_uid=?, last_login=datetime('now') WHERE id=?`)
+        .run(tsNickname, tsNickname, role, cleanIp, tsUid, existing.id);
+      userId = existing.id;
+    } else {
+      const result = db.prepare('INSERT INTO users (username, display_name, role, auth_method, ts_ip, ts_uid) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(tsNickname, tsNickname, role, 'teamspeak', cleanIp, tsUid);
+      userId = result.lastInsertRowid;
+    }
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
     req.session.user = {
-      id: user.id,
-      username: user.username,
-      display_name: user.display_name,
-      avatar: user.avatar,
-      role: user.role,
-      auth_method: 'teamspeak'
+      id: user.id, username: user.username, display_name: user.display_name,
+      avatar: user.avatar, role: user.role, auth_method: 'teamspeak', discord_roles: []
     };
 
-    logLogin(user.id, user.username, 'teamspeak', clientIp, 1, null);
-    res.json({ success: true, user: req.session.user });
+    logLogin(userId, tsNickname, 'teamspeak', clientIp, 1, null);
+    console.log(`[TS6] ✅ Login: "${tsNickname}" (role: ${role})`);
+    req.session.save(() => res.json({ success: true, user: req.session.user }));
 
   } catch (err) {
-    console.error('TeamSpeak auth error:', err);
+    console.error('[TS6 AUTH] Error:', err);
     logLogin(null, 'unknown', 'teamspeak', clientIp, 0, err.message);
-    res.status(500).json({ error: 'TeamSpeak authentication failed' });
+    res.status(500).json({ error: 'TeamSpeak auth failed: ' + err.message });
   }
 });
 
@@ -296,20 +460,41 @@ app.post('/api/auth/logout', (req, res) => {
 
 // ============ VIDEOS API ============
 app.get('/api/videos', requireAuth, (req, res) => {
-  const { search, tags, author, sort = 'newest' } = req.query;
+  const { search, tags, author, sort = 'newest', include_transcoding, category } = req.query;
+  const isAdmin = req.session.user.role === 'admin' || req.session.user.role === 'dev';
   
   let sql = `
     SELECT v.*, u.username AS author_name, u.display_name AS author_display_name,
+    c.name AS category_name, c.slug AS category_slug,
     GROUP_CONCAT(DISTINCT t.name) AS tag_names,
     GROUP_CONCAT(DISTINCT t.id) AS tag_ids
     FROM videos v
     LEFT JOIN users u ON v.author_id = u.id
+    LEFT JOIN categories c ON v.category_id = c.id
     LEFT JOIN video_tags vt ON v.id = vt.video_id
     LEFT JOIN tags t ON vt.tag_id = t.id
   `;
   
   const conditions = [];
   const params = [];
+
+  // Hide transcoding videos from regular users
+  if (!isAdmin || !include_transcoding) {
+    conditions.push("(v.stream_status IS NULL OR v.stream_status = 'ready')");
+  }
+
+  // Hide scheduled (unpublished) videos from regular users
+  if (!isAdmin) {
+    conditions.push("(v.published IS NULL OR v.published = 1)");
+  }
+
+  // Access control for non-admin users
+  if (!isAdmin) {
+    const userId = req.session.user.id;
+    // Hide custom-access videos unless user is in video_access list
+    conditions.push(`(v.access_mode IS NULL OR v.access_mode = 'category' OR (v.access_mode = 'custom' AND v.id IN (SELECT video_id FROM video_access WHERE user_id = ?)))`);
+    params.push(userId);
+  }
 
   if (search) {
     conditions.push('v.title LIKE ?');
@@ -325,6 +510,23 @@ app.get('/api/videos', requireAuth, (req, res) => {
     const tagList = tags.split(',').map(Number);
     conditions.push(`v.id IN (SELECT video_id FROM video_tags WHERE tag_id IN (${tagList.map(() => '?').join(',')}))`);
     params.push(...tagList);
+  }
+
+  if (category) {
+    // Check category access for non-admin users
+    if (!isAdmin) {
+      const cat = db.prepare('SELECT id FROM categories WHERE slug = ?').get(category);
+      if (cat) {
+        const catViewerRoles = db.prepare("SELECT discord_role_id FROM category_access WHERE category_id = ? AND access_type IN ('viewer','editor')").all(cat.id).map(r => r.discord_role_id);
+        if (catViewerRoles.length > 0) {
+          const userRoles = req.session.user.discord_roles || [];
+          const hasAccess = catViewerRoles.some(r => userRoles.includes(r));
+          if (!hasAccess) return res.json([]); // No access — return empty, not error
+        }
+      }
+    }
+    conditions.push('v.category_id = (SELECT id FROM categories WHERE slug = ?)');
+    params.push(category);
   }
 
   if (conditions.length > 0) {
@@ -358,29 +560,45 @@ app.get('/api/videos', requireAuth, (req, res) => {
 app.get('/api/videos/:id', requireAuth, (req, res) => {
   try {
     const video = db.prepare(`
-      SELECT v.*, u.username AS author_name, u.display_name AS author_display_name
-      FROM videos v LEFT JOIN users u ON v.author_id = u.id WHERE v.id = ?
+      SELECT v.*, u.username AS author_name, u.display_name AS author_display_name,
+      c.name AS category_name, c.slug AS category_slug
+      FROM videos v LEFT JOIN users u ON v.author_id = u.id
+      LEFT JOIN categories c ON v.category_id = c.id WHERE v.id = ?
     `).get(req.params.id);
     
     if (!video) return res.status(404).json({ error: 'Video not found' });
+
+    // Access enforcement for non-admin users
+    const user = req.session.user;
+    const isAdmin = user.role === 'admin' || user.role === 'dev';
+    if (!isAdmin) {
+      // Check custom access
+      if (video.access_mode === 'custom') {
+        const hasAccess = db.prepare('SELECT 1 FROM video_access WHERE video_id = ? AND user_id = ?').get(video.id, user.id);
+        if (!hasAccess) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
+      }
+      // Check category access
+      if (video.category_id) {
+        const catAccess = db.prepare('SELECT * FROM category_access WHERE category_id = ? AND access_type = ?').all(video.category_id, 'viewer');
+        if (catAccess.length > 0) {
+          const userRoles = user.discord_roles || [];
+          const allowed = catAccess.some(a => userRoles.includes(a.discord_role_id));
+          // Also check editor roles
+          const editorAccess = db.prepare('SELECT * FROM category_access WHERE category_id = ? AND access_type = ?').all(video.category_id, 'editor');
+          const allowedEditor = editorAccess.some(a => userRoles.includes(a.discord_role_id));
+          if (!allowed && !allowedEditor) return res.status(403).json({ error: 'Brak dostępu do tej kategorii.' });
+        }
+      }
+    }
 
     const tags = db.prepare(`
       SELECT t.* FROM tags t JOIN video_tags vt ON t.id = vt.tag_id WHERE vt.video_id = ?
     `).all(req.params.id);
 
-    // Get previous and next videos
-    const prevVideo = db.prepare(`
-      SELECT id, title FROM videos WHERE publish_date < ? OR (publish_date = ? AND id < ?) ORDER BY publish_date DESC, id DESC LIMIT 1
-    `).get(video.publish_date, video.publish_date, video.id);
-
-    const nextVideo = db.prepare(`
-      SELECT id, title FROM videos WHERE publish_date > ? OR (publish_date = ? AND id > ?) ORDER BY publish_date ASC, id ASC LIMIT 1
-    `).get(video.publish_date, video.publish_date, video.id);
-
     // Log watch
-    db.prepare('INSERT INTO watch_logs (user_id, video_id) VALUES (?, ?)').run(req.session.user.id, video.id);
+    db.prepare('INSERT INTO watch_logs (user_id, video_id) VALUES (?, ?)').run(user.id, video.id);
 
-    res.json({ ...video, tags, prevVideo, nextVideo });
+    res.json({ ...video, tags });
   } catch (err) {
     console.error('Error fetching video:', err);
     res.status(500).json({ error: 'Failed to fetch video' });
@@ -391,7 +609,8 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
   try {
     const { title, author_id, main_source, main_source_type, main_source_title,
       thumbnail, mirror1_name, mirror1_url, mirror1_is_embed,
-      mirror2_name, mirror2_url, mirror2_is_embed, description, publish_date, tags } = req.body;
+      mirror2_name, mirror2_url, mirror2_is_embed, description, publish_date, tags,
+      stream_video_id, drm_enhanced, category_id } = req.body;
 
     let thumbUrl = thumbnail || extractYoutubeThumbnail(main_source);
     let customThumb = 0;
@@ -403,18 +622,60 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
       customThumb = 1;
     }
 
+    // If self-hosted and has thumbnail from streaming
+    if (stream_video_id && !thumbUrl) {
+      thumbUrl = `/stream/media/${stream_video_id}/thumb.jpg`;
+    }
+
     const result = db.prepare(`
       INSERT INTO videos (title, author_id, main_source, main_source_type, main_source_title, thumbnail, custom_thumbnail,
         mirror1_name, mirror1_url, mirror1_is_embed, mirror2_name, mirror2_url, mirror2_is_embed,
-        description, publish_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(title, parseInt(author_id), main_source, main_source_type || 'youtube', main_source_title || '',
+        description, publish_date, stream_video_id, drm_enhanced, category_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(title, parseInt(author_id), main_source || '', main_source_type || 'youtube', main_source_title || '',
       thumbUrl, customThumb,
       mirror1_name || null, mirror1_url || null, mirror1_is_embed === 'true' || mirror1_is_embed === '1' ? 1 : 0,
       mirror2_name || null, mirror2_url || null, mirror2_is_embed === 'true' || mirror2_is_embed === '1' ? 1 : 0,
-      description || '', publish_date);
+      description || '', publish_date,
+      stream_video_id || null, drm_enhanced === 'true' || drm_enhanced === '1' ? 1 : 0,
+      category_id ? parseInt(category_id) : null);
 
     const videoId = result.lastInsertRowid;
+
+    // Mark self-hosted videos as transcoding
+    if (stream_video_id) {
+      db.prepare(`UPDATE videos SET stream_status = 'transcoding' WHERE id = ?`).run(videoId);
+    }
+
+    // Webhook logic:
+    // - Self-hosted (transcoding) → webhook_sent stays NULL → background interval sends after transcode
+    // - YouTube with future date → webhook_sent stays NULL → background interval sends when date arrives
+    // - YouTube with current/past date → send webhook immediately
+    if (!stream_video_id) {
+      const pubDate = new Date(publish_date);
+      if (pubDate.getTime() <= Date.now()) {
+        const videoFull = db.prepare(`
+          SELECT v.*, c.name AS category_name, c.webhook_url, c.webhook_template,
+          u.display_name AS author_name FROM videos v
+          LEFT JOIN categories c ON v.category_id = c.id
+          LEFT JOIN users u ON v.author_id = u.id WHERE v.id = ?
+        `).get(videoId);
+        if (videoFull && videoFull.webhook_url) {
+          console.log(`[WEBHOOK] Immediate send for "${title}" (cat: ${videoFull.category_name})`);
+          db.prepare("UPDATE videos SET webhook_sent = 1 WHERE id = ?").run(videoId);
+          sendDiscordWebhook(videoFull).catch(e => console.error('[WEBHOOK] Error:', e.message));
+        } else if (videoFull) {
+          // No webhook URL on category — mark as sent to avoid retry spam
+          db.prepare("UPDATE videos SET webhook_sent = 1 WHERE id = ?").run(videoId);
+          console.log(`[WEBHOOK] No webhook URL for "${title}" — skipped`);
+        }
+      } else {
+        console.log(`[WEBHOOK] Scheduled "${title}" for ${publish_date} — webhook will fire later`);
+      }
+    } else {
+      console.log(`[WEBHOOK] Self-hosted "${title}" — webhook after transcoding completes`);
+    }
+    // Self-hosted/scheduled: webhook_sent stays NULL → picked up by background interval
 
     // Handle tags
     if (tags) {
@@ -447,7 +708,8 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
   try {
     const { title, author_id, main_source, main_source_type, main_source_title,
       thumbnail, mirror1_name, mirror1_url, mirror1_is_embed,
-      mirror2_name, mirror2_url, mirror2_is_embed, description, publish_date, tags } = req.body;
+      mirror2_name, mirror2_url, mirror2_is_embed, description, publish_date, tags,
+      category_id, stream_video_id, drm_enhanced, access_mode, allowed_users } = req.body;
 
     const existing = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Video not found' });
@@ -466,12 +728,28 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
     db.prepare(`
       UPDATE videos SET title=?, author_id=?, main_source=?, main_source_type=?, main_source_title=?, thumbnail=?, custom_thumbnail=?,
         mirror1_name=?, mirror1_url=?, mirror1_is_embed=?, mirror2_name=?, mirror2_url=?, mirror2_is_embed=?,
-        description=?, publish_date=?, updated_at=datetime('now') WHERE id=?
+        description=?, publish_date=?, category_id=?, stream_video_id=?, drm_enhanced=?, access_mode=?,
+        updated_at=datetime('now') WHERE id=?
     `).run(title, parseInt(author_id), main_source, main_source_type || 'youtube', main_source_title || '',
       thumbUrl, customThumb,
       mirror1_name || null, mirror1_url || null, mirror1_is_embed === 'true' || mirror1_is_embed === '1' ? 1 : 0,
       mirror2_name || null, mirror2_url || null, mirror2_is_embed === 'true' || mirror2_is_embed === '1' ? 1 : 0,
-      description || '', publish_date, req.params.id);
+      description || '', publish_date,
+      category_id ? parseInt(category_id) : null,
+      stream_video_id || existing.stream_video_id || null,
+      drm_enhanced === 'true' || drm_enhanced === '1' ? 1 : (existing.drm_enhanced || 0),
+      access_mode || existing.access_mode || 'category',
+      req.params.id);
+
+    // Update per-video access if custom mode
+    if (access_mode === 'custom' && allowed_users) {
+      db.prepare('DELETE FROM video_access WHERE video_id = ?').run(req.params.id);
+      const userIds = JSON.parse(allowed_users);
+      const stmt = db.prepare('INSERT OR IGNORE INTO video_access (video_id, user_id) VALUES (?, ?)');
+      userIds.forEach(uid => stmt.run(req.params.id, uid));
+    } else if (access_mode === 'category') {
+      db.prepare('DELETE FROM video_access WHERE video_id = ?').run(req.params.id);
+    }
 
     // Update tags
     db.prepare('DELETE FROM video_tags WHERE video_id = ?').run(req.params.id);
@@ -531,6 +809,150 @@ app.delete('/api/tags/:id', requireAdmin, (req, res) => {
   }
 });
 
+// ============ CATEGORIES API ============
+// List categories (filtered by user access)
+app.get('/api/categories', requireAuth, (req, res) => {
+  try {
+    const allCats = db.prepare('SELECT * FROM categories ORDER BY sort_order, name').all();
+    const user = req.session.user;
+    const isDevOrAdmin = user.role === 'dev' || user.role === 'admin';
+
+    // Dev/admin sees all categories
+    if (isDevOrAdmin) {
+      const cats = allCats.map(c => {
+        const access = db.prepare('SELECT * FROM category_access WHERE category_id = ?').all(c.id);
+        const videoCount = db.prepare('SELECT COUNT(*) AS c FROM videos WHERE category_id = ?').get(c.id).c;
+        return { ...c, access, videoCount, canView: true, canEdit: true };
+      });
+      return res.json(cats);
+    }
+
+    // Regular users — check role-based access
+    const userRoles = user.discord_roles || [];
+    const cats = allCats.map(c => {
+      const access = db.prepare('SELECT * FROM category_access WHERE category_id = ?').all(c.id);
+      const viewerRoles = access.filter(a => a.access_type === 'viewer').map(a => a.discord_role_id);
+      const editorRoles = access.filter(a => a.access_type === 'editor').map(a => a.discord_role_id);
+      // No access rules = public to all members
+      const canView = viewerRoles.length === 0 || userRoles.some(r => viewerRoles.includes(r)) || userRoles.some(r => editorRoles.includes(r));
+      const canEdit = editorRoles.length === 0 ? false : userRoles.some(r => editorRoles.includes(r));
+      const videoCount = db.prepare('SELECT COUNT(*) AS c FROM videos WHERE category_id = ?').get(c.id).c;
+      return { ...c, access, videoCount, canView, canEdit };
+    }).filter(c => c.canView);
+
+    res.json(cats);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Create category (dev only)
+app.post('/api/categories', requireDev, (req, res) => {
+  try {
+    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template } = req.body;
+    if (!name) return res.status(400).json({ error: 'Name required' });
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const result = db.prepare('INSERT INTO categories (name, slug, description, icon, sort_order, parent_id, webhook_url, webhook_template) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '');
+    const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(result.lastInsertRowid);
+    res.json({ success: true, category: cat });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Update category (dev only)
+app.put('/api/categories/:id', requireDev, (req, res) => {
+  try {
+    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template } = req.body;
+    const slug = name ? name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : undefined;
+    if (name) db.prepare('UPDATE categories SET name=?, slug=?, description=?, icon=?, sort_order=?, parent_id=?, webhook_url=?, webhook_template=? WHERE id=?')
+      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Delete category (dev only)
+app.delete('/api/categories/:id', requireDev, (req, res) => {
+  try {
+    const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(req.params.id);
+    if (cat) db.prepare('UPDATE categories SET parent_id = ? WHERE parent_id = ?').run(cat.parent_id || null, req.params.id);
+    db.prepare('UPDATE videos SET category_id = NULL WHERE category_id = ?').run(req.params.id);
+    db.prepare('DELETE FROM categories WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Set category access roles (dev only)
+app.post('/api/categories/:id/access', requireDev, (req, res) => {
+  try {
+    const { viewers, editors } = req.body;
+    db.prepare('DELETE FROM category_access WHERE category_id = ?').run(req.params.id);
+    if (viewers) {
+      const stmt = db.prepare('INSERT OR IGNORE INTO category_access (category_id, discord_role_id, access_type) VALUES (?, ?, ?)');
+      viewers.forEach(r => stmt.run(req.params.id, r, 'viewer'));
+    }
+    if (editors) {
+      const stmt = db.prepare('INSERT OR IGNORE INTO category_access (category_id, discord_role_id, access_type) VALUES (?, ?, ?)');
+      editors.forEach(r => stmt.run(req.params.id, r, 'editor'));
+    }
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============ VIDEO ACCESS API ============
+app.get('/api/videos/:id/access', requireAdmin, (req, res) => {
+  try {
+    const users = db.prepare('SELECT u.id, u.username, u.display_name FROM video_access va JOIN users u ON va.user_id = u.id WHERE va.video_id = ?').all(req.params.id);
+    const video = db.prepare('SELECT access_mode FROM videos WHERE id = ?').get(req.params.id);
+    res.json({ access_mode: video?.access_mode || 'category', users });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/videos/:id/access', requireAdmin, (req, res) => {
+  try {
+    const { access_mode, user_ids } = req.body;
+    db.prepare('UPDATE videos SET access_mode = ? WHERE id = ?').run(access_mode || 'category', req.params.id);
+    if (access_mode === 'custom') {
+      db.prepare('DELETE FROM video_access WHERE video_id = ?').run(req.params.id);
+      if (user_ids && user_ids.length > 0) {
+        const stmt = db.prepare('INSERT OR IGNORE INTO video_access (video_id, user_id) VALUES (?, ?)');
+        user_ids.forEach(uid => stmt.run(req.params.id, uid));
+      }
+    } else {
+      db.prepare('DELETE FROM video_access WHERE video_id = ?').run(req.params.id);
+    }
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============ BULK ACTIONS API ============
+app.post('/api/videos/bulk', requireAdmin, (req, res) => {
+  try {
+    const { action, video_ids, value } = req.body;
+    if (!video_ids || !Array.isArray(video_ids) || video_ids.length === 0) {
+      return res.status(400).json({ error: 'No videos selected' });
+    }
+    const placeholders = video_ids.map(() => '?').join(',');
+    let changes = 0;
+
+    switch (action) {
+      case 'change_category':
+        changes = db.prepare(`UPDATE videos SET category_id = ? WHERE id IN (${placeholders})`).run(value || null, ...video_ids).changes;
+        break;
+      case 'change_author':
+        if (!value) return res.status(400).json({ error: 'Author ID required' });
+        changes = db.prepare(`UPDATE videos SET author_id = ? WHERE id IN (${placeholders})`).run(parseInt(value), ...video_ids).changes;
+        break;
+      case 'change_access':
+        changes = db.prepare(`UPDATE videos SET access_mode = ? WHERE id IN (${placeholders})`).run(value || 'category', ...video_ids).changes;
+        break;
+      case 'delete':
+        changes = db.prepare(`DELETE FROM videos WHERE id IN (${placeholders})`).run(...video_ids).changes;
+        break;
+      default:
+        return res.status(400).json({ error: 'Unknown action' });
+    }
+    res.json({ success: true, changes });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ============ AUTHORS API ============
 app.get('/api/authors', requireAuth, (req, res) => {
   const authors = db.prepare(`
@@ -542,8 +964,29 @@ app.get('/api/authors', requireAuth, (req, res) => {
 
 // ============ USERS API ============
 app.get('/api/users', requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, username, display_name, avatar, role, auth_method, created_at, last_login FROM users ORDER BY created_at DESC').all();
+  const users = db.prepare('SELECT id, username, display_name, avatar, role, auth_method, created_at, last_login, discord_roles FROM users ORDER BY created_at DESC').all();
   res.json(users);
+});
+
+app.delete('/api/users/:id', requireAdmin, (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    // Prevent deleting yourself
+    if (userId === req.session.user.id) {
+      return res.status(400).json({ error: 'Nie możesz usunąć własnego konta.' });
+    }
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    if (!user) return res.status(404).json({ error: 'Użytkownik nie znaleziony.' });
+    // Clear related data
+    db.prepare('DELETE FROM favorites WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM watch_logs WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    console.log(`[ADMIN] User deleted: ${user.display_name} (ID: ${userId}) by ${req.session.user.display_name}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete user error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/users/all', requireAuth, (req, res) => {
@@ -573,19 +1016,158 @@ app.post('/api/debug/create-user', requireDev, (req, res) => {
 
 // ============ LOGS API ============
 app.get('/api/logs/watch', requireAdmin, (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const perPage = parseInt(process.env.LOGS_PER_PAGE) || 50;
+  const offset = (page - 1) * perPage;
+  const total = db.prepare('SELECT COUNT(*) AS c FROM watch_logs').get().c;
   const logs = db.prepare(`
     SELECT wl.*, u.username, u.display_name AS user_display, v.title AS video_title
     FROM watch_logs wl
     LEFT JOIN users u ON wl.user_id = u.id
     LEFT JOIN videos v ON wl.video_id = v.id
-    ORDER BY wl.watched_at DESC LIMIT 100
-  `).all();
-  res.json(logs);
+    ORDER BY wl.watched_at DESC LIMIT ? OFFSET ?
+  `).all(perPage, offset);
+  res.json({ logs, total, page, perPage, totalPages: Math.ceil(total / perPage) });
 });
 
 app.get('/api/logs/login', requireAdmin, (req, res) => {
-  const logs = db.prepare('SELECT * FROM login_logs ORDER BY logged_at DESC LIMIT 100').all();
-  res.json(logs);
+  const page = parseInt(req.query.page) || 1;
+  const perPage = parseInt(process.env.LOGS_PER_PAGE) || 50;
+  const offset = (page - 1) * perPage;
+  const total = db.prepare('SELECT COUNT(*) AS c FROM login_logs').get().c;
+  const logs = db.prepare('SELECT * FROM login_logs ORDER BY logged_at DESC LIMIT ? OFFSET ?').all(perPage, offset);
+  res.json({ logs, total, page, perPage, totalPages: Math.ceil(total / perPage) });
+});
+
+// ============ FAVORITES API ============
+app.get('/api/favorites', requireAuth, (req, res) => {
+  try {
+    const favs = db.prepare(`
+      SELECT v.*, u.username AS author_name, u.display_name AS author_display_name,
+      GROUP_CONCAT(DISTINCT t.name) AS tag_names, GROUP_CONCAT(DISTINCT t.id) AS tag_ids,
+      f.created_at AS favorited_at
+      FROM favorites f
+      JOIN videos v ON f.video_id = v.id
+      LEFT JOIN users u ON v.author_id = u.id
+      LEFT JOIN video_tags vt ON v.id = vt.video_id
+      LEFT JOIN tags t ON vt.tag_id = t.id
+      WHERE f.user_id = ?
+      GROUP BY v.id
+      ORDER BY f.created_at DESC
+    `).all(req.session.user.id);
+    res.json(favs.map(v => ({
+      ...v,
+      tags: v.tag_names ? v.tag_names.split(',').map((name, i) => ({ id: parseInt(v.tag_ids.split(',')[i]), name })) : []
+    })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/favorites/:videoId', requireAuth, (req, res) => {
+  try {
+    db.prepare('INSERT OR IGNORE INTO favorites (user_id, video_id) VALUES (?, ?)').run(req.session.user.id, req.params.videoId);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/favorites/:videoId', requireAuth, (req, res) => {
+  try {
+    db.prepare('DELETE FROM favorites WHERE user_id = ? AND video_id = ?').run(req.session.user.id, req.params.videoId);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/favorites/check/:videoId', requireAuth, (req, res) => {
+  const fav = db.prepare('SELECT 1 FROM favorites WHERE user_id = ? AND video_id = ?').get(req.session.user.id, req.params.videoId);
+  res.json({ isFavorite: !!fav });
+});
+
+// ============ WATCH HISTORY (personal) ============
+app.get('/api/history', requireAuth, (req, res) => {
+  try {
+    // No limit — full history for logged-in user
+    const history = db.prepare(`
+      SELECT wl.watched_at, v.id, v.title, v.thumbnail, v.publish_date,
+      u.username AS author_name, u.display_name AS author_display_name
+      FROM watch_logs wl
+      JOIN videos v ON wl.video_id = v.id
+      LEFT JOIN users u ON v.author_id = u.id
+      WHERE wl.user_id = ?
+      ORDER BY wl.watched_at DESC
+    `).all(req.session.user.id);
+    res.json(history);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============ STATS API ============
+app.get('/api/stats', requireAuth, (req, res) => {
+  try {
+    const totalVideos = db.prepare('SELECT COUNT(*) AS c FROM videos').get().c;
+    const totalUsers = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
+    const totalViews = db.prepare('SELECT COUNT(*) AS c FROM watch_logs').get().c;
+    const totalTags = db.prepare('SELECT COUNT(*) AS c FROM tags').get().c;
+
+    const mostWatched = db.prepare(`
+      SELECT v.id, v.title, v.thumbnail, COUNT(wl.id) AS views, u.display_name AS author_display_name
+      FROM watch_logs wl JOIN videos v ON wl.video_id = v.id LEFT JOIN users u ON v.author_id = u.id
+      GROUP BY v.id ORDER BY views DESC LIMIT 10
+    `).all();
+
+    const topViewers = db.prepare(`
+      SELECT u.id, u.display_name, u.avatar, COUNT(wl.id) AS total_views
+      FROM watch_logs wl JOIN users u ON wl.user_id = u.id
+      GROUP BY u.id ORDER BY total_views DESC LIMIT 10
+    `).all();
+
+    const recentActivity = db.prepare(`
+      SELECT DATE(wl.watched_at) AS day, COUNT(*) AS views
+      FROM watch_logs wl WHERE wl.watched_at >= datetime('now', '-30 days')
+      GROUP BY day ORDER BY day ASC
+    `).all();
+
+    const tagCloud = db.prepare(`
+      SELECT t.id, t.name, COUNT(vt.video_id) AS count
+      FROM tags t JOIN video_tags vt ON t.id = vt.tag_id
+      GROUP BY t.id ORDER BY count DESC LIMIT 20
+    `).all();
+
+    const topAuthors = db.prepare(`
+      SELECT u.id, u.display_name, u.avatar, COUNT(v.id) AS video_count
+      FROM users u JOIN videos v ON u.id = v.author_id
+      GROUP BY u.id ORDER BY video_count DESC LIMIT 10
+    `).all();
+
+    const myStats = {
+      views: db.prepare('SELECT COUNT(*) AS c FROM watch_logs WHERE user_id = ?').get(req.session.user.id).c,
+      favorites: db.prepare('SELECT COUNT(*) AS c FROM favorites WHERE user_id = ?').get(req.session.user.id).c,
+    };
+
+    res.json({ totalVideos, totalUsers, totalViews, totalTags, mostWatched, topViewers, recentActivity, tagCloud, topAuthors, myStats });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============ PROFILE API ============
+app.get('/api/profile', requireAuth, (req, res) => {
+  const user = db.prepare('SELECT id, username, display_name, avatar, role, bio, auth_method, created_at, last_login FROM users WHERE id = ?').get(req.session.user.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const videoCount = db.prepare('SELECT COUNT(*) AS c FROM videos WHERE author_id = ?').get(user.id).c;
+  const viewCount = db.prepare('SELECT COUNT(*) AS c FROM watch_logs WHERE user_id = ?').get(user.id).c;
+  const favCount = db.prepare('SELECT COUNT(*) AS c FROM favorites WHERE user_id = ?').get(user.id).c;
+  res.json({ ...user, videoCount, viewCount, favCount });
+});
+
+app.put('/api/profile', requireAuth, (req, res) => {
+  try {
+    const { display_name, bio } = req.body;
+    if (display_name !== undefined) {
+      db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(display_name.trim(), req.session.user.id);
+      req.session.user.display_name = display_name.trim();
+    }
+    if (bio !== undefined) {
+      db.prepare('UPDATE users SET bio = ? WHERE id = ?').run(bio, req.session.user.id);
+    }
+    req.session.save(() => {});
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ============ DEBUG / DEV API ============
@@ -664,6 +1246,325 @@ app.post('/api/debug/clear', requireDev, (req, res) => {
   }
 });
 
+// SQL executor — DEV ONLY
+app.post('/api/debug/sql', requireDev, (req, res) => {
+  const { query } = req.body;
+  if (!query || !query.trim()) return res.status(400).json({ error: 'Empty query' });
+
+  const trimmed = query.trim();
+  console.log(`[DEBUG SQL] Executed by ${req.session.user.display_name}: ${trimmed.slice(0, 200)}`);
+
+  try {
+    const isSelect = /^\s*(SELECT|PRAGMA|EXPLAIN)/i.test(trimmed);
+    if (isSelect) {
+      const rows = db.prepare(trimmed).all();
+      const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+      res.json({ success: true, type: 'query', rows, columns, count: rows.length });
+    } else {
+      const info = db.prepare(trimmed).run();
+      res.json({ success: true, type: 'statement', changes: info.changes, lastInsertRowid: Number(info.lastInsertRowid) });
+    }
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// ============ LOG CLEARING API ============
+app.delete('/api/logs/watch/clear', requireAdmin, (req, res) => {
+  try {
+    const info = db.prepare('DELETE FROM watch_logs').run();
+    res.json({ success: true, deleted: info.changes });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/logs/login/clear', requireAdmin, (req, res) => {
+  try {
+    const info = db.prepare('DELETE FROM login_logs').run();
+    res.json({ success: true, deleted: info.changes });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============ STREAMING PROXY ============
+const STREAM_URL = process.env.STREAM_URL || 'http://streaming:4000';
+const STREAM_SECRET = process.env.STREAM_SECRET || 'alleria-stream-key';
+
+// Chunked upload temp dir
+const chunksDir = path.join(__dirname, 'data', 'chunks');
+if (!fs.existsSync(chunksDir)) fs.mkdirSync(chunksDir, { recursive: true });
+
+const chunkUpload = multer({
+  dest: chunksDir,
+  limits: { fileSize: 80 * 1024 * 1024 }, // 80MB per chunk — safe under CF 100MB limit
+});
+
+// Step 1: Initialize chunked upload — returns upload_id
+app.post('/api/stream/upload/init', requireAdmin, (req, res) => {
+  const { filename, filesize, total_chunks, drm_enhanced } = req.body;
+  if (!filename || !total_chunks) return res.status(400).json({ error: 'Missing params' });
+  const uploadId = uuidv4();
+  const uploadDir = path.join(chunksDir, uploadId);
+  fs.mkdirSync(uploadDir, { recursive: true });
+  fs.writeFileSync(path.join(uploadDir, 'meta.json'), JSON.stringify({
+    filename, filesize: parseInt(filesize) || 0, total_chunks: parseInt(total_chunks),
+    drm_enhanced: drm_enhanced === 'true' || drm_enhanced === true,
+    received: [], created: Date.now()
+  }));
+  console.log(`[CHUNK] Upload init: ${uploadId} — ${filename} (${total_chunks} chunks, ${(parseInt(filesize) / 1024 / 1024).toFixed(1)} MB)`);
+  res.json({ success: true, upload_id: uploadId });
+});
+
+// Step 2: Upload individual chunk
+app.post('/api/stream/upload/chunk', requireAdmin, chunkUpload.single('chunk'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No chunk data' });
+  const { upload_id, chunk_index } = req.body;
+  if (!upload_id || chunk_index === undefined) {
+    try { fs.unlinkSync(req.file.path); } catch (e) {}
+    return res.status(400).json({ error: 'Missing upload_id or chunk_index' });
+  }
+
+  const uploadDir = path.join(chunksDir, upload_id);
+  const metaPath = path.join(uploadDir, 'meta.json');
+  if (!fs.existsSync(metaPath)) {
+    try { fs.unlinkSync(req.file.path); } catch (e) {}
+    return res.status(404).json({ error: 'Upload not found' });
+  }
+
+  // Move chunk to upload dir
+  const chunkPath = path.join(uploadDir, `chunk_${String(chunk_index).padStart(6, '0')}`);
+  fs.renameSync(req.file.path, chunkPath);
+
+  // Update meta
+  const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+  if (!meta.received.includes(parseInt(chunk_index))) {
+    meta.received.push(parseInt(chunk_index));
+  }
+  fs.writeFileSync(metaPath, JSON.stringify(meta));
+
+  console.log(`[CHUNK] ${upload_id}: chunk ${chunk_index}/${meta.total_chunks - 1} received (${meta.received.length}/${meta.total_chunks})`);
+  res.json({ success: true, received: meta.received.length, total: meta.total_chunks });
+});
+
+// Step 3: Complete — assemble chunks and forward to streaming service
+app.post('/api/stream/upload/complete', requireAdmin, async (req, res) => {
+  const { upload_id } = req.body;
+  if (!upload_id) return res.status(400).json({ error: 'Missing upload_id' });
+
+  const uploadDir = path.join(chunksDir, upload_id);
+  const metaPath = path.join(uploadDir, 'meta.json');
+  if (!fs.existsSync(metaPath)) return res.status(404).json({ error: 'Upload not found' });
+
+  const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+  if (meta.received.length < meta.total_chunks) {
+    return res.status(400).json({ error: `Missing chunks: got ${meta.received.length}/${meta.total_chunks}` });
+  }
+
+  // Assemble chunks into single file
+  const assembledPath = path.join(chunksDir, `${upload_id}_assembled`);
+  console.log(`[CHUNK] Assembling ${meta.total_chunks} chunks for ${upload_id}...`);
+
+  try {
+    const writeStream = fs.createWriteStream(assembledPath);
+    for (let i = 0; i < meta.total_chunks; i++) {
+      const chunkPath = path.join(uploadDir, `chunk_${String(i).padStart(6, '0')}`);
+      if (!fs.existsSync(chunkPath)) throw new Error(`Chunk ${i} missing`);
+      const data = fs.readFileSync(chunkPath);
+      writeStream.write(data);
+    }
+    await new Promise((resolve, reject) => {
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+      writeStream.end();
+    });
+
+    const fileSize = fs.statSync(assembledPath).size;
+    console.log(`[CHUNK] Assembled: ${(fileSize / 1024 / 1024).toFixed(1)} MB — forwarding to streaming service...`);
+
+    // Forward assembled file to streaming service via stream
+    const { PassThrough } = require('stream');
+    const boundary = '----AlleriaBoundary' + Date.now();
+    const preamble = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="video"; filename="${meta.filename}"\r\nContent-Type: video/mp4\r\n\r\n`
+    );
+    const epilogue = Buffer.from(
+      `\r\n--${boundary}\r\nContent-Disposition: form-data; name="drm_enhanced"\r\n\r\n${meta.drm_enhanced ? 'true' : 'false'}\r\n--${boundary}--\r\n`
+    );
+
+    const bodyStream = new PassThrough();
+    bodyStream.write(preamble);
+    const fileStream = fs.createReadStream(assembledPath);
+    fileStream.on('data', chunk => bodyStream.write(chunk));
+    fileStream.on('end', () => { bodyStream.write(epilogue); bodyStream.end(); });
+    fileStream.on('error', err => bodyStream.destroy(err));
+
+    const streamRes = await fetch(`${STREAM_URL}/upload`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'X-Stream-Token': STREAM_SECRET,
+      },
+      body: bodyStream,
+      duplex: 'half',
+    });
+
+    const data = await streamRes.json();
+    console.log(`[CHUNK] ✅ Complete: ${upload_id} → stream ${data.video_id || 'error'}`);
+
+    // Cleanup
+    try { fs.rmSync(uploadDir, { recursive: true }); } catch (e) {}
+    try { fs.unlinkSync(assembledPath); } catch (e) {}
+
+    res.json(data);
+  } catch (err) {
+    console.error(`[CHUNK] Error completing ${upload_id}:`, err);
+    try { fs.rmSync(uploadDir, { recursive: true }); } catch (e) {}
+    try { fs.unlinkSync(assembledPath); } catch (e) {}
+    res.status(500).json({ error: 'Assembly/upload failed: ' + err.message });
+  }
+});
+
+// Get transcode status
+app.get('/api/stream/status/:videoId', requireAdmin, async (req, res) => {
+  try {
+    const r = await fetch(`${STREAM_URL}/status/${req.params.videoId}`, {
+      headers: { 'X-Stream-Token': STREAM_SECRET }
+    });
+    res.json(await r.json());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Generate playback token for user
+app.get('/api/stream/token/:videoId', requireAuth, async (req, res) => {
+  try {
+    const r = await fetch(`${STREAM_URL}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Stream-Token': STREAM_SECRET },
+      body: JSON.stringify({ video_id: req.params.videoId, user_id: String(req.session.user.id) })
+    });
+    res.json(await r.json());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Proxy stream media & keys (so streaming container is never exposed publicly)
+app.get('/stream/keys/*', requireAuth, async (req, res) => {
+  try {
+    const url = `${STREAM_URL}/keys/${req.params[0]}?t=${req.query.t || ''}&uid=${req.query.uid || ''}`;
+    const r = await fetch(url);
+    if (!r.ok) return res.status(r.status).send('Key error');
+    const buf = await r.arrayBuffer();
+    res.set({ 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store' });
+    res.send(Buffer.from(buf));
+  } catch (err) { res.status(500).send('Key proxy error'); }
+});
+
+app.get('/stream/media/*', requireAuth, async (req, res) => {
+  try {
+    const url = `${STREAM_URL}/media/${req.params[0]}`;
+    const r = await fetch(url);
+    if (!r.ok) return res.status(r.status).send('Media error');
+
+    const contentType = r.headers.get('content-type') || 'application/octet-stream';
+    const isPlaylist = req.params[0].endsWith('.m3u8');
+
+    if (isPlaylist) {
+      // Rewrite m3u8 key URIs to ensure they work correctly.
+      // FFmpeg writes the key URI from keyinfo file into each playlist's EXT-X-KEY line.
+      // The URI must be absolute or correctly rooted so HLS.js can resolve it from any
+      // playlist depth (e.g. /stream/media/{id}/480p/index.m3u8).
+      let body = await r.text();
+
+      // Get the host from request to build absolute URL
+      const proto = req.protocol;
+      const host = req.get('host');
+      const origin = `${proto}://${host}`;
+
+      // Replace any key URI — match the EXT-X-KEY line and rewrite the URI to be absolute
+      body = body.replace(
+        /URI="([^"]*keys\/[^"]*enc\.key\?[^"]*)"/g,
+        (match, uri) => {
+          // Already absolute with http/https — just pass through
+          if (uri.startsWith('http://') || uri.startsWith('https://')) return match;
+          // Relative or root-relative — make absolute
+          const cleanPath = uri.startsWith('/') ? uri : `/stream/keys/${uri.replace(/^.*?keys\//, '')}`;
+          return `URI="${origin}${cleanPath}"`;
+        }
+      );
+
+      // Also handle edge case: URI that has STREAM_HOST placeholder leftover
+      body = body.replace(/STREAM_HOST/g, origin);
+
+      res.set({ 'Content-Type': 'application/vnd.apple.mpegurl', 'Cache-Control': 'no-cache' });
+      res.send(body);
+    } else {
+      res.set({ 'Content-Type': contentType, 'Cache-Control': 'public, max-age=3600' });
+      const buf = await r.arrayBuffer();
+      res.send(Buffer.from(buf));
+    }
+  } catch (err) { res.status(500).send('Media proxy error'); }
+});
+
+// Delete streaming video
+app.delete('/api/stream/video/:videoId', requireAdmin, async (req, res) => {
+  try {
+    const r = await fetch(`${STREAM_URL}/video/${req.params.videoId}`, {
+      method: 'DELETE',
+      headers: { 'X-Stream-Token': STREAM_SECRET }
+    });
+    res.json(await r.json());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Check transcode status for a DB video and update stream_status
+app.get('/api/stream/check/:dbVideoId', requireAdmin, async (req, res) => {
+  try {
+    const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.dbVideoId);
+    if (!video || !video.stream_video_id) return res.json({ status: 'no_stream' });
+
+    const r = await fetch(`${STREAM_URL}/status/${video.stream_video_id}`, {
+      headers: { 'X-Stream-Token': STREAM_SECRET }
+    });
+    const data = await r.json();
+
+    // Update DB status if it changed
+    if (data.status === 'ready' && video.stream_status !== 'ready') {
+      db.prepare(`UPDATE videos SET stream_status = 'ready' WHERE id = ?`).run(video.id);
+      console.log(`[STREAM] Video ${video.id} transcode complete → ready`);
+    } else if (data.status === 'error' && video.stream_status !== 'error') {
+      db.prepare(`UPDATE videos SET stream_status = 'error' WHERE id = ?`).run(video.id);
+    }
+
+    res.json({ ...data, db_status: video.stream_status });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Cleanup orphaned/failed streaming videos
+app.get('/api/stream/cleanup', requireDev, async (req, res) => {
+  try {
+    const r = await fetch(`${STREAM_URL}/cleanup/list`, { headers: { 'X-Stream-Token': STREAM_SECRET } });
+    const data = await r.json();
+    // Also find DB videos pointing to non-existent stream IDs
+    const dbOrphans = db.prepare("SELECT id, title, stream_video_id, stream_status FROM videos WHERE stream_video_id IS NOT NULL AND (stream_status = 'error' OR stream_status = 'transcoding')").all();
+    res.json({ ...data, dbOrphans });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/stream/cleanup', requireDev, async (req, res) => {
+  try {
+    // Purge from streaming service
+    const r = await fetch(`${STREAM_URL}/cleanup/purge`, {
+      method: 'POST',
+      headers: { 'X-Stream-Token': STREAM_SECRET, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video_ids: req.body.video_ids || [] }),
+    });
+    const data = await r.json();
+    // Also clean DB entries for error/orphan videos if requested
+    if (req.body.clean_db) {
+      const info = db.prepare("UPDATE videos SET stream_video_id = NULL, stream_status = NULL WHERE stream_status = 'error'").run();
+      data.dbCleaned = info.changes;
+    }
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ============ HELPERS ============
 function extractYoutubeThumbnail(url) {
   if (!url) return '';
@@ -731,4 +1632,115 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('========================================');
   console.log(`  http://localhost:${PORT}`);
   console.log('========================================\n');
+
+  // Auto-check transcoding status every 30 seconds
+  setInterval(async () => {
+    try {
+      const transcoding = db.prepare("SELECT * FROM videos WHERE stream_status = 'transcoding' AND stream_video_id IS NOT NULL").all();
+      for (const video of transcoding) {
+        try {
+          const r = await fetch(`${STREAM_URL}/status/${video.stream_video_id}`, {
+            headers: { 'X-Stream-Token': STREAM_SECRET }
+          });
+          const data = await r.json();
+          if (data.status === 'ready') {
+            db.prepare("UPDATE videos SET stream_status = 'ready' WHERE id = ?").run(video.id);
+            console.log(`[TRANSCODE] ✅ Video ${video.id} "${video.title}" → ready`);
+          } else if (data.status === 'error') {
+            db.prepare("UPDATE videos SET stream_status = 'error' WHERE id = ?").run(video.id);
+            console.log(`[TRANSCODE] ❌ Video ${video.id} "${video.title}" → error`);
+          }
+        } catch (e) { /* streaming service unreachable — skip */ }
+      }
+    } catch (e) { /* DB error — skip */ }
+  }, 30000);
+
+  // Scheduled publishing + webhook check — every 60 seconds
+  // Finds videos that are: published (date in past), ready (not transcoding), webhook not yet sent
+  setInterval(async () => {
+    try {
+      const needsWebhook = db.prepare(`
+        SELECT v.*, c.name AS category_name, c.webhook_url, c.webhook_template,
+        u.display_name AS author_name
+        FROM videos v
+        LEFT JOIN categories c ON v.category_id = c.id
+        LEFT JOIN users u ON v.author_id = u.id
+        WHERE v.publish_date <= datetime('now')
+        AND (v.webhook_sent IS NULL OR v.webhook_sent = 0)
+        AND (v.stream_status IS NULL OR v.stream_status = 'ready')
+      `).all();
+
+      for (const video of needsWebhook) {
+        // Mark as sent first to prevent duplicates
+        db.prepare("UPDATE videos SET webhook_sent = 1 WHERE id = ?").run(video.id);
+
+        // Send Discord webhook if category has one configured
+        if (video.webhook_url) {
+          try {
+            await sendDiscordWebhook(video);
+            console.log(`[WEBHOOK] ✅ Sent for "${video.title}" (ID: ${video.id})`);
+          } catch (e) {
+            console.error(`[WEBHOOK] ❌ Failed for "${video.title}": ${e.message}`);
+          }
+        } else {
+          console.log(`[WEBHOOK] Skipped "${video.title}" — no webhook URL on category`);
+        }
+      }
+    } catch (e) { console.error('[WEBHOOK] Interval error:', e.message); }
+  }, 60000);
 });
+
+// ============ DISCORD WEBHOOK ============
+async function sendDiscordWebhook(video) {
+  if (!video.webhook_url) return;
+
+  // Default template if none set
+  const defaultTemplate = '🎬 **Nowy film:** {title}\n👤 Autor: {author}\n📁 Kategoria: {category}\n🔗 {url}';
+  let template = video.webhook_template || defaultTemplate;
+
+  // Available placeholders:
+  // {title} - video title
+  // {author} - author display name
+  // {category} - category name
+  // {description} - video description
+  // {date} - publish date
+  // {id} - video ID
+  // {url} - full video URL
+  const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
+  const replacements = {
+    '{title}': video.title || '',
+    '{author}': video.author_name || video.author_display_name || '',
+    '{category}': video.category_name || 'Bez kategorii',
+    '{description}': (video.description || '').slice(0, 200),
+    '{date}': video.publish_date || '',
+    '{id}': String(video.id),
+    '{url}': `${baseUrl}/video/${video.id}`,
+    '{thumbnail}': video.thumbnail || '',
+  };
+
+  let content = template;
+  for (const [key, val] of Object.entries(replacements)) {
+    content = content.split(key).join(val);
+  }
+
+  const body = { content };
+
+  // If thumbnail is a full URL, add as embed
+  if (video.thumbnail && (video.thumbnail.startsWith('http') || video.thumbnail.startsWith('/'))) {
+    const thumbUrl = video.thumbnail.startsWith('http') ? video.thumbnail : `${baseUrl}${video.thumbnail}`;
+    body.embeds = [{
+      title: video.title,
+      url: `${baseUrl}/video/${video.id}`,
+      color: 6366450, // indigo
+      image: { url: thumbUrl },
+      footer: { text: `${video.author_name || ''} • ${video.category_name || ''}` },
+    }];
+    body.content = content.replace(/\{thumbnail\}/g, '');
+  }
+
+  await fetch(video.webhook_url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}

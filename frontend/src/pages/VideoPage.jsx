@@ -1,25 +1,63 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowLeft, Film } from 'lucide-react';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, ArrowLeft, Film, Heart } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, youtubeToEmbed } from '../utils/helpers';
+import SecurePlayer from '../components/SecurePlayer';
 
 export default function VideoPage() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const fromCategory = searchParams.get('from') || '';
   const navigate = useNavigate();
   const [video, setVideo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeSource, setActiveSource] = useState('main');
   const [error, setError] = useState(null);
+  const [isFav, setIsFav] = useState(false);
+  const [favLoading, setFavLoading] = useState(false);
+  const [prevVideo, setPrevVideo] = useState(null);
+  const [nextVideo, setNextVideo] = useState(null);
+  const [fadeKey, setFadeKey] = useState(0); // triggers re-animation on video change
 
   useEffect(() => {
     setLoading(true);
     setActiveSource('main');
-    api.getVideo(id)
-      .then(v => { setVideo(v); setError(null); })
-      .catch(err => setError(err.message))
+    setPrevVideo(null);
+    setNextVideo(null);
+    setFadeKey(k => k + 1); // trigger fade-in animation
+
+    const videoId = Number(id);
+
+    // Load video + favorites first
+    Promise.all([
+      api.getVideo(id),
+      api.checkFavorite(id).catch(() => ({ isFavorite: false })),
+    ]).then(([v, f]) => {
+      setVideo(v);
+      setIsFav(f.isFavorite);
+      setError(null);
+
+      // Then load context list for prev/next (non-blocking)
+      const listParams = fromCategory ? { category: fromCategory } : {};
+      api.getVideos(listParams).then(allVideos => {
+        if (!Array.isArray(allVideos) || allVideos.length === 0) return;
+        const idx = allVideos.findIndex(vid => Number(vid.id) === videoId);
+        if (idx > 0) setPrevVideo(allVideos[idx - 1]);
+        if (idx >= 0 && idx < allVideos.length - 1) setNextVideo(allVideos[idx + 1]);
+      }).catch(() => {}); // Don't fail if list loading fails
+    }).catch(err => setError(err.message))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, fromCategory]);
+
+  const toggleFav = async () => {
+    setFavLoading(true);
+    try {
+      if (isFav) { await api.removeFavorite(id); setIsFav(false); }
+      else { await api.addFavorite(id); setIsFav(true); }
+    } catch (e) { console.error(e); }
+    setFavLoading(false);
+  };
 
   if (loading) {
     return (
@@ -38,8 +76,8 @@ export default function VideoPage() {
           <Film className="w-16 h-16 text-zinc-300 dark:text-zinc-700 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-zinc-900 dark:text-white font-display mb-2">Film nie znaleziony</h2>
           <p className="text-zinc-500 mb-6">{error || 'Nie znaleziono filmu o podanym ID.'}</p>
-          <Link to="/" className="btn-primary inline-flex items-center gap-2">
-            <ArrowLeft className="w-4 h-4" /> Wróć do bazy
+          <Link to={fromCategory ? `/category/${fromCategory}` : '/'} className="btn-primary inline-flex items-center gap-2">
+            <ArrowLeft className="w-4 h-4" /> {fromCategory ? 'Wróć do kategorii' : 'Wróć do bazy'}
           </Link>
         </div>
       </div>
@@ -83,6 +121,7 @@ export default function VideoPage() {
   const embedUrl = getEmbedUrl();
   const embedHtml = getEmbedHtml();
   const hasMirrors = video.mirror1_url || video.mirror2_url;
+  const isSelfHosted = !!video.stream_video_id;
 
   const sources = [
     { key: 'main', label: video.main_source_title || 'Główne źródło' },
@@ -91,21 +130,36 @@ export default function VideoPage() {
   ];
 
   return (
-    <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-fade-in">
-      {/* Back button */}
+    <div key={fadeKey} className="p-6 sm:p-10 max-w-5xl mx-auto" style={{ animation: 'videoFadeIn 0.35s ease-out' }}>
+      <style>{`@keyframes videoFadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+      {/* Back button only — prev/next at bottom */}
       <button
-        onClick={() => navigate('/')}
-        className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors mb-6 font-medium text-sm"
+        onClick={() => navigate(fromCategory ? `/category/${fromCategory}` : '/')}
+        className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors font-medium text-sm mb-6"
       >
-        <ArrowLeft className="w-4 h-4" /> Wróć do bazy
+        <ArrowLeft className="w-4 h-4" /> {fromCategory ? 'Wróć do kategorii' : 'Wróć do bazy'}
       </button>
 
       {/* Title & Meta */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
         <div className="flex-1">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">
-            {video.title}
-          </h1>
+          <div className="flex items-start gap-3 mb-3">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display flex-1">
+              {video.title}
+            </h1>
+            <button
+              onClick={toggleFav}
+              disabled={favLoading}
+              className={`shrink-0 p-2.5 rounded-xl transition-all duration-300 ${
+                isFav
+                  ? 'bg-pink-50 dark:bg-pink-500/10 text-pink-500 hover:bg-pink-100 dark:hover:bg-pink-500/20 shadow-lg shadow-pink-500/10'
+                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-pink-500 hover:bg-pink-50 dark:hover:bg-pink-500/10'
+              }`}
+              title={isFav ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'}
+            >
+              <Heart className={`w-5 h-5 transition-all ${isFav ? 'fill-current scale-110' : ''}`} />
+            </button>
+          </div>
           <div className="flex flex-wrap items-center gap-3">
             <Link
               to={`/author/${video.author_id}`}
@@ -134,31 +188,41 @@ export default function VideoPage() {
       </div>
 
       {/* Video Player */}
-      <div className="card overflow-hidden mb-6">
-        <div className="aspect-video bg-black relative">
-          {embedUrl ? (
-            <iframe
-              key={activeSource}
-              src={embedUrl}
-              title={video.title}
-              className="absolute inset-0 w-full h-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-              frameBorder="0"
-            />
-          ) : embedHtml ? (
-            <div
-              key={activeSource}
-              className="absolute inset-0 w-full h-full [&>iframe]:w-full [&>iframe]:h-full"
-              dangerouslySetInnerHTML={embedHtml}
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Film className="w-16 h-16 text-zinc-700" />
-            </div>
-          )}
+      {isSelfHosted && activeSource === 'main' ? (
+        <div className="mb-6">
+          <SecurePlayer
+            streamVideoId={video.stream_video_id}
+            drmEnhanced={!!video.drm_enhanced}
+            title={video.title}
+          />
         </div>
-      </div>
+      ) : (
+        <div className="card overflow-hidden mb-6">
+          <div className="aspect-video bg-black relative">
+            {embedUrl ? (
+              <iframe
+                key={activeSource}
+                src={embedUrl}
+                title={video.title}
+                className="absolute inset-0 w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                frameBorder="0"
+              />
+            ) : embedHtml ? (
+              <div
+                key={activeSource}
+                className="absolute inset-0 w-full h-full [&>iframe]:w-full [&>iframe]:h-full"
+                dangerouslySetInnerHTML={embedHtml}
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Film className="w-16 h-16 text-zinc-700" />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Source Selection */}
       {hasMirrors && (
@@ -182,36 +246,38 @@ export default function VideoPage() {
         </div>
       )}
 
-      {/* Prev / Next Navigation */}
-      <div className="flex items-stretch gap-4 mb-8">
-        {video.nextVideo ? (
-          <Link
-            to={`/video/${video.nextVideo.id}`}
-            className="flex-1 card p-5 group hover:shadow-lg transition-all hover:-translate-y-0.5"
-          >
-            <div className="flex items-center gap-2 text-indigo-500 font-bold text-sm mb-1">
-              <ChevronLeft className="w-4 h-4" /> następny film
-            </div>
-            <p className="text-sm text-zinc-900 dark:text-white font-medium truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-              {video.nextVideo.title}
-            </p>
-          </Link>
-        ) : <div className="flex-1" />}
-        
-        {video.prevVideo ? (
-          <Link
-            to={`/video/${video.prevVideo.id}`}
-            className="flex-1 card p-5 text-right group hover:shadow-lg transition-all hover:-translate-y-0.5"
-          >
-            <div className="flex items-center justify-end gap-2 text-indigo-500 font-bold text-sm mb-1">
-              poprzedni film <ChevronRight className="w-4 h-4" />
-            </div>
-            <p className="text-sm text-zinc-900 dark:text-white font-medium truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-              {video.prevVideo.title}
-            </p>
-          </Link>
-        ) : <div className="flex-1" />}
-      </div>
+      {/* Prev / Next Navigation — context-aware (within category or all) */}
+      {(prevVideo || nextVideo) && (
+        <div className="flex items-stretch gap-3 sm:gap-4 mb-8">
+          {prevVideo ? (
+            <Link
+              to={`/video/${prevVideo.id}${fromCategory ? `?from=${fromCategory}` : ''}`}
+              className="flex-1 min-w-0 max-w-[50%] card p-4 sm:p-5 group hover:shadow-lg transition-all hover:-translate-y-0.5"
+            >
+              <div className="flex items-center gap-1.5 text-indigo-500 font-bold text-xs sm:text-sm mb-1">
+                <ChevronLeft className="w-4 h-4 shrink-0" /> <span className="truncate">poprzedni</span>
+              </div>
+              <p className="text-xs sm:text-sm text-zinc-900 dark:text-white font-medium truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                {prevVideo.title}
+              </p>
+            </Link>
+          ) : <div className="flex-1" />}
+          
+          {nextVideo ? (
+            <Link
+              to={`/video/${nextVideo.id}${fromCategory ? `?from=${fromCategory}` : ''}`}
+              className="flex-1 min-w-0 max-w-[50%] card p-4 sm:p-5 text-right group hover:shadow-lg transition-all hover:-translate-y-0.5 ml-auto"
+            >
+              <div className="flex items-center justify-end gap-1.5 text-indigo-500 font-bold text-xs sm:text-sm mb-1">
+                <span className="truncate">następny</span> <ChevronRight className="w-4 h-4 shrink-0" />
+              </div>
+              <p className="text-xs sm:text-sm text-zinc-900 dark:text-white font-medium truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                {nextVideo.title}
+              </p>
+            </Link>
+          ) : <div className="flex-1" />}
+        </div>
+      )}
 
       {/* Description */}
       {video.description && (

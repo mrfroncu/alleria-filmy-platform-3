@@ -88,7 +88,59 @@ function initDB() {
       sess TEXT NOT NULL,
       expired TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS favorites (
+      user_id INTEGER NOT NULL,
+      video_id INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, video_id),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      slug TEXT UNIQUE NOT NULL,
+      description TEXT DEFAULT '',
+      icon TEXT DEFAULT 'Film',
+      sort_order INTEGER DEFAULT 0,
+      parent_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS category_access (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_id INTEGER NOT NULL,
+      discord_role_id TEXT NOT NULL,
+      access_type TEXT NOT NULL DEFAULT 'viewer',
+      FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+      UNIQUE(category_id, discord_role_id, access_type)
+    );
+
+    CREATE TABLE IF NOT EXISTS video_access (
+      video_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      PRIMARY KEY (video_id, user_id),
+      FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
+
+  // Migrations
+  try { db.exec(`ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN stream_video_id TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN drm_enhanced INTEGER DEFAULT 0`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN stream_status TEXT DEFAULT 'ready'`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN category_id INTEGER REFERENCES categories(id)`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN access_mode TEXT DEFAULT 'category'`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN webhook_sent INTEGER`); } catch (e) {}
+  try { db.exec(`ALTER TABLE categories ADD COLUMN parent_id INTEGER REFERENCES categories(id) ON DELETE SET NULL`); } catch (e) {}
+  try { db.exec(`ALTER TABLE categories ADD COLUMN webhook_url TEXT DEFAULT ''`); } catch (e) {}
+  try { db.exec(`ALTER TABLE categories ADD COLUMN webhook_template TEXT DEFAULT ''`); } catch (e) {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN discord_roles TEXT DEFAULT '[]'`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN published INTEGER DEFAULT 1`); } catch (e) {}
+  // published=1 means visible, published=0 means scheduled (future date)
 
   return db;
 }

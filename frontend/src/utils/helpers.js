@@ -67,3 +67,47 @@ export function datetimeLocalToISO(val) {
 export function getCurrentYear() {
   return new Date().getFullYear();
 }
+
+// Build a properly sorted, indented tree of categories for <select> dropdowns
+// Returns: [{ id, name, label, depth, parent_id }, ...]
+export function buildCategoryTreeOptions(cats, excludeId = null) {
+  if (!cats || cats.length === 0) return [];
+
+  const byParent = {};
+  for (const c of cats) {
+    const pid = c.parent_id || 0;
+    if (!byParent[pid]) byParent[pid] = [];
+    byParent[pid].push(c);
+  }
+  // Sort children by sort_order then name
+  for (const key of Object.keys(byParent)) {
+    byParent[key].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name));
+  }
+
+  const result = [];
+  const walk = (parentId, depth) => {
+    const children = byParent[parentId] || [];
+    for (const c of children) {
+      if (excludeId && c.id === excludeId) continue;
+      const indent = depth > 0 ? '\u00A0\u00A0'.repeat(depth) + '↳ ' : '';
+      result.push({ id: c.id, name: c.name, label: indent + c.name, depth, parent_id: c.parent_id });
+      walk(c.id, depth + 1);
+    }
+  };
+  walk(0, 0);
+  // Also add root categories that have parent_id = null (in case 0 vs null)
+  const inResult = new Set(result.map(r => r.id));
+  const walkNull = (parentId, depth) => {
+    const children = byParent[parentId] || [];
+    for (const c of children) {
+      if (inResult.has(c.id)) continue;
+      if (excludeId && c.id === excludeId) continue;
+      const indent = depth > 0 ? '\u00A0\u00A0'.repeat(depth) + '↳ ' : '';
+      result.push({ id: c.id, name: c.name, label: indent + c.name, depth, parent_id: c.parent_id });
+      inResult.add(c.id);
+      walkNull(c.id, depth + 1);
+    }
+  };
+  walkNull(null, 0);
+  return result;
+}

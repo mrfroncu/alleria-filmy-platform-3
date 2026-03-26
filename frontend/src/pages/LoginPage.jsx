@@ -1,11 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Film, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { api } from '../utils/api';
 import { getCurrentYear } from '../utils/helpers';
 
 export default function LoginPage() {
   const [tsLoading, setTsLoading] = useState(false);
   const [configOk, setConfigOk] = useState(true);
+
+  // Get returnTo from URL — set by ProtectedRoute redirect
+  const returnTo = (() => {
+    const params = new URLSearchParams(window.location.search);
+    const r = params.get('returnTo');
+    return r && r !== '/' && r !== '/login' ? r : '';
+  })();
+
   const [error, setError] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const err = params.get('error');
@@ -51,8 +59,8 @@ export default function LoginPage() {
       </div>
 
       <div className="max-w-md w-full bg-zinc-50/50 dark:bg-white/5 backdrop-blur-2xl p-8 sm:p-12 rounded-[48px] shadow-2xl border border-zinc-200 dark:border-white/10 relative z-10 animate-slide-up">
-        <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-indigo-500 to-fuchsia-500 rounded-[32px] flex items-center justify-center mx-auto mb-8 sm:mb-10 shadow-2xl shadow-indigo-500/20">
-          <Film className="w-10 h-10 sm:w-12 sm:h-12 text-white" />
+        <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-indigo-500/10 to-fuchsia-500/10 rounded-[32px] flex items-center justify-center mx-auto mb-8 sm:mb-10 shadow-2xl shadow-indigo-500/20 border border-white/10 overflow-hidden">
+          <img src="https://alleria.pl/image/logo-clr.png" alt="Alleria" className="w-16 h-16 sm:w-20 sm:h-20 object-contain" />
         </div>
 
         <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-2 text-zinc-900 dark:text-white font-display">ALLERIA</h1>
@@ -78,9 +86,9 @@ export default function LoginPage() {
         )}
 
         <div className="space-y-4">
-          {/* Direct <a> tag — no JS handler needed, can't silently fail */}
+          {/* Direct <a> tag with returnTo for post-login redirect */}
           <a
-            href="/auth/discord"
+            href={`/auth/discord${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`}
             className="w-full py-4 sm:py-5 bg-[#5865F2] text-white rounded-2xl font-bold hover:bg-[#4752C4] transition-all active:scale-[0.98] flex items-center justify-center gap-4 shadow-xl shadow-[#5865F2]/20 text-base sm:text-lg no-underline"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">

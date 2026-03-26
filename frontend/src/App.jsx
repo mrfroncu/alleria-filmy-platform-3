@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './pages/LoginPage';
 import Layout from './components/Layout';
@@ -7,11 +7,20 @@ import VideosPage from './pages/VideosPage';
 import VideoPage from './pages/VideoPage';
 import AdminPage from './pages/AdminPage';
 import DebugPage from './pages/DebugPage';
+import FavoritesPage from './pages/FavoritesPage';
+import HistoryPage from './pages/HistoryPage';
+import StatsPage from './pages/StatsPage';
+import ProfilePage from './pages/ProfilePage';
 
 function ProtectedRoute({ children, adminOnly, devOnly }) {
   const { user, loading, isAdmin, isDev } = useAuth();
+  const location = useLocation();
   if (loading) return <LoadingScreen />;
-  if (!user) return <Navigate to="/login" />;
+  if (!user) {
+    // Pass current path so LoginPage can redirect back after login
+    const returnTo = location.pathname + location.search;
+    return <Navigate to={`/login?returnTo=${encodeURIComponent(returnTo)}`} />;
+  }
   if (adminOnly && !isAdmin) return <Navigate to="/" />;
   if (devOnly && !isDev) return <Navigate to="/" />;
   return children;
@@ -32,29 +41,24 @@ function LoadingScreen() {
   );
 }
 
+const P = ({ children, ...props }) => <ProtectedRoute {...props}><Layout>{children}</Layout></ProtectedRoute>;
+
 export default function App() {
   return (
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
-        <Route path="/" element={
-          <ProtectedRoute><Layout><VideosPage /></Layout></ProtectedRoute>
-        } />
-        <Route path="/video/:id" element={
-          <ProtectedRoute><Layout><VideoPage /></Layout></ProtectedRoute>
-        } />
-        <Route path="/admin" element={
-          <ProtectedRoute adminOnly><Layout><AdminPage /></Layout></ProtectedRoute>
-        } />
-        <Route path="/debug" element={
-          <ProtectedRoute devOnly><Layout><DebugPage /></Layout></ProtectedRoute>
-        } />
-        <Route path="/author/:authorId" element={
-          <ProtectedRoute><Layout><VideosPage /></Layout></ProtectedRoute>
-        } />
-        <Route path="/tag/:tagId" element={
-          <ProtectedRoute><Layout><VideosPage /></Layout></ProtectedRoute>
-        } />
+        <Route path="/" element={<P><VideosPage /></P>} />
+        <Route path="/video/:id" element={<P><VideoPage /></P>} />
+        <Route path="/category/:categorySlug" element={<P><VideosPage /></P>} />
+        <Route path="/favorites" element={<P><FavoritesPage /></P>} />
+        <Route path="/history" element={<P><HistoryPage /></P>} />
+        <Route path="/stats" element={<P><StatsPage /></P>} />
+        <Route path="/profile" element={<P><ProfilePage /></P>} />
+        <Route path="/admin" element={<P adminOnly><AdminPage /></P>} />
+        <Route path="/debug" element={<P devOnly><DebugPage /></P>} />
+        <Route path="/author/:authorId" element={<P><VideosPage /></P>} />
+        <Route path="/tag/:tagId" element={<P><VideosPage /></P>} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </AuthProvider>
