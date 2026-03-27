@@ -115,8 +115,8 @@ app.get('/api/config', (req, res) => {
 });
 
 // Version info
-const APP_VERSION = '1.4.1';
-const FRONTEND_VERSION = '1.4.1';
+const APP_VERSION = '1.4.2';
+const FRONTEND_VERSION = '1.4.2';
 app.get('/api/version', (req, res) => {
   res.json({ version: APP_VERSION, frontend: FRONTEND_VERSION, component: 'alleria-filmy' });
 });
@@ -483,17 +483,38 @@ app.get('/api/videos', requireAuth, (req, res) => {
     conditions.push("(v.stream_status IS NULL OR v.stream_status = 'ready')");
   }
 
-  // Hide scheduled (unpublished) videos from regular users
+  // Hide scheduled (future) videos from regular users
   if (!isAdmin) {
-    conditions.push("(v.published IS NULL OR v.published = 1)");
+    conditions.push("v.publish_date <= datetime('now')");
   }
 
   // Access control for non-admin users
   if (!isAdmin) {
     const userId = req.session.user.id;
+    const userRoles = req.session.user.discord_roles || [];
+
     // Hide custom-access videos unless user is in video_access list
     conditions.push(`(v.access_mode IS NULL OR v.access_mode = 'category' OR (v.access_mode = 'custom' AND v.id IN (SELECT video_id FROM video_access WHERE user_id = ?)))`);
     params.push(userId);
+
+    // Hide videos from categories the user doesn't have access to
+    // Logic: if a category has viewer/editor roles set, user must have at least one matching role
+    // If a category has NO roles set (empty), it's public to all members
+    const allCats = db.prepare('SELECT id FROM categories').all();
+    const restrictedCatIds = [];
+    for (const cat of allCats) {
+      const catRoles = db.prepare("SELECT discord_role_id FROM category_access WHERE category_id = ? AND access_type IN ('viewer','editor')").all(cat.id).map(r => r.discord_role_id);
+      if (catRoles.length > 0) {
+        // Category has roles set — check if user matches
+        const hasAccess = catRoles.some(r => userRoles.includes(r));
+        if (!hasAccess) restrictedCatIds.push(cat.id);
+      }
+      // If catRoles.length === 0 → public, no restriction
+    }
+    if (restrictedCatIds.length > 0) {
+      conditions.push(`(v.category_id IS NULL OR v.category_id NOT IN (${restrictedCatIds.map(() => '?').join(',')}))`);
+      params.push(...restrictedCatIds);
+    }
   }
 
   if (search) {
@@ -579,15 +600,13 @@ app.get('/api/videos/:id', requireAuth, (req, res) => {
       }
       // Check category access
       if (video.category_id) {
-        const catAccess = db.prepare('SELECT * FROM category_access WHERE category_id = ? AND access_type = ?').all(video.category_id, 'viewer');
-        if (catAccess.length > 0) {
+        const catRoles = db.prepare("SELECT discord_role_id, access_type FROM category_access WHERE category_id = ? AND access_type IN ('viewer','editor')").all(video.category_id);
+        if (catRoles.length > 0) {
           const userRoles = user.discord_roles || [];
-          const allowed = catAccess.some(a => userRoles.includes(a.discord_role_id));
-          // Also check editor roles
-          const editorAccess = db.prepare('SELECT * FROM category_access WHERE category_id = ? AND access_type = ?').all(video.category_id, 'editor');
-          const allowedEditor = editorAccess.some(a => userRoles.includes(a.discord_role_id));
-          if (!allowed && !allowedEditor) return res.status(403).json({ error: 'Brak dostępu do tej kategorii.' });
+          const hasAccess = catRoles.some(a => userRoles.includes(a.discord_role_id));
+          if (!hasAccess) return res.status(403).json({ error: 'Brak dostępu do tej kategorii.' });
         }
+        // If catRoles.length === 0 → public category, everyone with platform access can view
       }
     }
 
