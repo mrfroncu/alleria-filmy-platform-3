@@ -2,11 +2,7 @@
 
 Prywatna platforma wideo dla społeczności [Alleria.pl](https://alleria.pl) z uwierzytelnianiem Discord/TeamSpeak 6, zarządzaniem filmami, self-hosted streamingiem HLS z szyfrowaniem AES-128, kategoriami z podkategoriami, oraz kontrolą dostępu opartą na rolach.
 
-<<<<<<< HEAD
 ![Panel v1.5.0](https://img.shields.io/badge/Panel-v1.5.0-f43f5e) ![Streaming v1.5.0](https://img.shields.io/badge/Streaming-v1.5.0-10b981)
-=======
-![Panel v1.4.0](https://img.shields.io/badge/Panel-v1.4.2-6366f1) ![Streaming v1.4.0](https://img.shields.io/badge/Streaming-v1.4.2-10b981)
->>>>>>> 8869bd6952ba75e6d939d2f1dcf909724b50a799
 
 ## Funkcjonalności
 
