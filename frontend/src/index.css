@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --accent: 244 63 94;       /* rose-500 */
+    --accent-light: 251 113 133; /* rose-400 */
+    --accent-dark: 225 29 72;  /* rose-600 */
+  }
   body {
     @apply font-sans text-zinc-900 dark:text-zinc-50 antialiased bg-zinc-50 dark:bg-zinc-950 transition-colors duration-300;
   }
@@ -10,49 +15,103 @@
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { @apply bg-transparent; }
   ::-webkit-scrollbar-thumb { @apply bg-zinc-200 dark:bg-zinc-800 rounded-full border-2 border-zinc-50 dark:border-zinc-950 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors; }
+
+  /* Smooth transitions on everything */
+  *, *::before, *::after { transition-property: color, background-color, border-color, box-shadow, opacity, transform; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+  input, textarea, select, button { transition-duration: 200ms; }
 }
 
 @layer components {
   .btn-primary {
-    @apply py-3 px-6 bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-2xl font-bold hover:from-indigo-700 hover:to-violet-700 transition-all shadow-lg shadow-indigo-500/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply py-3 px-6 bg-gradient-to-br from-rose-500 to-orange-500 text-white rounded-2xl font-bold hover:from-rose-600 hover:to-orange-600 transition-all shadow-lg shadow-rose-500/20 active:scale-[0.96] disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-xl hover:shadow-rose-500/30 hover:-translate-y-0.5;
   }
   .btn-secondary {
-    @apply py-3 px-6 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-2xl font-bold hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all active:scale-[0.98];
+    @apply py-3 px-6 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-2xl font-bold hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all active:scale-[0.96] hover:-translate-y-0.5;
   }
   .btn-danger {
-    @apply py-3 px-6 bg-red-600 text-white rounded-2xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-500/20 active:scale-[0.98];
+    @apply py-3 px-6 bg-red-600 text-white rounded-2xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-500/20 active:scale-[0.96] hover:-translate-y-0.5;
   }
   .input-field {
-    @apply w-full px-5 py-4 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-medium text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-600;
+    @apply w-full px-5 py-4 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl focus:outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all font-medium text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-600;
   }
   .label-field {
     @apply block text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mb-3 font-display;
   }
   .card {
-    @apply bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-xl shadow-zinc-200/50 dark:shadow-black/20;
+    @apply bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-xl shadow-zinc-200/50 dark:shadow-black/20 transition-all duration-300;
+  }
+  .card:hover {
+    @apply shadow-2xl;
   }
   .tag-chip {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-bold border border-indigo-100 dark:border-indigo-500/20 transition-all hover:bg-indigo-100 dark:hover:bg-indigo-500/20;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-300 rounded-xl text-xs font-bold border border-rose-100 dark:border-rose-500/20 transition-all hover:bg-rose-100 dark:hover:bg-rose-500/20 hover:scale-105;
   }
   .modal-overlay {
     @apply fixed inset-0 z-50 flex items-center justify-center p-4;
   }
   .modal-backdrop {
-    @apply absolute inset-0 bg-black/20 dark:bg-zinc-950/60 backdrop-blur-sm;
+    @apply absolute inset-0 bg-black/30 dark:bg-zinc-950/70 backdrop-blur-md;
+    animation: fadeIn 0.2s ease-out;
   }
   .modal-content {
     @apply relative w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl overflow-y-auto max-h-[90vh];
+    animation: modalIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 }
 
-/* Custom animations */
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
+/* Core animations */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes modalIn { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideInLeft { from { opacity: 0; transform: translateX(-60px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes slideInRight { from { opacity: 0; transform: translateX(60px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes slideOutLeft { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(-60px); } }
+@keyframes slideOutRight { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(60px); } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+@keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); } 50% { box-shadow: 0 0 20px 4px rgba(244, 63, 94, 0.15); } }
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+
+.animate-fade-in { animation: fadeIn 0.4s ease-out; }
+.animate-slide-up { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-slide-down { animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-slide-left { animation: slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-slide-right { animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-scale-in { animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+.animate-float { animation: float 3s ease-in-out infinite; }
+
+/* Video page directional transitions */
+.video-slide-left { animation: slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.video-slide-right { animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.video-slide-up { animation: slideUp 0.35s ease-out; }
+
+/* Interactive hover micro-animations */
+.hover-lift { @apply transition-all duration-300; }
+.hover-lift:hover { @apply -translate-y-1 shadow-2xl; }
+.hover-scale { @apply transition-transform duration-200; }
+.hover-scale:hover { @apply scale-[1.02]; }
+.hover-scale:active { @apply scale-[0.98]; }
 
 .skeleton {
   background: linear-gradient(90deg, transparent 25%, rgba(255,255,255,.05) 50%, transparent 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
+
+/* Staggered children animation */
+.stagger-children > * { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 200ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 250ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 300ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 350ms; }
+.stagger-children > *:nth-child(9) { animation-delay: 400ms; }
+.stagger-children > *:nth-child(10) { animation-delay: 450ms; }
+.stagger-children > *:nth-child(11) { animation-delay: 500ms; }
+.stagger-children > *:nth-child(12) { animation-delay: 550ms; }

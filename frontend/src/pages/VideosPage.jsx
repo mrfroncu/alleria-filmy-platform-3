@@ -135,7 +135,7 @@ export default function VideosPage() {
             onClick={() => setShowFilters(!showFilters)}
             className={`px-5 py-4 rounded-2xl font-bold text-sm flex items-center gap-2 transition-all ${
               showFilters || selectedTags.length > 0
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
+                ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20'
                 : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
             }`}
           >
@@ -150,7 +150,7 @@ export default function VideosPage() {
             <div className="flex items-center justify-between mb-4">
               <span className="label-field mb-0">Filtruj po tagach</span>
               {selectedTags.length > 0 && (
-                <button onClick={() => setSelectedTags([])} className="text-xs text-indigo-500 font-bold hover:text-indigo-400">
+                <button onClick={() => setSelectedTags([])} className="text-xs text-rose-500 font-bold hover:text-rose-400">
                   Wyczyść
                 </button>
               )}
@@ -161,8 +161,8 @@ export default function VideosPage() {
                   key={tag.id}
                   className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold cursor-pointer transition-all border ${
                     selectedTags.includes(tag.id)
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-500/20'
-                      : 'bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-indigo-300 dark:hover:border-indigo-600'
+                      ? 'bg-rose-500 text-white border-rose-500 shadow-lg shadow-rose-500/20'
+                      : 'bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-rose-300 dark:hover:border-rose-500'
                   }`}
                 >
                   <input
@@ -223,7 +223,7 @@ export default function VideosPage() {
             <Link
               key={video.id}
               to={`/video/${video.id}${categorySlug ? `?from=${categorySlug}` : ''}`}
-              className="card overflow-hidden group hover:shadow-2xl hover:shadow-indigo-500/10 dark:hover:shadow-indigo-500/5 transition-all duration-500 hover:-translate-y-1"
+              className="card overflow-hidden group hover:shadow-2xl hover:shadow-rose-500/10 dark:hover:shadow-rose-500/5 transition-all duration-500 hover:-translate-y-1"
               style={{ animationDelay: `${idx * 50}ms` }}
             >
               <div className="relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
@@ -242,7 +242,7 @@ export default function VideosPage() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               </div>
               <div className="p-6">
-                <h3 className="font-bold text-zinc-900 dark:text-white mb-2 line-clamp-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                <h3 className="font-bold text-zinc-900 dark:text-white mb-2 line-clamp-2 group-hover:text-rose-500 dark:group-hover:text-rose-400 transition-colors">
                   {video.title}
                 </h3>
                 <div className="flex items-center justify-between mb-3">
@@ -263,7 +263,7 @@ export default function VideosPage() {
                 {video.tags && video.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {video.tags.slice(0, 4).map(tag => (
-                      <span key={tag.id} className="inline-flex px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 rounded-lg text-[10px] font-bold">
+                      <span key={tag.id} className="inline-flex px-2 py-0.5 bg-rose-50 dark:bg-rose-500/10 text-rose-500 dark:text-rose-300 rounded-lg text-[10px] font-bold">
                         {tag.name}
                       </span>
                     ))}
@@ -304,7 +304,7 @@ export default function VideosPage() {
                         <button
                           key={p}
                           onClick={() => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                          className={`w-10 h-10 rounded-xl text-sm font-bold transition-all ${p === page ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}
+                          className={`w-10 h-10 rounded-xl text-sm font-bold transition-all ${p === page ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}
                         >
                           {p}
                         </button>

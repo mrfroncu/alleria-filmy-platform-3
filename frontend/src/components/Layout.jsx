@@ -24,12 +24,12 @@ function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlu
           onClick={() => setSidebarOpen(false)}
           className={`w-full flex items-center ${pl} pr-4 py-2 rounded-xl transition-all duration-300 group ${
             active
-              ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+              ? 'bg-rose-500/10 text-rose-500 dark:text-rose-400'
               : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white'
           }`}
         >
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-indigo-500' : hasKids ? 'bg-zinc-400 dark:bg-zinc-500' : 'bg-zinc-300 dark:bg-zinc-600'}`} />
+            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-rose-500' : hasKids ? 'bg-zinc-400 dark:bg-zinc-500' : 'bg-zinc-300 dark:bg-zinc-600'}`} />
             <span className="font-semibold text-[13px] truncate">{cat.name}</span>
             <span className="text-[10px] text-zinc-400 shrink-0">{cat.videoCount || 0}</span>
           </div>
@@ -88,13 +88,13 @@ export default function Layout({ children }) {
       onClick={() => setSidebarOpen(false)}
       className={`w-full flex items-center justify-between ${indent ? 'pl-9 pr-4' : 'px-4'} py-2.5 rounded-xl transition-all duration-300 group ${
         active
-          ? indent ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+          ? indent ? 'bg-rose-500/10 text-rose-500 dark:text-rose-400' : 'bg-rose-500 text-white shadow-lg shadow-rose-500/20'
           : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white'
       }`}
     >
       <div className="flex items-center gap-3">
         {Icon && <Icon className="w-[18px] h-[18px]" />}
-        {!Icon && indent && <div className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-indigo-500' : 'bg-zinc-400 dark:bg-zinc-600'}`} />}
+        {!Icon && indent && <div className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-rose-500' : 'bg-zinc-400 dark:bg-zinc-600'}`} />}
         <span className="font-semibold text-[13px] truncate">{label}</span>
       </div>
       {active && !indent && <ChevronRight className="w-3.5 h-3.5 opacity-70" />}
@@ -115,7 +115,7 @@ export default function Layout({ children }) {
   const allFilmsActive = (location.pathname === '/' || location.pathname.startsWith('/video') || location.pathname.startsWith('/author') || location.pathname.startsWith('/tag')) && !anyCatActive;
 
   return (
-    <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950 font-sans selection:bg-indigo-100 selection:text-indigo-900 relative overflow-hidden transition-colors duration-300">
+    <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950 font-sans selection:bg-rose-100 selection:text-rose-900 relative overflow-hidden transition-colors duration-300">
       {sidebarOpen && (
         <div className="fixed inset-0 bg-zinc-950/60 backdrop-blur-sm z-40 lg:hidden animate-fade-in" onClick={() => setSidebarOpen(false)} />
       )}
@@ -125,7 +125,7 @@ export default function Layout({ children }) {
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none opacity-10 dark:opacity-20">
-          <div className="absolute -top-24 -left-24 w-64 h-64 bg-indigo-600 rounded-full blur-[100px]" />
+          <div className="absolute -top-24 -left-24 w-64 h-64 bg-rose-500 rounded-full blur-[100px]" />
           <div className="absolute top-1/2 -right-32 w-64 h-64 bg-fuchsia-600 rounded-full blur-[100px]" />
         </div>
 
@@ -133,12 +133,12 @@ export default function Layout({ children }) {
         <div className="px-6 pt-7 pb-2 relative z-10 shrink-0">
           <div className="flex items-center justify-between mb-7">
             <Link to="/" className="flex items-center gap-3 group" onClick={() => setSidebarOpen(false)}>
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden shadow-lg shadow-indigo-500/10 group-hover:shadow-indigo-500/30 transition-shadow bg-gradient-to-br from-indigo-500/10 to-fuchsia-500/10 border border-white/10">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden shadow-lg shadow-rose-500/10 group-hover:shadow-rose-500/30 transition-shadow bg-gradient-to-br from-rose-500/10 to-fuchsia-500/10 border border-white/10">
                 <img src={LOGO_URL} alt="Alleria" className="w-9 h-9 object-contain" />
               </div>
               <div>
                 <span className="text-[15px] font-bold tracking-tight text-zinc-900 dark:text-white font-display block leading-tight">ALLERIA</span>
-                <span className="text-[9px] font-bold uppercase tracking-[0.35em] text-indigo-500 font-display">FILMY</span>
+                <span className="text-[9px] font-bold uppercase tracking-[0.35em] text-rose-500 font-display">FILMY</span>
               </div>
             </Link>
             <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white rounded-lg hover:bg-zinc-100 dark:hover:bg-white/5 transition-colors">
@@ -242,7 +242,7 @@ export default function Layout({ children }) {
         <footer className="px-10 py-5 border-t border-zinc-200 dark:border-white/5 text-center">
           <p className="text-[11px] text-zinc-400 dark:text-zinc-600">
             © 2025 - {getCurrentYear()} Alleria.pl | built by{' '}
-            <a href="https://github.com/mrfroncu" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:text-indigo-400 transition-colors">Matthew</a>
+            <a href="https://github.com/mrfroncu" target="_blank" rel="noopener noreferrer" className="text-rose-500 hover:text-rose-400 transition-colors">Matthew</a>
           </p>
         </footer>
       </main>

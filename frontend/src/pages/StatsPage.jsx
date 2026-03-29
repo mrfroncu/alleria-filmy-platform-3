@@ -51,7 +51,7 @@ export default function StatsPage() {
 
       {/* Overview Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard icon={Film} label="Filmów w bazie" value={stats.totalVideos} color="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500" />
+        <StatCard icon={Film} label="Filmów w bazie" value={stats.totalVideos} color="bg-rose-50 dark:bg-rose-500/10 text-rose-500" />
         <StatCard icon={Users} label="Użytkowników" value={stats.totalUsers} color="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500" />
         <StatCard icon={Eye} label="Łącznie wyświetleń" value={stats.totalViews} color="bg-amber-50 dark:bg-amber-500/10 text-amber-500" />
         <StatCard icon={Tag} label="Tagów" value={stats.totalTags} color="bg-pink-50 dark:bg-pink-500/10 text-pink-500" />
@@ -60,7 +60,7 @@ export default function StatsPage() {
       {/* Personal Stats */}
       <div className="card p-6 mb-8">
         <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-4 flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-indigo-500" /> Twoje statystyki
+          <TrendingUp className="w-5 h-5 text-rose-500" /> Twoje statystyki
         </h2>
         <div className="grid grid-cols-2 gap-4">
           <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl">
@@ -96,7 +96,7 @@ export default function StatsPage() {
                     {v.thumbnail && <img src={v.thumbnail} alt="" className="w-full h-full object-cover" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-zinc-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{v.title}</p>
+                    <p className="text-sm font-semibold text-zinc-900 dark:text-white truncate group-hover:text-rose-500 dark:group-hover:text-rose-400 transition-colors">{v.title}</p>
                     <p className="text-[10px] text-zinc-400">{v.author_display_name}</p>
                   </div>
                   <span className="text-xs font-bold text-zinc-400 shrink-0 flex items-center gap-1">
@@ -111,7 +111,7 @@ export default function StatsPage() {
         {/* Top Viewers */}
         <div className="card p-6">
           <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-4 flex items-center gap-2">
-            <Play className="w-5 h-5 text-indigo-500" /> Najbardziej aktywni
+            <Play className="w-5 h-5 text-rose-500" /> Najbardziej aktywni
           </h2>
           {stats.topViewers.length === 0 ? (
             <p className="text-sm text-zinc-400 text-center py-6">Brak danych</p>
@@ -144,7 +144,7 @@ export default function StatsPage() {
               {stats.topAuthors.map((a, idx) => (
                 <Link key={a.id} to={`/author/${a.id}`} className="flex items-center gap-3 p-3 rounded-xl hover:bg-zinc-50 dark:hover:bg-white/5 transition-colors group">
                   <img src={a.avatar || `https://ui-avatars.com/api/?name=${a.display_name}&background=6366f1&color=fff&size=40`} alt="" className="w-8 h-8 rounded-lg object-cover border border-zinc-200 dark:border-zinc-700" />
-                  <span className="text-sm font-semibold text-zinc-900 dark:text-white flex-1 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{a.display_name}</span>
+                  <span className="text-sm font-semibold text-zinc-900 dark:text-white flex-1 truncate group-hover:text-rose-500 dark:group-hover:text-rose-400 transition-colors">{a.display_name}</span>
                   <span className="text-xs font-bold text-zinc-400">{a.video_count} filmów</span>
                 </Link>
               ))}
@@ -167,10 +167,10 @@ export default function StatsPage() {
                   <Link
                     key={tag.id}
                     to={`/tag/${tag.id}`}
-                    className={`inline-flex items-center gap-1.5 ${size} bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 rounded-xl font-bold border border-indigo-100 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all`}
+                    className={`inline-flex items-center gap-1.5 ${size} bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-300 rounded-xl font-bold border border-rose-100 dark:border-rose-500/20 hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-all`}
                   >
                     {tag.name}
-                    <span className="text-indigo-400 dark:text-indigo-500 font-mono">{tag.count}</span>
+                    <span className="text-rose-400 dark:text-rose-500 font-mono">{tag.count}</span>
                   </Link>
                 );
               })}

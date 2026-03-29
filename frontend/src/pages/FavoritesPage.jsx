@@ -63,7 +63,7 @@ export default function FavoritesPage() {
             <Link
               key={video.id}
               to={`/video/${video.id}`}
-              className="card overflow-hidden group hover:shadow-2xl hover:shadow-indigo-500/10 dark:hover:shadow-indigo-500/5 transition-all duration-500 hover:-translate-y-1 relative"
+              className="card overflow-hidden group hover:shadow-2xl hover:shadow-rose-500/10 dark:hover:shadow-rose-500/5 transition-all duration-500 hover:-translate-y-1 relative"
             >
               <div className="relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
                 {video.thumbnail ? (
@@ -80,7 +80,7 @@ export default function FavoritesPage() {
                 </button>
               </div>
               <div className="p-6">
-                <h3 className="font-bold text-zinc-900 dark:text-white mb-2 line-clamp-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{video.title}</h3>
+                <h3 className="font-bold text-zinc-900 dark:text-white mb-2 line-clamp-2 group-hover:text-rose-500 dark:group-hover:text-rose-400 transition-colors">{video.title}</h3>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-zinc-500 font-medium">{video.author_display_name || video.author_name}</span>
                   <span className="text-xs text-zinc-400 font-mono">{formatDateShort(video.publish_date)}</span>

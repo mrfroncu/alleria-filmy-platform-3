@@ -326,7 +326,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
               <label className="label-field">Uprawnienia dostępu</label>
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <button type="button" onClick={() => { setAccessMode('category'); setAllowedUsers([]); }}
-                  className={`p-3 rounded-2xl border-2 font-bold text-sm transition-all ${accessMode === 'category' ? 'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-500 text-indigo-700 dark:text-indigo-300' : 'bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700'}`}>
+                  className={`p-3 rounded-2xl border-2 font-bold text-sm transition-all ${accessMode === 'category' ? 'bg-rose-50 dark:bg-rose-500/10 border-rose-500 text-rose-600 dark:text-rose-300' : 'bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700'}`}>
                   Z kategorii
                 </button>
                 <button type="button" onClick={() => setAccessMode('custom')}
@@ -349,7 +349,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                           onChange={() => setAllowedUsers(prev =>
                             prev.includes(u.id) ? prev.filter(x => x !== u.id) : [...prev, u.id]
                           )}
-                          className="w-4 h-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
+                          className="w-4 h-4 rounded border-zinc-300 text-rose-500 focus:ring-rose-500"
                         />
                         <span className="text-sm text-zinc-900 dark:text-white font-medium">{u.display_name || u.username}</span>
                         <span className="text-[10px] text-zinc-400 font-mono">ID:{u.id}</span>
@@ -365,7 +365,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
             <div>
               <label className="label-field">Typ źródła</label>
               <div className="grid grid-cols-2 gap-3">
-                <button type="button" onClick={() => setIsSelfHosted(false)} className={`p-4 rounded-2xl border-2 font-bold text-sm transition-all flex items-center gap-2 ${!isSelfHosted ? 'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-500 text-indigo-700 dark:text-indigo-300 shadow-lg shadow-indigo-500/10' : 'bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700'}`}>
+                <button type="button" onClick={() => setIsSelfHosted(false)} className={`p-4 rounded-2xl border-2 font-bold text-sm transition-all flex items-center gap-2 ${!isSelfHosted ? 'bg-rose-50 dark:bg-rose-500/10 border-rose-500 text-rose-600 dark:text-rose-300 shadow-lg shadow-rose-500/10' : 'bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700'}`}>
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M21.543 6.498C22 8.28 22 12 22 12s0 3.72-.457 5.502c-.254.985-.997 1.76-1.938 2.022C17.896 20 12 20 12 20s-5.893 0-7.605-.476c-.945-.266-1.687-1.04-1.938-2.022C2 15.72 2 12 2 12s0-3.72.457-5.502c.254-.985.997-1.76 1.938-2.022C6.107 4 12 4 12 4s5.896 0 7.605.476c.945.266 1.687 1.04 1.938 2.022zM10 15.5l6-3.5-6-3.5v7z"/></svg>
                   YouTube / Embed
                 </button>
@@ -399,14 +399,14 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                       className={`relative border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
                         videoFile
                           ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5'
-                          : 'border-zinc-300 dark:border-zinc-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/30 dark:hover:bg-indigo-500/5'
+                          : 'border-zinc-300 dark:border-zinc-700 hover:border-rose-400 dark:hover:border-rose-500 hover:bg-rose-50/30 dark:hover:bg-rose-500/5'
                       }`}
                       onClick={() => videoFileRef.current?.click()}
-                      onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-500/10'); }}
-                      onDragLeave={e => { e.preventDefault(); e.currentTarget.classList.remove('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-500/10'); }}
+                      onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-rose-500', 'bg-rose-50/50', 'dark:bg-rose-500/10'); }}
+                      onDragLeave={e => { e.preventDefault(); e.currentTarget.classList.remove('border-rose-500', 'bg-rose-50/50', 'dark:bg-rose-500/10'); }}
                       onDrop={e => {
                         e.preventDefault();
-                        e.currentTarget.classList.remove('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-500/10');
+                        e.currentTarget.classList.remove('border-rose-500', 'bg-rose-50/50', 'dark:bg-rose-500/10');
                         const file = e.dataTransfer.files?.[0];
                         if (file && file.type.startsWith('video/')) setVideoFile(file);
                       }}
@@ -419,7 +419,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                         </>
                       ) : (
                         <>
-                          <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Przeciągnij plik lub <span className="text-indigo-500 font-bold">kliknij, aby wybrać</span></p>
+                          <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Przeciągnij plik lub <span className="text-rose-500 font-bold">kliknij, aby wybrać</span></p>
                           <p className="text-[10px] text-zinc-400 mt-1">MP4, MKV, AVI, MOV, WebM — max 20 GB</p>
                         </>
                       )}
@@ -444,12 +444,12 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 </label>
 
                 {uploadProgress && (
-                  <div className="space-y-3 p-4 bg-indigo-50/50 dark:bg-indigo-500/5 rounded-xl border border-indigo-100 dark:border-indigo-500/10">
-                    <div className="flex items-center gap-2 text-sm text-indigo-700 dark:text-indigo-300 font-medium">
-                      {uploadPercent < 100 && <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin shrink-0" />}
+                  <div className="space-y-3 p-4 bg-rose-50/50 dark:bg-rose-500/5 rounded-xl border border-rose-100 dark:border-rose-500/10">
+                    <div className="flex items-center gap-2 text-sm text-rose-600 dark:text-rose-300 font-medium">
+                      {uploadPercent < 100 && <div className="w-4 h-4 border-2 border-rose-500 border-t-transparent rounded-full animate-spin shrink-0" />}
                       {uploadPercent >= 100 && <svg className="w-4 h-4 text-emerald-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>}
                       <span className="flex-1">{uploadProgress}</span>
-                      <span className="text-xs font-mono text-indigo-500">{uploadPercent}%</span>
+                      <span className="text-xs font-mono text-rose-500">{uploadPercent}%</span>
                     </div>
                     {/* Overall progress */}
                     <div>
@@ -458,7 +458,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                         <span className="text-[10px] font-mono text-zinc-500">{uploadPercent}%</span>
                       </div>
                       <div className="h-2.5 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-300 ease-out" style={{ width: `${uploadPercent}%` }} />
+                        <div className="h-full bg-gradient-to-r from-rose-500 to-violet-500 rounded-full transition-all duration-300 ease-out" style={{ width: `${uploadPercent}%` }} />
                       </div>
                     </div>
                     {/* Per-chunk progress */}
@@ -509,7 +509,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
 
             <div className="space-y-4">
               {!showMirror1 && (
-                <button type="button" onClick={() => setShowMirror1(true)} className="flex items-center gap-2 text-sm font-bold text-indigo-500 hover:text-indigo-400 transition-colors">
+                <button type="button" onClick={() => setShowMirror1(true)} className="flex items-center gap-2 text-sm font-bold text-rose-500 hover:text-rose-400 transition-colors">
                   <Plus className="w-4 h-4" /> Dodaj mirror 1
                 </button>
               )}
@@ -522,13 +522,13 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                   <input type="text" value={mirror1Name} onChange={e => setMirror1Name(e.target.value)} className="input-field" placeholder="Nazwa (np. CDA, Mega)" />
                   <input type="text" value={mirror1Url} onChange={e => setMirror1Url(e.target.value)} className="input-field" placeholder="URL lub kod embed" />
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" checked={mirror1IsEmbed} onChange={e => setMirror1IsEmbed(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500" />
+                    <input type="checkbox" checked={mirror1IsEmbed} onChange={e => setMirror1IsEmbed(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-rose-500 focus:ring-rose-500" />
                     <span className="text-sm text-zinc-600 dark:text-zinc-400 font-medium">To jest kod HTML embed (iframe)</span>
                   </label>
                 </div>
               )}
               {showMirror1 && !showMirror2 && (
-                <button type="button" onClick={() => setShowMirror2(true)} className="flex items-center gap-2 text-sm font-bold text-indigo-500 hover:text-indigo-400 transition-colors">
+                <button type="button" onClick={() => setShowMirror2(true)} className="flex items-center gap-2 text-sm font-bold text-rose-500 hover:text-rose-400 transition-colors">
                   <Plus className="w-4 h-4" /> Dodaj mirror 2
                 </button>
               )}
@@ -541,7 +541,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                   <input type="text" value={mirror2Name} onChange={e => setMirror2Name(e.target.value)} className="input-field" placeholder="Nazwa (np. Streamable)" />
                   <input type="text" value={mirror2Url} onChange={e => setMirror2Url(e.target.value)} className="input-field" placeholder="URL lub kod embed" />
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" checked={mirror2IsEmbed} onChange={e => setMirror2IsEmbed(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500" />
+                    <input type="checkbox" checked={mirror2IsEmbed} onChange={e => setMirror2IsEmbed(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-rose-500 focus:ring-rose-500" />
                     <span className="text-sm text-zinc-600 dark:text-zinc-400 font-medium">To jest kod HTML embed (iframe)</span>
                   </label>
                 </div>
@@ -555,7 +555,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
               <label className="label-field">Tagi</label>
               <div className="input-field flex flex-wrap gap-2 min-h-[56px] !p-3 cursor-text" onClick={() => tagInputRef.current?.focus()}>
                 {selectedTags.map((tag, idx) => (
-                  <span key={idx} className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold animate-fade-in">
+                  <span key={idx} className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-500 text-white rounded-xl text-xs font-bold animate-fade-in">
                     {tag.name}
                     <button type="button" onClick={(e) => { e.stopPropagation(); removeTag(idx); }} className="hover:bg-white/20 rounded p-0.5 transition-colors">
                       <X className="w-3 h-3" />
@@ -580,7 +580,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
               <textarea value={description} onChange={e => setDescription(e.target.value)} className="input-field resize-none h-32" placeholder="Opis filmu..." />
             </div>
 
-            <button type="submit" disabled={submitting} className="w-full py-5 bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-2xl font-bold hover:from-indigo-700 hover:to-violet-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-4 shadow-xl shadow-indigo-500/20 active:scale-[0.98]">
+            <button type="submit" disabled={submitting} className="w-full py-5 bg-gradient-to-br from-rose-500 to-violet-600 text-white rounded-2xl font-bold hover:from-rose-600 hover:to-violet-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-4 shadow-xl shadow-rose-500/20 active:scale-[0.98]">
               {submitting ? 'Zapisywanie...' : isEdit ? 'Zapisz zmiany' : 'Dodaj film'}
             </button>
           </form>

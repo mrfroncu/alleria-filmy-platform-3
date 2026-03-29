@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowLeft, Film, Heart, Pencil } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, Film, Heart, Pencil, MessageCircle, Send, Trash2 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, youtubeToEmbed } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
@@ -22,9 +22,13 @@ export default function VideoPage() {
   const [prevVideo, setPrevVideo] = useState(null);
   const [nextVideo, setNextVideo] = useState(null);
   const [fadeKey, setFadeKey] = useState(0);
+  const [slideDir, setSlideDir] = useState('up'); // 'left', 'right', 'up'
   const [canEdit, setCanEdit] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editUsers, setEditUsers] = useState([]);
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState('');
+  const [commentLoading, setCommentLoading] = useState(false);
 
   const openEditModal = async () => {
     try {
@@ -32,6 +36,24 @@ export default function VideoPage() {
       setEditUsers(users);
     } catch (e) { setEditUsers([]); }
     setShowEditModal(true);
+  };
+
+  const submitComment = async () => {
+    if (!newComment.trim() || commentLoading) return;
+    setCommentLoading(true);
+    try {
+      const c = await api.addComment(id, newComment.trim());
+      setComments(prev => [c, ...prev]);
+      setNewComment('');
+    } catch (e) { console.error(e); }
+    setCommentLoading(false);
+  };
+
+  const deleteComment = async (commentId) => {
+    try {
+      await api.deleteComment(commentId);
+      setComments(prev => prev.filter(c => c.id !== commentId));
+    } catch (e) { console.error(e); }
   }; // triggers re-animation on video change
 
   useEffect(() => {
@@ -73,6 +95,9 @@ export default function VideoPage() {
         if (idx > 0) setPrevVideo(allVideos[idx - 1]);
         if (idx >= 0 && idx < allVideos.length - 1) setNextVideo(allVideos[idx + 1]);
       }).catch(() => {}); // Don't fail if list loading fails
+
+      // Load comments
+      api.getComments(videoId).then(setComments).catch(() => setComments([]));
     }).catch(err => setError(err.message))
       .finally(() => setLoading(false));
   }, [id, fromCategory]);
@@ -157,8 +182,7 @@ export default function VideoPage() {
   ];
 
   return (
-    <div key={fadeKey} className="p-6 sm:p-10 max-w-5xl mx-auto" style={{ animation: 'videoFadeIn 0.35s ease-out' }}>
-      <style>{`@keyframes videoFadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+    <div key={fadeKey} className={`p-6 sm:p-10 max-w-5xl mx-auto video-slide-${slideDir}`}>
       {/* Back button only — prev/next at bottom */}
       <button
         onClick={() => navigate(fromCategory ? `/category/${fromCategory}` : '/')}
@@ -177,7 +201,7 @@ export default function VideoPage() {
             {canEdit && (
               <button
                 onClick={() => openEditModal()}
-                className="shrink-0 p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all duration-300"
+                className="shrink-0 p-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-all duration-300"
                 title="Edytuj film"
               >
                 <Pencil className="w-5 h-5" />
@@ -199,7 +223,7 @@ export default function VideoPage() {
           <div className="flex flex-wrap items-center gap-3">
             <Link
               to={`/author/${video.author_id}`}
-              className="text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition-colors"
+              className="text-sm font-bold text-rose-500 dark:text-rose-400 hover:text-rose-500 transition-colors"
             >
               {video.author_display_name || video.author_name}
             </Link>
@@ -271,7 +295,7 @@ export default function VideoPage() {
                 onClick={() => setActiveSource(s.key)}
                 className={`px-5 py-3 rounded-2xl font-bold text-sm transition-all ${
                   activeSource === s.key
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
+                    ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20'
                     : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
                 }`}
               >
@@ -288,12 +312,13 @@ export default function VideoPage() {
           {prevVideo ? (
             <Link
               to={`/video/${prevVideo.id}${fromCategory ? `?from=${fromCategory}` : ''}`}
-              className="flex-1 min-w-0 max-w-[50%] card p-4 sm:p-5 group hover:shadow-lg transition-all hover:-translate-y-0.5"
+              onClick={() => setSlideDir('right')}
+              className="flex-1 min-w-0 max-w-[50%] card p-4 sm:p-5 group hover:shadow-lg hover:-translate-y-0.5 hover-scale"
             >
-              <div className="flex items-center gap-1.5 text-indigo-500 font-bold text-xs sm:text-sm mb-1">
-                <ChevronLeft className="w-4 h-4 shrink-0" /> <span className="truncate">poprzedni</span>
+              <div className="flex items-center gap-1.5 text-rose-500 font-bold text-xs sm:text-sm mb-1">
+                <ChevronLeft className="w-4 h-4 shrink-0 group-hover:-translate-x-1 transition-transform" /> <span className="truncate">poprzedni</span>
               </div>
-              <p className="text-xs sm:text-sm text-zinc-900 dark:text-white font-medium truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+              <p className="text-xs sm:text-sm text-zinc-900 dark:text-white font-medium truncate group-hover:text-rose-500 dark:group-hover:text-rose-400">
                 {prevVideo.title}
               </p>
             </Link>
@@ -302,12 +327,13 @@ export default function VideoPage() {
           {nextVideo ? (
             <Link
               to={`/video/${nextVideo.id}${fromCategory ? `?from=${fromCategory}` : ''}`}
-              className="flex-1 min-w-0 max-w-[50%] card p-4 sm:p-5 text-right group hover:shadow-lg transition-all hover:-translate-y-0.5 ml-auto"
+              onClick={() => setSlideDir('left')}
+              className="flex-1 min-w-0 max-w-[50%] card p-4 sm:p-5 text-right group hover:shadow-lg hover:-translate-y-0.5 ml-auto hover-scale"
             >
-              <div className="flex items-center justify-end gap-1.5 text-indigo-500 font-bold text-xs sm:text-sm mb-1">
-                <span className="truncate">następny</span> <ChevronRight className="w-4 h-4 shrink-0" />
+              <div className="flex items-center justify-end gap-1.5 text-rose-500 font-bold text-xs sm:text-sm mb-1">
+                <span className="truncate">następny</span> <ChevronRight className="w-4 h-4 shrink-0 group-hover:translate-x-1 transition-transform" />
               </div>
-              <p className="text-xs sm:text-sm text-zinc-900 dark:text-white font-medium truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+              <p className="text-xs sm:text-sm text-zinc-900 dark:text-white font-medium truncate group-hover:text-rose-500 dark:group-hover:text-rose-400">
                 {nextVideo.title}
               </p>
             </Link>
@@ -317,13 +343,78 @@ export default function VideoPage() {
 
       {/* Description */}
       {video.description && (
-        <div className="card p-8">
+        <div className="card p-8 animate-slide-up">
           <h3 className="label-field">Opis</h3>
           <div className="text-zinc-700 dark:text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">
             {video.description}
           </div>
         </div>
       )}
+
+      {/* Comments */}
+      <div className="card p-8 mt-6 animate-slide-up" style={{ animationDelay: '100ms', animationFillMode: 'both' }}>
+        <div className="flex items-center gap-2 mb-6">
+          <MessageCircle className="w-5 h-5 text-rose-500" />
+          <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Komentarze ({comments.length})</h3>
+        </div>
+
+        {/* New comment form */}
+        <div className="flex gap-3 mb-6">
+          <img
+            src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=f43f5e&color=fff&size=80`}
+            alt="" className="w-10 h-10 rounded-xl shrink-0 object-cover"
+          />
+          <div className="flex-1 relative">
+            <textarea
+              value={newComment}
+              onChange={e => setNewComment(e.target.value)}
+              placeholder="Napisz komentarz..."
+              className="input-field !py-3 !pr-12 resize-none text-sm min-h-[48px] max-h-[120px]"
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment(); }}}
+              rows={1}
+            />
+            <button
+              onClick={submitComment}
+              disabled={!newComment.trim() || commentLoading}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-rose-500 hover:text-rose-600 disabled:text-zinc-300 dark:disabled:text-zinc-700 transition-all hover:scale-110 active:scale-95"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Comment list */}
+        {comments.length === 0 ? (
+          <p className="text-sm text-zinc-400 text-center py-6">Brak komentarzy — bądź pierwszą osobą!</p>
+        ) : (
+          <div className="space-y-4 stagger-children">
+            {comments.map(c => (
+              <div key={c.id} className="flex gap-3 group">
+                <img
+                  src={c.avatar || `https://ui-avatars.com/api/?name=${c.display_name || c.username || 'U'}&background=f43f5e&color=fff&size=80`}
+                  alt="" className="w-9 h-9 rounded-xl shrink-0 object-cover mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-bold text-zinc-900 dark:text-white">{c.display_name || c.username}</span>
+                    <span className="text-[10px] text-zinc-400 font-mono">{formatDate(c.created_at)}</span>
+                  </div>
+                  <p className="text-sm text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap break-words">{c.content}</p>
+                </div>
+                {(c.user_id === user?.id || user?.role === 'admin' || user?.role === 'dev') && (
+                  <button
+                    onClick={() => deleteComment(c.id)}
+                    className="opacity-0 group-hover:opacity-100 p-1.5 text-zinc-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-all shrink-0 self-start"
+                    title="Usuń komentarz"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Edit Modal */}
       <VideoModal

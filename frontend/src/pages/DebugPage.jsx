@@ -297,8 +297,8 @@ export default function DebugPage() {
         {/* Export */}
         <div className="card p-8 h-full flex flex-col">
           <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <Download className="w-6 h-6 text-indigo-500" />
+            <div className="w-12 h-12 bg-rose-50 dark:bg-rose-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <Download className="w-6 h-6 text-rose-500" />
             </div>
             <div className="flex-1">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Eksportuj bazę danych</h3>

@@ -150,4 +150,14 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   }),
+
+  // Comments
+  getComments: (videoId) => request(`/videos/${videoId}/comments`),
+  addComment: (videoId, content) => request(`/videos/${videoId}/comments`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }),
+  }),
+  deleteComment: (commentId) => request(`/comments/${commentId}`, { method: 'DELETE' }),
+  addAdminComment: (data) => request('/comments/admin', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
 };
