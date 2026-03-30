@@ -130,10 +130,11 @@ function initDB() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       video_id INTEGER NOT NULL,
       user_id INTEGER NOT NULL,
-      parent_id INTEGER REFERENCES comments(id) ON DELETE CASCADE,
+      parent_id INTEGER REFERENCES comments(id) ON DELETE SET NULL,
       content TEXT NOT NULL,
       edited INTEGER DEFAULT 0,
       edit_history TEXT DEFAULT '[]',
+      deleted INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT (datetime('now')),
       FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -156,6 +157,8 @@ function initDB() {
   try { db.exec(`ALTER TABLE comments ADD COLUMN parent_id INTEGER REFERENCES comments(id) ON DELETE CASCADE`); } catch (e) {}
   try { db.exec(`ALTER TABLE comments ADD COLUMN edited INTEGER DEFAULT 0`); } catch (e) {}
   try { db.exec(`ALTER TABLE comments ADD COLUMN edit_history TEXT DEFAULT '[]'`); } catch (e) {}
+
+  try { db.exec(`ALTER TABLE comments ADD COLUMN deleted INTEGER DEFAULT 0`); } catch (e) {}
 
   return db;
 }

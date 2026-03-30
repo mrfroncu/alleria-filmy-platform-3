@@ -46,7 +46,7 @@ export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [categories, setCategories] = useState([]);
   const [catsExpanded, setCatsExpanded] = useState(true);
-  const [versions, setVersions] = useState({ frontend: '', backend: '', stream: '' });
+  const [versions, setVersions] = useState({ frontend: '', backend: '', stream: '', streamStatus: '' });
   const [theme, setTheme] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('alleria-theme');
@@ -66,7 +66,7 @@ export default function Layout({ children }) {
       fetch('/api/version').then(r => r.json()).catch(() => ({})),
       fetch('/api/version/streaming').then(r => r.json()).catch(() => ({})),
     ]).then(([app, stream]) => {
-      setVersions({ frontend: app.frontend || app.version || '?', backend: app.version || '?', stream: stream.version || '?' });
+      setVersions({ frontend: app.frontend || app.version || '?', backend: app.version || '?', stream: stream.version || '?', streamStatus: stream.status || '' });
     });
   }, []);
 
@@ -86,10 +86,10 @@ export default function Layout({ children }) {
     <Link
       to={to}
       onClick={() => setSidebarOpen(false)}
-      className={`w-full flex items-center justify-between ${indent ? 'pl-9 pr-4' : 'px-4'} py-2.5 rounded-xl transition-all duration-300 group ${
+      className={`sidebar-link w-full flex items-center justify-between ${indent ? 'pl-9 pr-4' : 'px-4'} py-2.5 rounded-xl group ${
         active
-          ? indent ? 'bg-violet-500/10 text-violet-500 dark:text-violet-400' : 'bg-violet-500 text-white shadow-lg shadow-violet-500/20'
-          : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white'
+          ? indent ? 'active bg-violet-500/10 text-violet-500 dark:text-violet-400' : 'active bg-violet-500 text-white shadow-lg shadow-violet-500/20'
+          : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
       }`}
     >
       <div className="flex items-center gap-3">
@@ -221,6 +221,9 @@ export default function Layout({ children }) {
           {versions.frontend && (
             <div className="px-3 pb-1 text-[8px] text-zinc-400 dark:text-zinc-600 font-mono text-center leading-relaxed">
               Panel v{versions.frontend} • API v{versions.backend} • Stream v{versions.stream}
+              {versions.streamStatus === 'compatible' && <span className="text-emerald-500"> (compatible)</span>}
+              {versions.streamStatus === 'deprecated' && <span className="text-amber-500"> (deprecated)</span>}
+              {versions.streamStatus === 'offline' && <span className="text-red-500"> (offline)</span>}
             </div>
           )}
         </div>

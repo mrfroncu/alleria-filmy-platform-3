@@ -50,11 +50,11 @@
     @apply fixed inset-0 z-50 flex items-center justify-center p-4;
   }
   .modal-backdrop {
-    @apply absolute inset-0 bg-black/30 dark:bg-zinc-950/70 backdrop-blur-md;
+    @apply fixed inset-0 bg-black/30 dark:bg-zinc-950/70 backdrop-blur-md;
     animation: fadeIn 0.2s ease-out;
   }
   .modal-content {
-    @apply relative w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl overflow-y-auto max-h-[90vh];
+    @apply relative w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl overflow-y-auto max-h-[90vh] z-[51];
     animation: modalIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 }
@@ -120,3 +120,81 @@
 .stagger-children > *:nth-child(10) { animation-delay: 450ms; }
 .stagger-children > *:nth-child(11) { animation-delay: 500ms; }
 .stagger-children > *:nth-child(12) { animation-delay: 550ms; }
+
+/* Page-level staggered sections */
+.anim-stagger-1 { animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0ms both; }
+.anim-stagger-2 { animation: scaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 80ms both; }
+.anim-stagger-3 { animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 140ms both; }
+.anim-stagger-4 { animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 200ms both; }
+.anim-stagger-5 { animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 260ms both; }
+.anim-stagger-6 { animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 320ms both; }
+
+/* Video grid card entrance — applied to each card in the grid */
+.video-grid > * { animation: cardPop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.video-grid > *:nth-child(1) { animation-delay: 0ms; }
+.video-grid > *:nth-child(2) { animation-delay: 40ms; }
+.video-grid > *:nth-child(3) { animation-delay: 80ms; }
+.video-grid > *:nth-child(4) { animation-delay: 120ms; }
+.video-grid > *:nth-child(5) { animation-delay: 160ms; }
+.video-grid > *:nth-child(6) { animation-delay: 200ms; }
+.video-grid > *:nth-child(7) { animation-delay: 240ms; }
+.video-grid > *:nth-child(8) { animation-delay: 280ms; }
+.video-grid > *:nth-child(9) { animation-delay: 320ms; }
+.video-grid > *:nth-child(10) { animation-delay: 360ms; }
+.video-grid > *:nth-child(11) { animation-delay: 400ms; }
+.video-grid > *:nth-child(12) { animation-delay: 440ms; }
+@keyframes cardPop { from { opacity: 0; transform: scale(0.92) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+
+/* Video card hover — spectacular */
+.video-card { transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.video-card:hover { transform: translateY(-8px) scale(1.02); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.15), 0 0 30px rgba(139, 92, 246, 0.08); }
+.video-card:hover .video-thumb { transform: scale(1.08); }
+.video-card:active { transform: translateY(-2px) scale(0.99); }
+.video-thumb { transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* Sidebar link animations */
+.sidebar-link { transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1); position: relative; }
+.sidebar-link::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%) scaleY(0); width: 3px; height: 60%; background: linear-gradient(to bottom, rgb(139, 92, 246), rgb(192, 132, 252)); border-radius: 99px; transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.sidebar-link:hover::before, .sidebar-link.active::before { transform: translateY(-50%) scaleY(1); }
+.sidebar-link:hover { transform: translateX(4px); background: rgba(139, 92, 246, 0.05); }
+.sidebar-link.active { background: rgba(139, 92, 246, 0.1); }
+
+/* Button ripple effect */
+.btn-primary, .btn-secondary, .btn-danger { position: relative; overflow: hidden; }
+.btn-primary:after, .btn-secondary:after, .btn-danger:after {
+  content: ''; position: absolute; inset: 0; background: radial-gradient(circle at var(--x, 50%) var(--y, 50%), rgba(255,255,255,0.3) 0%, transparent 60%);
+  opacity: 0; transition: opacity 0.3s;
+}
+.btn-primary:hover:after, .btn-secondary:hover:after, .btn-danger:hover:after { opacity: 1; }
+
+/* Pagination button animation */
+.page-btn { transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+.page-btn:hover { transform: translateY(-2px); }
+.page-btn:active { transform: scale(0.92); }
+
+/* Heart animation */
+@keyframes heartBeat { 0% { transform: scale(1); } 25% { transform: scale(1.3); } 50% { transform: scale(0.95); } 100% { transform: scale(1.1); } }
+.heart-pop { animation: heartBeat 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* Tag chip hover */
+.tag-chip { transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+.tag-chip:hover { transform: translateY(-2px) scale(1.05); }
+
+/* Toast notification animation */
+@keyframes toastIn { from { opacity: 0; transform: translateY(-20px) scale(0.9); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.toast-anim { animation: toastIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* Smooth page transition for route changes */
+.page-enter { animation: pageEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes pageEnter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Loading skeleton shimmer */
+@keyframes skeletonWave { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+.skeleton { background: linear-gradient(90deg, transparent 25%, rgba(139,92,246,.04) 50%, transparent 75%); background-size: 200% 100%; animation: skeletonWave 1.8s ease-in-out infinite; }
+
+/* Input focus glow */
+.input-field:focus { box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.1), 0 0 20px rgba(139, 92, 246, 0.05); }
+
+/* Scroll-triggered fade (JS applies .visible) */
+.scroll-reveal { opacity: 0; transform: translateY(20px); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+.scroll-reveal.visible { opacity: 1; transform: translateY(0); }

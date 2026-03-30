@@ -115,18 +115,20 @@ app.get('/api/config', (req, res) => {
 });
 
 // Version info
-const APP_VERSION = '1.5.0';
-const FRONTEND_VERSION = '1.5.0';
+const { PANEL_VERSION, FRONTEND_VERSION, STREAM_MIN_VERSION } = require('./versions');
 app.get('/api/version', (req, res) => {
-  res.json({ version: APP_VERSION, frontend: FRONTEND_VERSION, component: 'alleria-filmy' });
+  res.json({ version: PANEL_VERSION, frontend: FRONTEND_VERSION, streamMinVersion: STREAM_MIN_VERSION, component: 'alleria-filmy' });
 });
 
-// Proxy streaming version
+// Proxy streaming version with compatibility check
 app.get('/api/version/streaming', async (req, res) => {
   try {
     const r = await fetch(`${STREAM_URL || 'http://streaming:4000'}/version`);
-    res.json(await r.json());
-  } catch (e) { res.json({ version: 'unavailable', component: 'streaming' }); }
+    const data = await r.json();
+    const sv = data.version || '0.0.0';
+    const isCompat = sv >= STREAM_MIN_VERSION;
+    res.json({ ...data, compatible: isCompat, minVersion: STREAM_MIN_VERSION, status: isCompat ? 'compatible' : 'deprecated' });
+  } catch (e) { res.json({ version: 'unavailable', component: 'streaming', status: 'offline' }); }
 });
 
 // Streaming storage stats
@@ -1600,14 +1602,14 @@ app.get('/api/videos/:id/comments', requireAuth, (req, res) => {
 app.post('/api/videos/:id/comments', requireAuth, (req, res) => {
   try {
     const { content, parent_id } = req.body;
-    if (!content || !content.trim()) return res.status(400).json({ error: 'Treść wymagana.' });
+    if (!content?.trim()) return res.status(400).json({ error: 'Treść wymagana.' });
     const result = db.prepare('INSERT INTO comments (video_id, user_id, content, parent_id) VALUES (?, ?, ?, ?)').run(req.params.id, req.session.user.id, content.trim(), parent_id || null);
     const comment = db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(result.lastInsertRowid);
     res.json(comment);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Edit comment
+// Edit comment — silent=true means no edit trace (dev only)
 app.put('/api/comments/:id', requireAuth, (req, res) => {
   try {
     const comment = db.prepare('SELECT * FROM comments WHERE id = ?').get(req.params.id);
@@ -1615,38 +1617,44 @@ app.put('/api/comments/:id', requireAuth, (req, res) => {
     const isOwner = comment.user_id === req.session.user.id;
     const isDev = req.session.user.role === 'dev';
     if (!isOwner && !isDev) return res.status(403).json({ error: 'Brak uprawnień.' });
-
     const { content, silent } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: 'Treść wymagana.' });
-
     if (silent && isDev) {
-      // Dev silent edit — no edit trace
       db.prepare('UPDATE comments SET content = ? WHERE id = ?').run(content.trim(), req.params.id);
     } else {
-      // Normal edit — save history
-      let history = [];
-      try { history = JSON.parse(comment.edit_history || '[]'); } catch (e) {}
+      let history = []; try { history = JSON.parse(comment.edit_history || '[]'); } catch (e) {}
       history.push({ content: comment.content, date: new Date().toISOString() });
       db.prepare('UPDATE comments SET content = ?, edited = 1, edit_history = ? WHERE id = ?').run(content.trim(), JSON.stringify(history), req.params.id);
     }
-
     const updated = db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(req.params.id);
     res.json(updated);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Soft delete comment (marks as deleted, keeps for thread integrity)
 app.delete('/api/comments/:id', requireAuth, (req, res) => {
   try {
     const comment = db.prepare('SELECT * FROM comments WHERE id = ?').get(req.params.id);
     if (!comment) return res.status(404).json({ error: 'Nie znaleziono.' });
-    const isOwner = comment.user_id === req.session.user.id;
-    const isAdmin = req.session.user.role === 'admin' || req.session.user.role === 'dev';
-    if (!isOwner && !isAdmin) return res.status(403).json({ error: 'Brak uprawnień.' });
-    db.prepare('DELETE FROM comments WHERE id = ? OR parent_id = ?').run(req.params.id, req.params.id);
-    res.json({ success: true });
+    const canDel = comment.user_id === req.session.user.id || req.session.user.role === 'admin' || req.session.user.role === 'dev';
+    if (!canDel) return res.status(403).json({ error: 'Brak uprawnień.' });
+    // Soft delete — keep record for threaded replies
+    db.prepare("UPDATE comments SET deleted = 1, content = '' WHERE id = ?").run(req.params.id);
+    res.json({ success: true, soft: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Hard delete comment + all replies (dev only)
+app.delete('/api/comments/:id/hard', requireDev, (req, res) => {
+  try {
+    // Delete all replies first, then the comment
+    db.prepare('DELETE FROM comments WHERE parent_id = ?').run(req.params.id);
+    db.prepare('DELETE FROM comments WHERE id = ?').run(req.params.id);
+    res.json({ success: true, hard: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Dev: add comment as another user with custom date
 app.post('/api/comments/admin', requireDev, (req, res) => {
   try {
     const { video_id, user_id, content, created_at, parent_id } = req.body;

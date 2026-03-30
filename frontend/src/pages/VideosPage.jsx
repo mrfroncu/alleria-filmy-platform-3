@@ -65,7 +65,7 @@ export default function VideosPage() {
   const hasActiveFilters = search || selectedTags.length > 0 || selectedAuthor;
 
   return (
-    <div className="p-6 sm:p-10 max-w-7xl mx-auto animate-fade-in">
+    <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
       {/* Header */}
       <div className="mb-10">
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">
@@ -223,7 +223,7 @@ export default function VideosPage() {
             <Link
               key={video.id}
               to={`/video/${video.id}${categorySlug ? `?from=${categorySlug}` : ''}`}
-              className="card overflow-hidden group hover:shadow-2xl hover:shadow-violet-500/10 dark:hover:shadow-violet-500/5 transition-all duration-500 hover:-translate-y-1"
+              className="video-card card overflow-hidden group"
               style={{ animationDelay: `${idx * 50}ms` }}
             >
               <div className="relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
@@ -231,7 +231,7 @@ export default function VideosPage() {
                   <img
                     src={video.thumbnail}
                     alt={video.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                    className="video-thumb w-full h-full object-cover"
                     loading="lazy"
                   />
                 ) : (

@@ -13,7 +13,7 @@ export default function StatsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 sm:p-10 max-w-7xl mx-auto animate-fade-in">
+      <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
         <div className="h-10 w-48 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton mb-10" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[1,2,3,4].map(i => <div key={i} className="card p-6"><div className="h-16 skeleton rounded-xl" /></div>)}
@@ -38,7 +38,7 @@ export default function StatsPage() {
   );
 
   return (
-    <div className="p-6 sm:p-10 max-w-7xl mx-auto animate-fade-in">
+    <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
       <div className="mb-10">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center">

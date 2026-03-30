@@ -23,7 +23,7 @@ export default function FavoritesPage() {
   };
 
   return (
-    <div className="p-6 sm:p-10 max-w-7xl mx-auto animate-fade-in">
+    <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
       <div className="mb-10">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 bg-pink-50 dark:bg-pink-500/10 rounded-xl flex items-center justify-center">

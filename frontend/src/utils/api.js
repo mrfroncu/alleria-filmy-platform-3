@@ -160,6 +160,7 @@ export const api = {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, silent: !!silent }),
   }),
   deleteComment: (commentId) => request(`/comments/${commentId}`, { method: 'DELETE' }),
+  hardDeleteComment: (commentId) => request(`/comments/${commentId}/hard`, { method: 'DELETE' }),
   addAdminComment: (data) => request('/comments/admin', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
   }),
