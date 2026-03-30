@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, youtubeToEmbed } from '../utils/helpers';
@@ -106,11 +106,10 @@ function CommentNode({ c, depth, replies, user, editingId, editContent, setEditC
 export default function VideoPage() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
-  const location = useLocation();
   const fromCategory = searchParams.get('from') || '';
+  const slideFrom = searchParams.get('slide') || 'up'; // 'left', 'right', 'up'
   const navigate = useNavigate();
   const { user } = useAuth();
-  const slideFrom = location.state?.slideFrom || 'up';
 
   const [video, setVideo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -193,11 +192,11 @@ export default function VideoPage() {
     if (exiting) return;
     setExiting(true);
     setExitDir(direction === 'next' ? 'exit-left' : 'exit-right');
+    const params = new URLSearchParams();
+    if (fromCategory) params.set('from', fromCategory);
+    params.set('slide', direction === 'next' ? 'right' : 'left');
     setTimeout(() => {
-      navigate(`/video/${videoId}${fromCategory ? `?from=${fromCategory}` : ''}`, {
-        state: { slideFrom: direction === 'next' ? 'right' : 'left' },
-        replace: false,
-      });
+      navigate(`/video/${videoId}?${params.toString()}`);
     }, 300);
   };
 
@@ -360,8 +359,8 @@ export default function VideoPage() {
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-bold text-violet-500">{video.author_display_name || video.author_name}</span>
-            {video.tags?.length > 0 && <div className="flex flex-wrap gap-1.5">{video.tags.map(t => <span key={t.id} className="tag-chip">{t.name}</span>)}</div>}
+            <Link to={`/author/${video.author_id}`} className="text-sm font-bold text-violet-500 hover:text-violet-600 transition-colors">{video.author_display_name || video.author_name}</Link>
+            {video.tags?.length > 0 && <div className="flex flex-wrap gap-1.5">{video.tags.map(t => <Link key={t.id} to={`/tag/${t.id}`} className="tag-chip hover:scale-105 active:scale-95 transition-transform">{t.name}</Link>)}</div>}
           </div>
           <div className="flex items-center gap-3 mt-2 text-xs text-zinc-400">
             <span>{formatDate(video.publish_date)}</span>
@@ -488,9 +487,9 @@ export default function VideoPage() {
 
       {/* ─── Soft delete modal ─── */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/30 dark:bg-zinc-950/70 backdrop-blur-md" onClick={() => setDeleteConfirm(null)} style={{ animation: 'fadeIn 0.2s ease-out' }} />
-          <div className="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center z-[101]" style={{ animation: 'modalIn 0.35s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+        <div className="modal-overlay">
+          <div className="modal-backdrop" onClick={() => setDeleteConfirm(null)} />
+          <div className="modal-content max-w-sm p-8 text-center" style={{ animation: 'slideUp 0.3s ease-out' }}>
             <Trash2 className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć komentarz?</h3>
             <p className="text-sm text-zinc-500 mb-6">Treść zostanie ukryta, wątek zachowany.</p>
@@ -504,9 +503,9 @@ export default function VideoPage() {
 
       {/* ─── Hard delete modal (dev) ─── */}
       {hardDeleteConfirm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/30 dark:bg-zinc-950/70 backdrop-blur-md" onClick={() => setHardDeleteConfirm(null)} style={{ animation: 'fadeIn 0.2s ease-out' }} />
-          <div className="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center z-[101]" style={{ animation: 'modalIn 0.35s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+        <div className="modal-overlay">
+          <div className="modal-backdrop" onClick={() => setHardDeleteConfirm(null)} />
+          <div className="modal-content max-w-sm p-8 text-center" style={{ animation: 'slideUp 0.3s ease-out' }}>
             <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć permanentnie?</h3>
             <p className="text-sm text-zinc-500 mb-6">Komentarz i wszystkie odpowiedzi zostaną usunięte na zawsze.</p>

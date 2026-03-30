@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Download, Upload, Trash2, AlertTriangle, Database, UserPlus, ChevronDown, Terminal, Play, FolderPlus, X, Shield, BarChart3, Loader2 } from 'lucide-react';
 import { api } from '../utils/api';
 import { buildCategoryTreeOptions } from '../utils/helpers';
+import { applyAccentColor } from '../utils/accent';
 
 export default function DebugPage() {
   const [status, setStatus] = useState(null);
@@ -331,7 +332,7 @@ export default function DebugPage() {
         </div>
 
         {/* Category Management */}
-        <div className="card p-8 xl:row-span-5">
+        <div className="card p-8 xl:row-span-3">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 bg-cyan-50 dark:bg-cyan-500/10 rounded-2xl flex items-center justify-center shrink-0">
               <FolderPlus className="w-6 h-6 text-cyan-500" />
@@ -488,7 +489,7 @@ export default function DebugPage() {
             </div>
             <div className="flex-1">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Kolor akcentu</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">Zmień kolor akcentu interfejsu. Wymaga odświeżenia strony.</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">Zmień kolor akcentu interfejsu — zmiana natychmiastowa.</p>
               <div className="flex flex-wrap gap-2">
                 {[
                   { name: 'Violet (domyślny)', val: '', bg: 'bg-violet-500' },
@@ -501,11 +502,11 @@ export default function DebugPage() {
                   <button key={c.name} onClick={() => {
                     if (c.val) localStorage.setItem('accent-color', c.val);
                     else localStorage.removeItem('accent-color');
-                    setStatus({ type: 'success', msg: `Kolor zmieniony na ${c.name}. Odśwież stronę (Ctrl+R).` });
+                    applyAccentColor();
+                    setStatus({ type: 'success', msg: `Kolor zmieniony na ${c.name}.` });
                   }} className={`w-10 h-10 ${c.bg} rounded-xl hover:scale-110 active:scale-95 transition-all shadow-lg ${localStorage.getItem('accent-color') === c.val || (!c.val && !localStorage.getItem('accent-color')) ? 'ring-2 ring-offset-2 ring-zinc-900 dark:ring-white' : ''}`} title={c.name} />
                 ))}
               </div>
-              <p className="text-[9px] text-zinc-400 mt-2">Funkcja eksperymentalna — zmiana koloru wymaga przebudowy CSS w przyszłych wersjach.</p>
             </div>
           </div>
         </div>
