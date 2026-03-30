@@ -331,7 +331,7 @@ export default function DebugPage() {
         </div>
 
         {/* Category Management */}
-        <div className="card p-8 xl:row-span-3">
+        <div className="card p-8 xl:row-span-5">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 bg-cyan-50 dark:bg-cyan-500/10 rounded-2xl flex items-center justify-center shrink-0">
               <FolderPlus className="w-6 h-6 text-cyan-500" />
@@ -488,34 +488,24 @@ export default function DebugPage() {
             </div>
             <div className="flex-1">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Kolor akcentu</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">Zmień kolor akcentu interfejsu.</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">Zmień kolor akcentu interfejsu. Wymaga odświeżenia strony.</p>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { name: 'Violet', hue: '263', colors: 'from-violet-500 to-fuchsia-500', bg: 'bg-violet-500' },
-                  { name: 'Blue', hue: '217', colors: 'from-blue-500 to-cyan-500', bg: 'bg-blue-500' },
-                  { name: 'Emerald', hue: '160', colors: 'from-emerald-500 to-teal-500', bg: 'bg-emerald-500' },
-                  { name: 'Rose', hue: '350', colors: 'from-rose-500 to-pink-500', bg: 'bg-rose-500' },
-                  { name: 'Amber', hue: '38', colors: 'from-amber-500 to-orange-500', bg: 'bg-amber-500' },
-                  { name: 'Cyan', hue: '190', colors: 'from-cyan-500 to-sky-500', bg: 'bg-cyan-500' },
+                  { name: 'Violet (domyślny)', val: '', bg: 'bg-violet-500' },
+                  { name: 'Blue', val: 'blue', bg: 'bg-blue-500' },
+                  { name: 'Emerald', val: 'emerald', bg: 'bg-emerald-500' },
+                  { name: 'Rose', val: 'rose', bg: 'bg-rose-500' },
+                  { name: 'Amber', val: 'amber', bg: 'bg-amber-500' },
+                  { name: 'Cyan', val: 'cyan', bg: 'bg-cyan-500' },
                 ].map(c => (
                   <button key={c.name} onClick={() => {
-                    document.documentElement.style.setProperty('--accent-hue', c.hue);
-                    localStorage.setItem('accent-hue', c.hue);
-                    setStatus({ type: 'success', msg: `Kolor akcentu zmieniony na ${c.name}` });
-                  }} className={`w-10 h-10 ${c.bg} rounded-xl hover:scale-110 active:scale-95 transition-all shadow-lg`} title={c.name} />
+                    if (c.val) localStorage.setItem('accent-color', c.val);
+                    else localStorage.removeItem('accent-color');
+                    setStatus({ type: 'success', msg: `Kolor zmieniony na ${c.name}. Odśwież stronę (Ctrl+R).` });
+                  }} className={`w-10 h-10 ${c.bg} rounded-xl hover:scale-110 active:scale-95 transition-all shadow-lg ${localStorage.getItem('accent-color') === c.val || (!c.val && !localStorage.getItem('accent-color')) ? 'ring-2 ring-offset-2 ring-zinc-900 dark:ring-white' : ''}`} title={c.name} />
                 ))}
-                <div className="flex items-center gap-2 ml-2">
-                  <input type="color" defaultValue="#8b5cf6" onChange={e => {
-                    const hex = e.target.value;
-                    const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
-                    document.documentElement.style.setProperty('--accent-r', r);
-                    document.documentElement.style.setProperty('--accent-g', g);
-                    document.documentElement.style.setProperty('--accent-b', b);
-                    localStorage.setItem('accent-custom', hex);
-                  }} className="w-10 h-10 rounded-xl border-0 cursor-pointer" title="Własny kolor" />
-                  <span className="text-[10px] text-zinc-400">Custom</span>
-                </div>
               </div>
+              <p className="text-[9px] text-zinc-400 mt-2">Funkcja eksperymentalna — zmiana koloru wymaga przebudowy CSS w przyszłych wersjach.</p>
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle } from 'lucide-react';
 import { api } from '../utils/api';
@@ -7,6 +7,102 @@ import { useAuth } from '../contexts/AuthContext';
 import SecurePlayer from '../components/SecurePlayer';
 import VideoModal from '../components/VideoModal';
 
+// ─── Comment rendering extracted OUTSIDE to prevent remount on parent state change ───
+function CommentNode({ c, depth, replies, user, editingId, editContent, setEditContent, silentEdit, setSilentEdit, onStartEdit, onSaveEdit, onCancelEdit, onReply, onDelete, onHardDelete, editHistoryId, setEditHistoryId }) {
+  const isEditing = editingId === c.id;
+  const isDev = user?.role === 'dev';
+  const canMod = c.user_id === user?.id || user?.role === 'admin' || isDev;
+  const isDeleted = c.deleted === 1;
+  let history = [];
+  try { history = JSON.parse(c.edit_history || '[]'); } catch (e) {}
+
+  return (
+    <div className={depth > 0 ? 'ml-6 sm:ml-10 border-l-2 border-violet-200/50 dark:border-violet-800/30 pl-4' : ''}>
+      <div className="flex gap-3 group py-2 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 -mx-2 px-2 rounded-xl transition-colors">
+        <img src={c.avatar || `https://ui-avatars.com/api/?name=${c.display_name || c.username || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className={`w-8 h-8 rounded-xl shrink-0 object-cover mt-0.5 ${isDeleted ? 'opacity-40 grayscale' : ''}`} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+            <span className={`text-sm font-bold ${isDeleted ? 'text-zinc-400' : 'text-zinc-900 dark:text-white'}`}>{c.display_name || c.username}</span>
+            <span className="text-[10px] text-zinc-400 font-mono">{formatDate(c.created_at)}</span>
+            {c.edited === 1 && !isDeleted && (
+              <button onClick={() => setEditHistoryId(editHistoryId === c.id ? null : c.id)} className="text-[9px] text-zinc-400 hover:text-violet-500 transition-colors">(edytowano)</button>
+            )}
+          </div>
+
+          {isDeleted ? (
+            <p className="text-sm text-zinc-400 italic">(komentarz usunięty)</p>
+          ) : isEditing ? (
+            <div className="space-y-2" onClick={e => e.stopPropagation()}>
+              <textarea
+                value={editContent}
+                onChange={e => setEditContent(e.target.value)}
+                className="input-field !py-2 !px-3 text-sm resize-none"
+                rows={2}
+                autoFocus
+              />
+              <div className="flex items-center gap-2">
+                <button onClick={() => onSaveEdit(c.id)} className="p-1.5 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg transition-all hover:scale-110"><Check className="w-4 h-4" /></button>
+                <button onClick={onCancelEdit} className="p-1.5 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-all hover:scale-110"><X className="w-4 h-4" /></button>
+                {isDev && (
+                  <label className="flex items-center gap-1.5 text-[10px] text-amber-500 cursor-pointer ml-2 select-none">
+                    <input type="checkbox" checked={silentEdit} onChange={e => setSilentEdit(e.target.checked)} className="w-3 h-3 rounded" />
+                    Ciche (bez śladu)
+                  </label>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap break-words">{c.content}</p>
+          )}
+
+          {editHistoryId === c.id && history.length > 0 && (
+            <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700 animate-scale-in">
+              <p className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Historia edycji</p>
+              {history.map((h, i) => (
+                <div key={i} className="text-xs text-zinc-500 mb-1">
+                  <span className="font-mono text-[10px]">{formatDate(h.date)}</span>: {h.content}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!isEditing && !isDeleted && (
+            <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-all">
+              <button onClick={() => onReply(c)} className="text-[11px] text-zinc-400 hover:text-violet-500 px-2 py-1 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-all flex items-center gap-1"><Reply className="w-3 h-3" /> Odpowiedz</button>
+              {(c.user_id === user?.id || isDev) && (
+                <button onClick={() => onStartEdit(c)} className="text-[11px] text-zinc-400 hover:text-amber-500 px-2 py-1 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-all flex items-center gap-1"><Pencil className="w-3 h-3" /> Edytuj</button>
+              )}
+              {canMod && (
+                <button onClick={() => onDelete(c.id)} className="text-[11px] text-zinc-400 hover:text-red-500 px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-all flex items-center gap-1"><Trash2 className="w-3 h-3" /> Usuń</button>
+              )}
+            </div>
+          )}
+
+          {isDeleted && isDev && (
+            <button onClick={() => onHardDelete(c.id)} className="text-[10px] text-red-400 hover:text-red-500 mt-1 transition-colors">
+              Usuń całkowicie{replies.length > 0 ? ` (+ ${replies.length} odp.)` : ''}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {replies.map(r => (
+        <CommentNode
+          key={r.id} c={r} depth={depth + 1}
+          replies={r._replies || []}
+          user={user}
+          editingId={editingId} editContent={editContent} setEditContent={setEditContent}
+          silentEdit={silentEdit} setSilentEdit={setSilentEdit}
+          onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
+          onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete}
+          editHistoryId={editHistoryId} setEditHistoryId={setEditHistoryId}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ─── Main VideoPage ───
 export default function VideoPage() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
@@ -14,8 +110,6 @@ export default function VideoPage() {
   const fromCategory = searchParams.get('from') || '';
   const navigate = useNavigate();
   const { user } = useAuth();
-
-  // Determine initial animation from navigation state
   const slideFrom = location.state?.slideFrom || 'up';
 
   const [video, setVideo] = useState(null);
@@ -53,11 +147,16 @@ export default function VideoPage() {
   const [devCommentParent, setDevCommentParent] = useState('');
   const [allUsers, setAllUsers] = useState([]);
 
+  // ─── Reset animation state on new video ID ───
   useEffect(() => {
+    setExiting(false);
+    setExitDir('');
     setLoading(true);
     setActiveSource('main');
     setPrevVideo(null);
     setNextVideo(null);
+    setEditingComment(null);
+    setEditContent('');
     const videoId = Number(id);
 
     Promise.all([
@@ -84,7 +183,6 @@ export default function VideoPage() {
     }).catch(err => setError(err.message)).finally(() => setLoading(false));
   }, [id, fromCategory]);
 
-  // Load all users for dev comment creation
   useEffect(() => {
     if (user?.role === 'dev' && devCommentOpen && allUsers.length === 0) {
       api.getAllUsers().then(setAllUsers).catch(() => {});
@@ -97,7 +195,8 @@ export default function VideoPage() {
     setExitDir(direction === 'next' ? 'exit-left' : 'exit-right');
     setTimeout(() => {
       navigate(`/video/${videoId}${fromCategory ? `?from=${fromCategory}` : ''}`, {
-        state: { slideFrom: direction === 'next' ? 'right' : 'left' }
+        state: { slideFrom: direction === 'next' ? 'right' : 'left' },
+        replace: false,
       });
     }, 300);
   };
@@ -141,16 +240,37 @@ export default function VideoPage() {
     } catch (e) {}
   };
 
-  const startEdit = (c) => { setEditingComment(c.id); setEditContent(c.content); setSilentEdit(false); };
+  // ─── Comment edit handlers (stable refs via useCallback) ───
+  const onStartEdit = useCallback((c) => {
+    setEditingComment(c.id);
+    setEditContent(c.content);
+    setSilentEdit(false);
+  }, []);
 
-  const saveEdit = async (commentId) => {
+  const onSaveEdit = useCallback(async (commentId) => {
     if (!editContent.trim()) return;
     try {
       const updated = await api.editComment(commentId, editContent.trim(), silentEdit);
       setComments(prev => prev.map(c => c.id === commentId ? updated : c));
-      setEditingComment(null); setEditContent(''); setSilentEdit(false);
+      setEditingComment(null);
+      setEditContent('');
+      setSilentEdit(false);
     } catch (e) {}
-  };
+  }, [editContent, silentEdit]);
+
+  const onCancelEdit = useCallback(() => {
+    setEditingComment(null);
+    setEditContent('');
+    setSilentEdit(false);
+  }, []);
+
+  const onReply = useCallback((c) => {
+    setReplyTo(c);
+    setNewComment('');
+  }, []);
+
+  const onDelete = useCallback((cid) => setDeleteConfirm(cid), []);
+  const onHardDelete = useCallback((cid) => setHardDeleteConfirm(cid), []);
 
   const softDelete = async () => {
     if (!deleteConfirm) return;
@@ -165,15 +285,30 @@ export default function VideoPage() {
     if (!hardDeleteConfirm) return;
     try {
       await api.hardDeleteComment(hardDeleteConfirm);
-      // Remove comment and all its replies
       const toRemove = new Set([hardDeleteConfirm]);
-      const findReplies = (pid) => { comments.filter(c => c.parent_id === pid).forEach(c => { toRemove.add(c.id); findReplies(c.id); }); };
-      findReplies(hardDeleteConfirm);
+      const findChildren = (pid) => { comments.filter(c => c.parent_id === pid).forEach(c => { toRemove.add(c.id); findChildren(c.id); }); };
+      findChildren(hardDeleteConfirm);
       setComments(prev => prev.filter(c => !toRemove.has(c.id)));
     } catch (e) {}
     setHardDeleteConfirm(null);
   };
 
+  // ─── Build threaded comment tree ───
+  const commentTree = useMemo(() => {
+    const map = {};
+    comments.forEach(c => { map[c.id] = { ...c, _replies: [] }; });
+    const roots = [];
+    comments.forEach(c => {
+      if (c.parent_id && map[c.parent_id]) {
+        map[c.parent_id]._replies.push(map[c.id]);
+      } else {
+        roots.push(map[c.id]);
+      }
+    });
+    return roots;
+  }, [comments]);
+
+  // ─── Rendering ───
   if (loading) return (
     <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-fade-in">
       <div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[32px] skeleton mb-6" />
@@ -189,86 +324,21 @@ export default function VideoPage() {
     </div>
   );
 
-  // Source logic — key forces iframe remount on switch
-  const getSource = () => {
-    if (activeSource === 'mirror1') return { url: video.mirror1_url, type: video.mirror1_type };
-    if (activeSource === 'mirror2') return { url: video.mirror2_url, type: video.mirror2_type };
-    return { url: video.main_source, type: video.main_source_type };
-  };
-  const { url: srcUrl, type: srcType } = getSource();
-  const isEmbed = srcType === 'embed' || srcType === 'html';
-  const embedUrl = isEmbed ? null : youtubeToEmbed(srcUrl);
-  const embedHtml = isEmbed ? srcUrl : null;
+  // ─── Source logic ───
+  const src = activeSource === 'mirror1' ? { url: video.mirror1_url, type: video.mirror1_type }
+    : activeSource === 'mirror2' ? { url: video.mirror2_url, type: video.mirror2_type }
+    : { url: video.main_source, type: video.main_source_type };
+  const isHtml = src.type === 'embed' || src.type === 'html';
+  const embedUrl = isHtml ? null : youtubeToEmbed(src.url);
+  const embedHtml = isHtml ? src.url : null;
   const sources = [
     { key: 'main', label: video.main_source_title || 'Główne źródło' },
     ...(video.mirror1_url ? [{ key: 'mirror1', label: video.mirror1_name || 'Mirror 1' }] : []),
     ...(video.mirror2_url ? [{ key: 'mirror2', label: video.mirror2_name || 'Mirror 2' }] : []),
   ];
 
-  const topComments = comments.filter(c => !c.parent_id);
-  const getReplies = (pid) => comments.filter(c => c.parent_id === pid);
-  const replyCount = (pid) => { let n = 0; const walk = (p) => { comments.filter(c => c.parent_id === p).forEach(c => { n++; walk(c.id); }); }; walk(pid); return n; };
   const isDev = user?.role === 'dev';
-
-  const CommentItem = ({ c, depth = 0 }) => {
-    const replies = getReplies(c.id);
-    const isEditing = editingComment === c.id;
-    const canMod = c.user_id === user?.id || user?.role === 'admin' || isDev;
-    let history = []; try { history = JSON.parse(c.edit_history || '[]'); } catch (e) {}
-    const isDeleted = c.deleted === 1;
-
-    return (
-      <div className={`animate-slide-up ${depth > 0 ? 'ml-6 sm:ml-10 border-l-2 border-violet-200/50 dark:border-violet-800/30 pl-4' : ''}`}>
-        <div className="flex gap-3 group py-2 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 -mx-2 px-2 rounded-xl transition-colors">
-          <img src={c.avatar || `https://ui-avatars.com/api/?name=${c.display_name || c.username || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className={`w-8 h-8 rounded-xl shrink-0 object-cover mt-0.5 ${isDeleted ? 'opacity-40 grayscale' : ''}`} />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-              <span className={`text-sm font-bold ${isDeleted ? 'text-zinc-400' : 'text-zinc-900 dark:text-white'}`}>{c.display_name || c.username}</span>
-              <span className="text-[10px] text-zinc-400 font-mono">{formatDate(c.created_at)}</span>
-              {c.edited === 1 && !isDeleted && <button onClick={() => setEditHistoryPopup(editHistoryPopup === c.id ? null : c.id)} className="text-[9px] text-zinc-400 hover:text-violet-500 transition-colors">(edytowano)</button>}
-            </div>
-            {isDeleted ? (
-              <p className="text-sm text-zinc-400 italic">(komentarz usunięty)</p>
-            ) : isEditing ? (
-              <div className="space-y-2">
-                <textarea value={editContent} onChange={e => setEditContent(e.target.value)} className="input-field !py-2 !px-3 text-sm resize-none" rows={2} />
-                <div className="flex items-center gap-2">
-                  <button onClick={() => saveEdit(c.id)} className="p-1.5 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg transition-all hover:scale-110"><Check className="w-4 h-4" /></button>
-                  <button onClick={() => setEditingComment(null)} className="p-1.5 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-all hover:scale-110"><X className="w-4 h-4" /></button>
-                  {isDev && (
-                    <label className="flex items-center gap-1.5 text-[10px] text-amber-500 cursor-pointer ml-2">
-                      <input type="checkbox" checked={silentEdit} onChange={e => setSilentEdit(e.target.checked)} className="w-3 h-3 rounded" />
-                      Ciche (bez śladu)
-                    </label>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap break-words">{c.content}</p>
-            )}
-            {editHistoryPopup === c.id && history.length > 0 && (
-              <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700 animate-scale-in">
-                <p className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Historia edycji</p>
-                {history.map((h, i) => <div key={i} className="text-xs text-zinc-500 mb-1"><span className="font-mono text-[10px]">{formatDate(h.date)}</span>: {h.content}</div>)}
-              </div>
-            )}
-            {!isEditing && !isDeleted && (
-              <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-all">
-                <button onClick={() => { setReplyTo(c); setNewComment(''); }} className="text-[11px] text-zinc-400 hover:text-violet-500 px-2 py-1 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-all flex items-center gap-1"><Reply className="w-3 h-3" /> Odpowiedz</button>
-                {(c.user_id === user?.id || isDev) && <button onClick={() => startEdit(c)} className="text-[11px] text-zinc-400 hover:text-amber-500 px-2 py-1 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-all flex items-center gap-1"><Pencil className="w-3 h-3" /> Edytuj</button>}
-                {canMod && <button onClick={() => setDeleteConfirm(c.id)} className="text-[11px] text-zinc-400 hover:text-red-500 px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-all flex items-center gap-1"><Trash2 className="w-3 h-3" /> Usuń</button>}
-              </div>
-            )}
-            {isDeleted && isDev && (
-              <button onClick={() => setHardDeleteConfirm(c.id)} className="text-[10px] text-red-400 hover:text-red-500 mt-1 transition-colors">Usuń całkowicie{replies.length > 0 ? ` (+ ${replyCount(c.id)} odpowiedzi)` : ''}</button>
-            )}
-          </div>
-        </div>
-        {replies.map(r => <CommentItem key={r.id} c={r} depth={depth + 1} />)}
-      </div>
-    );
-  };
-
+  const activeCount = comments.filter(c => !c.deleted).length;
   const enterAnim = slideFrom === 'right' ? 'video-enter-right' : slideFrom === 'left' ? 'video-enter-left' : 'video-enter-up';
   const mainClass = exiting ? `video-${exitDir}` : enterAnim;
 
@@ -278,6 +348,7 @@ export default function VideoPage() {
         <ArrowLeft className="w-4 h-4" /> {fromCategory ? 'Wróć do kategorii' : 'Wróć do bazy'}
       </button>
 
+      {/* Title & Meta */}
       <div className="flex flex-col sm:flex-row sm:items-start gap-4 mb-6 anim-stagger-1">
         <div className="flex-1">
           <div className="flex items-start gap-3 mb-3">
@@ -299,25 +370,31 @@ export default function VideoPage() {
         </div>
       </div>
 
-      {/* Player — key forces remount on source switch */}
-      <div className="mb-8 anim-stagger-2">
-        {video.stream_video_id && video.stream_status === 'ready' ? (
+      {/* Player — key={activeSource} forces full remount on mirror switch */}
+      <div className="mb-8 anim-stagger-2" key={`player-${activeSource}`}>
+        {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
           <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} />
         ) : embedUrl ? (
-          <div key={activeSource} className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in">
+          <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in">
             <iframe src={embedUrl} className="w-full h-full" allowFullScreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" />
           </div>
         ) : embedHtml ? (
-          <div key={activeSource} className="aspect-video rounded-[32px] overflow-hidden animate-scale-in" dangerouslySetInnerHTML={{ __html: embedHtml }} />
+          <div className="aspect-video rounded-[32px] overflow-hidden animate-scale-in" dangerouslySetInnerHTML={{ __html: embedHtml }} />
         ) : <div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[32px] flex items-center justify-center"><p className="text-zinc-400 text-sm">Brak źródła.</p></div>}
       </div>
 
+      {/* Source tabs */}
       {sources.length > 1 && (
         <div className="flex gap-2 mb-6 anim-stagger-3">
-          {sources.map(s => <button key={s.key} onClick={() => setActiveSource(s.key)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeSource === s.key ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>{s.label}</button>)}
+          {sources.map(s => (
+            <button key={s.key} onClick={() => setActiveSource(s.key)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeSource === s.key ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>
+              {s.label}
+            </button>
+          ))}
         </div>
       )}
 
+      {/* Prev / Next */}
       {(prevVideo || nextVideo) && (
         <div className="flex items-stretch gap-3 sm:gap-4 mb-8 anim-stagger-4">
           {prevVideo ? (
@@ -335,6 +412,7 @@ export default function VideoPage() {
         </div>
       )}
 
+      {/* Description */}
       {video.description && (
         <div className="card p-8 mb-6 anim-stagger-5">
           <h3 className="label-field">Opis</h3>
@@ -342,37 +420,44 @@ export default function VideoPage() {
         </div>
       )}
 
-      {/* Comments */}
+      {/* ─── Comments ─── */}
       <div className="card p-8 anim-stagger-6">
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2"><MessageCircle className="w-5 h-5 text-violet-500" /><h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Komentarze ({comments.filter(c => !c.deleted).length})</h3></div>
-          {isDev && <button onClick={() => setDevCommentOpen(!devCommentOpen)} className="text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-3 py-1.5 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-all">DEV: Dodaj jako...</button>}
+          <div className="flex items-center gap-2">
+            <MessageCircle className="w-5 h-5 text-violet-500" />
+            <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Komentarze ({activeCount})</h3>
+          </div>
+          {isDev && (
+            <button onClick={() => setDevCommentOpen(!devCommentOpen)} className="text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-3 py-1.5 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-all">
+              DEV: Dodaj jako...
+            </button>
+          )}
         </div>
 
-        {/* Dev comment creation */}
+        {/* Dev comment creation form */}
         {devCommentOpen && isDev && (
           <div className="mb-6 p-4 bg-amber-50/50 dark:bg-amber-500/5 rounded-2xl border border-amber-200 dark:border-amber-500/20 space-y-3 animate-scale-in">
             <p className="text-xs font-bold text-amber-600 uppercase">Dodaj komentarz jako inny użytkownik</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <select value={devCommentUserId} onChange={e => setDevCommentUserId(e.target.value)} className="input-field !py-2 text-xs">
-                <option value="">Użytkownik...</option>
-                {allUsers.map(u => <option key={u.id} value={u.id}>{u.display_name || u.username}</option>)}
-              </select>
-              <input type="datetime-local" value={devCommentDate} onChange={e => setDevCommentDate(e.target.value)} className="input-field !py-2 text-xs" placeholder="Data" />
-              <input type="text" value={devCommentParent} onChange={e => setDevCommentParent(e.target.value)} className="input-field !py-2 text-xs" placeholder="Parent ID (opcja)" />
+              <select value={devCommentUserId} onChange={e => setDevCommentUserId(e.target.value)} className="input-field !py-2 text-xs"><option value="">Użytkownik...</option>{allUsers.map(u => <option key={u.id} value={u.id}>{u.display_name || u.username}</option>)}</select>
+              <input type="datetime-local" value={devCommentDate} onChange={e => setDevCommentDate(e.target.value)} className="input-field !py-2 text-xs" />
+              <input type="text" value={devCommentParent} onChange={e => setDevCommentParent(e.target.value)} className="input-field !py-2 text-xs" placeholder="Parent ID" />
               <button onClick={submitDevComment} disabled={!devCommentUserId || !devCommentContent.trim()} className="btn-primary !py-2 text-xs">Dodaj</button>
             </div>
-            <textarea value={devCommentContent} onChange={e => setDevCommentContent(e.target.value)} className="input-field !py-2 text-sm resize-none" rows={2} placeholder="Treść komentarza..." />
+            <textarea value={devCommentContent} onChange={e => setDevCommentContent(e.target.value)} className="input-field !py-2 text-sm resize-none" rows={2} placeholder="Treść..." />
           </div>
         )}
 
+        {/* Reply indicator */}
         {replyTo && (
           <div className="flex items-center gap-2 mb-3 p-2 bg-violet-50 dark:bg-violet-500/10 rounded-xl text-sm animate-scale-in">
-            <Reply className="w-4 h-4 text-violet-500" /><span className="text-violet-600 dark:text-violet-400">Odpowiedź do <strong>{replyTo.display_name || replyTo.username}</strong></span>
+            <Reply className="w-4 h-4 text-violet-500" />
+            <span className="text-violet-600 dark:text-violet-400">Odpowiedź do <strong>{replyTo.display_name || replyTo.username}</strong></span>
             <button onClick={() => setReplyTo(null)} className="ml-auto p-1 hover:bg-violet-100 dark:hover:bg-violet-500/20 rounded-lg"><X className="w-3.5 h-3.5 text-violet-500" /></button>
           </div>
         )}
 
+        {/* New comment input */}
         <div className="flex gap-3 mb-6">
           <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className="w-10 h-10 rounded-xl shrink-0 object-cover" />
           <div className="flex-1 relative">
@@ -381,31 +466,54 @@ export default function VideoPage() {
           </div>
         </div>
 
-        {topComments.length === 0 ? <p className="text-sm text-zinc-400 text-center py-6">Brak komentarzy — bądź pierwszą osobą!</p> : (
-          <div className="space-y-1">{topComments.map(c => <CommentItem key={c.id} c={c} />)}</div>
+        {/* Comment thread */}
+        {commentTree.length === 0 ? (
+          <p className="text-sm text-zinc-400 text-center py-6">Brak komentarzy — bądź pierwszą osobą!</p>
+        ) : (
+          <div className="space-y-1">
+            {commentTree.map(c => (
+              <CommentNode
+                key={c.id} c={c} depth={0} replies={c._replies}
+                user={user}
+                editingId={editingComment} editContent={editContent} setEditContent={setEditContent}
+                silentEdit={silentEdit} setSilentEdit={setSilentEdit}
+                onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
+                onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete}
+                editHistoryId={editHistoryPopup} setEditHistoryId={setEditHistoryPopup}
+              />
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Soft delete confirmation — fixed center */}
+      {/* ─── Soft delete modal ─── */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/30 dark:bg-zinc-950/70 backdrop-blur-md" onClick={() => setDeleteConfirm(null)} style={{ animation: 'fadeIn 0.2s ease-out' }} />
-          <div className="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center" style={{ animation: 'modalIn 0.35s cubic-bezier(0.16, 1, 0.3, 1)' }}>
-            <Trash2 className="w-12 h-12 text-red-500 mx-auto mb-4" /><h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć komentarz?</h3>
-            <p className="text-sm text-zinc-500 mb-6">Treść zostanie ukryta, ale wątek zachowany.</p>
-            <div className="flex gap-3 justify-center"><button onClick={() => setDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button><button onClick={softDelete} className="btn-danger text-sm">Usuń</button></div>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/30 dark:bg-zinc-950/70 backdrop-blur-md" onClick={() => setDeleteConfirm(null)} style={{ animation: 'fadeIn 0.2s ease-out' }} />
+          <div className="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center z-[101]" style={{ animation: 'modalIn 0.35s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+            <Trash2 className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć komentarz?</h3>
+            <p className="text-sm text-zinc-500 mb-6">Treść zostanie ukryta, wątek zachowany.</p>
+            <div className="flex gap-3 justify-center">
+              <button onClick={() => setDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button>
+              <button onClick={softDelete} className="btn-danger text-sm">Usuń</button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Hard delete confirmation (dev) — fixed center */}
+      {/* ─── Hard delete modal (dev) ─── */}
       {hardDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/30 dark:bg-zinc-950/70 backdrop-blur-md" onClick={() => setHardDeleteConfirm(null)} style={{ animation: 'fadeIn 0.2s ease-out' }} />
-          <div className="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center" style={{ animation: 'modalIn 0.35s cubic-bezier(0.16, 1, 0.3, 1)' }}>
-            <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" /><h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć całkowicie?</h3>
-            <p className="text-sm text-zinc-500 mb-6">Komentarz i {replyCount(hardDeleteConfirm)} odpowiedzi zostaną permanentnie usunięte.</p>
-            <div className="flex gap-3 justify-center"><button onClick={() => setHardDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button><button onClick={hardDelete} className="btn-danger text-sm">Usuń permanentnie</button></div>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/30 dark:bg-zinc-950/70 backdrop-blur-md" onClick={() => setHardDeleteConfirm(null)} style={{ animation: 'fadeIn 0.2s ease-out' }} />
+          <div className="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center z-[101]" style={{ animation: 'modalIn 0.35s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+            <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć permanentnie?</h3>
+            <p className="text-sm text-zinc-500 mb-6">Komentarz i wszystkie odpowiedzi zostaną usunięte na zawsze.</p>
+            <div className="flex gap-3 justify-center">
+              <button onClick={() => setHardDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button>
+              <button onClick={hardDelete} className="btn-danger text-sm">Usuń permanentnie</button>
+            </div>
           </div>
         </div>
       )}
