@@ -155,9 +155,9 @@ export default function DateTimePicker({ value, onChange, label }) {
                 onClick={() => selectDay(day)}
                 className={`w-9 h-9 mx-auto rounded-xl text-sm font-medium transition-all flex items-center justify-center ${
                   isSelected(day)
-                    ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20 font-bold'
+                    ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20 font-bold'
                     : isToday(day)
-                      ? 'bg-rose-50 dark:bg-rose-500/10 text-rose-500 dark:text-rose-400 font-bold'
+                      ? 'bg-violet-50 dark:bg-violet-500/10 text-violet-500 dark:text-violet-400 font-bold'
                       : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
                 }`}
               >
@@ -176,7 +176,7 @@ export default function DateTimePicker({ value, onChange, label }) {
               value={hour}
               onChange={e => handleHour(e.target.value)}
               onBlur={handleTimeBlur}
-              className="w-12 px-2 py-1.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-center font-mono text-sm font-bold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+              className="w-12 px-2 py-1.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-center font-mono text-sm font-bold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
               placeholder="GG"
             />
             <span className="text-zinc-400 font-bold">:</span>
@@ -187,7 +187,7 @@ export default function DateTimePicker({ value, onChange, label }) {
               value={minute}
               onChange={e => handleMinute(e.target.value)}
               onBlur={handleTimeBlur}
-              className="w-12 px-2 py-1.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-center font-mono text-sm font-bold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+              className="w-12 px-2 py-1.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-center font-mono text-sm font-bold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
               placeholder="MM"
             />
             <button
@@ -205,7 +205,7 @@ export default function DateTimePicker({ value, onChange, label }) {
                 setMinute(m);
                 emitChange(now.getDate(), now.getMonth(), now.getFullYear(), h, m);
               }}
-              className="ml-auto text-[11px] font-bold text-rose-500 hover:text-rose-400 transition-colors"
+              className="ml-auto text-[11px] font-bold text-violet-500 hover:text-violet-400 transition-colors"
             >
               Teraz
             </button>

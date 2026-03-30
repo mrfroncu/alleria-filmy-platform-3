@@ -344,7 +344,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
             <Lock className="w-16 h-16 text-red-500 mx-auto mb-4" />
             <p className="text-white text-lg font-bold mb-2">Przechwytywanie zablokowane</p>
             <p className="text-zinc-400 text-sm">Zamknij narzędzia deweloperskie, aby kontynuować oglądanie.</p>
-            <button onClick={() => setCaptureDetected(false)} className="mt-6 px-6 py-3 bg-rose-500 text-white rounded-xl font-bold text-sm hover:bg-rose-600 transition-colors">
+            <button onClick={() => setCaptureDetected(false)} className="mt-6 px-6 py-3 bg-violet-500 text-white rounded-xl font-bold text-sm hover:bg-violet-600 transition-colors">
               Sprawdź ponownie
             </button>
           </div>
@@ -355,7 +355,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
       {loading && (
         <div className="absolute inset-0 bg-black flex items-center justify-center z-30">
           <div className="text-center">
-            <div className="w-10 h-10 border-4 border-rose-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <div className="w-10 h-10 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
             <p className="text-zinc-400 text-sm">Ładowanie streamu...</p>
           </div>
         </div>
@@ -382,7 +382,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
               />
               {/* Playback bar */}
               <div
-                className="h-full bg-rose-500 rounded-full relative z-10"
+                className="h-full bg-violet-500 rounded-full relative z-10"
                 style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }}
               >
                 <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow opacity-0 group-hover/bar:opacity-100 transition-opacity" />
@@ -392,10 +392,10 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
 
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <button onClick={togglePlay} className="p-1.5 text-white hover:text-rose-400 transition-colors">
+              <button onClick={togglePlay} className="p-1.5 text-white hover:text-violet-400 transition-colors">
                 {playing ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" fill="white" />}
               </button>
-              <button onClick={() => { videoRef.current.muted = !muted; setMuted(!muted); }} className="p-1.5 text-white hover:text-rose-400 transition-colors">
+              <button onClick={() => { videoRef.current.muted = !muted; setMuted(!muted); }} className="p-1.5 text-white hover:text-violet-400 transition-colors">
                 {muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
               </button>
               <span className="text-white/80 text-xs font-mono">
@@ -407,7 +407,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
               {/* Quality selector */}
               {qualities.length > 1 && (
                 <div className="relative">
-                  <button onClick={() => setShowQuality(!showQuality)} className="p-1.5 text-white hover:text-rose-400 transition-colors flex items-center gap-1">
+                  <button onClick={() => setShowQuality(!showQuality)} className="p-1.5 text-white hover:text-violet-400 transition-colors flex items-center gap-1">
                     <Settings className="w-4 h-4" />
                     <span className="text-[11px] font-bold">
                       {currentQuality === -1 ? 'Auto' : qualities.find(q => q.index === currentQuality)?.label || 'Auto'}
@@ -415,11 +415,11 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
                   </button>
                   {showQuality && (
                     <div className="absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur rounded-xl border border-white/10 py-1 min-w-[120px]">
-                      <button onClick={() => changeQuality(-1)} className={`w-full text-left px-4 py-2 text-sm ${currentQuality === -1 ? 'text-rose-400 font-bold' : 'text-white'} hover:bg-white/10`}>
+                      <button onClick={() => changeQuality(-1)} className={`w-full text-left px-4 py-2 text-sm ${currentQuality === -1 ? 'text-violet-400 font-bold' : 'text-white'} hover:bg-white/10`}>
                         Auto
                       </button>
                       {qualities.map(q => (
-                        <button key={q.index} onClick={() => changeQuality(q.index)} className={`w-full text-left px-4 py-2 text-sm ${currentQuality === q.index ? 'text-rose-400 font-bold' : 'text-white'} hover:bg-white/10`}>
+                        <button key={q.index} onClick={() => changeQuality(q.index)} className={`w-full text-left px-4 py-2 text-sm ${currentQuality === q.index ? 'text-violet-400 font-bold' : 'text-white'} hover:bg-white/10`}>
                           {q.label}
                         </button>
                       ))}
@@ -428,7 +428,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
                 </div>
               )}
 
-              <button onClick={toggleFullscreen} className="p-1.5 text-white hover:text-rose-400 transition-colors">
+              <button onClick={toggleFullscreen} className="p-1.5 text-white hover:text-violet-400 transition-colors">
                 <Maximize className="w-5 h-5" />
               </button>
             </div>

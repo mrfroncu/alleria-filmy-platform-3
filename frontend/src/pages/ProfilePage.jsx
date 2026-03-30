@@ -57,8 +57,8 @@ export default function ProfilePage() {
     <div className="p-6 sm:p-10 max-w-3xl mx-auto animate-fade-in">
       <div className="mb-10">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 bg-rose-50 dark:bg-rose-500/10 rounded-xl flex items-center justify-center">
-            <User className="w-5 h-5 text-rose-500" />
+          <div className="w-10 h-10 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center">
+            <User className="w-5 h-5 text-violet-500" />
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Mój profil</h1>
         </div>
@@ -112,7 +112,7 @@ export default function ProfilePage() {
                 ) : (
                   <p className="text-sm text-zinc-400 italic mb-4">Brak opisu — kliknij edytuj, żeby dodać.</p>
                 )}
-                <button onClick={() => setEditing(true)} className="inline-flex items-center gap-2 text-sm font-bold text-rose-500 dark:text-rose-400 hover:text-rose-500 transition-colors">
+                <button onClick={() => setEditing(true)} className="inline-flex items-center gap-2 text-sm font-bold text-violet-500 dark:text-violet-400 hover:text-violet-500 transition-colors">
                   <Pencil className="w-4 h-4" /> Edytuj profil
                 </button>
               </>
@@ -124,8 +124,8 @@ export default function ProfilePage() {
       {/* Stats Grid */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="card p-5 text-center">
-          <div className="w-10 h-10 bg-rose-50 dark:bg-rose-500/10 rounded-xl flex items-center justify-center mx-auto mb-3">
-            <Eye className="w-5 h-5 text-rose-500" />
+          <div className="w-10 h-10 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center mx-auto mb-3">
+            <Eye className="w-5 h-5 text-violet-500" />
           </div>
           <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{profile.viewCount}</p>
           <p className="text-[11px] text-zinc-500 font-medium mt-1">Obejrzanych</p>

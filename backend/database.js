@@ -130,7 +130,10 @@ function initDB() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       video_id INTEGER NOT NULL,
       user_id INTEGER NOT NULL,
+      parent_id INTEGER REFERENCES comments(id) ON DELETE CASCADE,
       content TEXT NOT NULL,
+      edited INTEGER DEFAULT 0,
+      edit_history TEXT DEFAULT '[]',
       created_at DATETIME DEFAULT (datetime('now')),
       FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -150,7 +153,9 @@ function initDB() {
   try { db.exec(`ALTER TABLE categories ADD COLUMN webhook_template TEXT DEFAULT ''`); } catch (e) {}
   try { db.exec(`ALTER TABLE users ADD COLUMN discord_roles TEXT DEFAULT '[]'`); } catch (e) {}
   try { db.exec(`ALTER TABLE videos ADD COLUMN published INTEGER DEFAULT 1`); } catch (e) {}
-  // published=1 means visible, published=0 means scheduled (future date)
+  try { db.exec(`ALTER TABLE comments ADD COLUMN parent_id INTEGER REFERENCES comments(id) ON DELETE CASCADE`); } catch (e) {}
+  try { db.exec(`ALTER TABLE comments ADD COLUMN edited INTEGER DEFAULT 0`); } catch (e) {}
+  try { db.exec(`ALTER TABLE comments ADD COLUMN edit_history TEXT DEFAULT '[]'`); } catch (e) {}
 
   return db;
 }

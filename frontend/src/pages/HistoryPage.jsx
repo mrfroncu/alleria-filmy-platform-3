@@ -54,7 +54,7 @@ export default function HistoryPage() {
           {Object.entries(grouped).map(([day, items]) => (
             <div key={day}>
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-2 h-2 rounded-full bg-rose-500" />
+                <div className="w-2 h-2 rounded-full bg-violet-500" />
                 <h2 className="text-sm font-bold text-zinc-500 dark:text-zinc-400 font-display uppercase tracking-wider">{day}</h2>
                 <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800" />
               </div>
@@ -76,7 +76,7 @@ export default function HistoryPage() {
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-sm font-bold text-zinc-900 dark:text-white truncate group-hover:text-rose-500 dark:group-hover:text-rose-400 transition-colors">
+                      <h3 className="text-sm font-bold text-zinc-900 dark:text-white truncate group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors">
                         {item.title}
                       </h3>
                       <p className="text-xs text-zinc-500 mt-0.5">{item.author_display_name || item.author_name}</p>

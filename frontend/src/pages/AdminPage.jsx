@@ -162,8 +162,8 @@ export default function AdminPage() {
 
           {/* Bulk action toolbar */}
           {selectedIds.length > 0 && (
-            <div className="mb-4 p-4 bg-rose-50 dark:bg-rose-500/10 rounded-2xl border border-rose-200 dark:border-rose-500/20 flex flex-wrap items-center gap-3 animate-slide-up">
-              <span className="text-sm font-bold text-rose-600 dark:text-rose-300">Zaznaczono: {selectedIds.length}</span>
+            <div className="mb-4 p-4 bg-violet-50 dark:bg-violet-500/10 rounded-2xl border border-violet-200 dark:border-violet-500/20 flex flex-wrap items-center gap-3 animate-slide-up">
+              <span className="text-sm font-bold text-violet-600 dark:text-violet-300">Zaznaczono: {selectedIds.length}</span>
               <select value={bulkAction} onChange={e => { setBulkAction(e.target.value); setBulkValue(''); }} className="input-field !py-2 !px-3 text-sm !w-auto min-w-[160px]">
                 <option value="">Wybierz akcję...</option>
                 <option value="change_category">Zmień kategorię</option>
@@ -200,7 +200,7 @@ export default function AdminPage() {
                 <thead>
                   <tr className="border-b border-zinc-200 dark:border-zinc-800">
                     <th className="w-10 px-3 py-4">
-                      <button onClick={toggleSelectAll} className="text-zinc-400 hover:text-rose-500 transition-colors">
+                      <button onClick={toggleSelectAll} className="text-zinc-400 hover:text-violet-500 transition-colors">
                         {selectedIds.length === filteredVideos.length && filteredVideos.length > 0 ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                       </button>
                     </th>
@@ -226,10 +226,10 @@ export default function AdminPage() {
                     </tr>
                   ) : (
                     filteredVideos.map(video => (
-                      <tr key={video.id} className={`border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-white/[0.02] transition-colors ${selectedIds.includes(video.id) ? 'bg-rose-50/50 dark:bg-rose-500/5' : ''}`}>
+                      <tr key={video.id} className={`border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-white/[0.02] transition-colors ${selectedIds.includes(video.id) ? 'bg-violet-50/50 dark:bg-violet-500/5' : ''}`}>
                         <td className="w-10 px-3 py-3">
-                          <button onClick={() => toggleSelect(video.id)} className="text-zinc-400 hover:text-rose-500 transition-colors">
-                            {selectedIds.includes(video.id) ? <CheckSquare className="w-4 h-4 text-rose-500" /> : <Square className="w-4 h-4" />}
+                          <button onClick={() => toggleSelect(video.id)} className="text-zinc-400 hover:text-violet-500 transition-colors">
+                            {selectedIds.includes(video.id) ? <CheckSquare className="w-4 h-4 text-violet-500" /> : <Square className="w-4 h-4" />}
                           </button>
                         </td>
                         <td className="px-4 py-3 text-xs font-mono text-zinc-400">{video.id}</td>
@@ -253,7 +253,7 @@ export default function AdminPage() {
                         </td>
                         <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400 truncate max-w-[120px]">{video.author_display_name || video.author_name}</td>
                         <td className="px-4 py-3">
-                          <span className={`text-xs font-bold ${video.category_id ? 'text-rose-500 dark:text-rose-400' : 'text-zinc-400'}`}>
+                          <span className={`text-xs font-bold ${video.category_id ? 'text-violet-500 dark:text-violet-400' : 'text-zinc-400'}`}>
                             {getCatName(video.category_id)}
                           </span>
                         </td>
@@ -265,7 +265,7 @@ export default function AdminPage() {
                         <td className="px-4 py-3 text-xs text-zinc-500 font-mono whitespace-nowrap">{formatDate(video.publish_date)}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => { setEditingVideo(video); setIsModalOpen(true); }} className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors text-zinc-400 hover:text-rose-500 dark:hover:text-rose-400">
+                            <button onClick={() => { setEditingVideo(video); setIsModalOpen(true); }} className="p-1.5 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-lg transition-colors text-zinc-400 hover:text-violet-500 dark:hover:text-violet-400">
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
                             <button onClick={() => setDeleteConfirm(video)} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors text-zinc-400 hover:text-red-600 dark:hover:text-red-400">
@@ -383,10 +383,10 @@ export default function AdminPage() {
         <div>
           {/* Sub-tabs */}
           <div className="flex gap-2 mb-6">
-            <button onClick={() => setLogSubTab('watch')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${logSubTab === 'watch' ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}>
+            <button onClick={() => setLogSubTab('watch')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${logSubTab === 'watch' ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}>
               <Eye className="w-4 h-4 inline mr-2" />Logi wyświetleń ({watchLogsMeta.total})
             </button>
-            <button onClick={() => setLogSubTab('login')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${logSubTab === 'login' ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}>
+            <button onClick={() => setLogSubTab('login')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${logSubTab === 'login' ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}>
               <LogIn className="w-4 h-4 inline mr-2" />Logi logowania ({loginLogsMeta.total})
             </button>
           </div>
@@ -421,7 +421,7 @@ export default function AdminPage() {
                   <div className="flex gap-1">
                     {Array.from({ length: Math.min(watchLogsMeta.totalPages, 10) }, (_, i) => i + 1).map(p => (
                       <button key={p} onClick={() => { api.getWatchLogs(p).then(r => { setWatchLogs(r.logs); setWatchLogsMeta({ total: r.total, page: r.page, totalPages: r.totalPages }); }); }}
-                        className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${p === watchLogsMeta.page ? 'bg-rose-500 text-white' : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>{p}</button>
+                        className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${p === watchLogsMeta.page ? 'bg-violet-500 text-white' : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>{p}</button>
                     ))}
                     {watchLogsMeta.totalPages > 10 && <span className="text-xs text-zinc-400 px-2">...</span>}
                   </div>
@@ -468,7 +468,7 @@ export default function AdminPage() {
                   <div className="flex gap-1">
                     {Array.from({ length: Math.min(loginLogsMeta.totalPages, 10) }, (_, i) => i + 1).map(p => (
                       <button key={p} onClick={() => { api.getLoginLogs(p).then(r => { setLoginLogs(r.logs); setLoginLogsMeta({ total: r.total, page: r.page, totalPages: r.totalPages }); }); }}
-                        className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${p === loginLogsMeta.page ? 'bg-rose-500 text-white' : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>{p}</button>
+                        className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${p === loginLogsMeta.page ? 'bg-violet-500 text-white' : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>{p}</button>
                     ))}
                     {loginLogsMeta.totalPages > 10 && <span className="text-xs text-zinc-400 px-2">...</span>}
                   </div>

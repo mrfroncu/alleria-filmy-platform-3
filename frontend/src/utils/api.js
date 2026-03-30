@@ -153,8 +153,11 @@ export const api = {
 
   // Comments
   getComments: (videoId) => request(`/videos/${videoId}/comments`),
-  addComment: (videoId, content) => request(`/videos/${videoId}/comments`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }),
+  addComment: (videoId, content, parentId) => request(`/videos/${videoId}/comments`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, parent_id: parentId || null }),
+  }),
+  editComment: (commentId, content, silent) => request(`/comments/${commentId}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, silent: !!silent }),
   }),
   deleteComment: (commentId) => request(`/comments/${commentId}`, { method: 'DELETE' }),
   addAdminComment: (data) => request('/comments/admin', {

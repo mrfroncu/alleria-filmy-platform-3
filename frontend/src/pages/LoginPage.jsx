@@ -54,17 +54,17 @@ export default function LoginPage() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-white dark:bg-zinc-950 p-4 text-center relative overflow-hidden transition-colors duration-300">
       {/* Background Gradients */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-        <div className="absolute -top-1/4 -left-1/4 w-[80%] h-[80%] bg-rose-500/10 dark:bg-rose-500/20 rounded-full blur-[120px]" />
+        <div className="absolute -top-1/4 -left-1/4 w-[80%] h-[80%] bg-violet-500/10 dark:bg-violet-500/20 rounded-full blur-[120px]" />
         <div className="absolute -bottom-1/4 -right-1/4 w-[80%] h-[80%] bg-fuchsia-600/10 dark:bg-fuchsia-600/20 rounded-full blur-[120px]" />
       </div>
 
       <div className="max-w-md w-full bg-zinc-50/50 dark:bg-white/5 backdrop-blur-2xl p-8 sm:p-12 rounded-[48px] shadow-2xl border border-zinc-200 dark:border-white/10 relative z-10 animate-slide-up">
-        <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-rose-500/10 to-fuchsia-500/10 rounded-[32px] flex items-center justify-center mx-auto mb-8 sm:mb-10 shadow-2xl shadow-rose-500/20 border border-white/10 overflow-hidden">
+        <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10 rounded-[32px] flex items-center justify-center mx-auto mb-8 sm:mb-10 shadow-2xl shadow-violet-500/20 border border-white/10 overflow-hidden">
           <img src="https://alleria.pl/image/logo-clr.png" alt="Alleria" className="w-16 h-16 sm:w-20 sm:h-20 object-contain" />
         </div>
 
         <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-2 text-zinc-900 dark:text-white font-display">ALLERIA</h1>
-        <p className="text-lg sm:text-xl font-bold tracking-[0.3em] text-rose-500 mb-6 font-display">FILMY</p>
+        <p className="text-lg sm:text-xl font-bold tracking-[0.3em] text-violet-500 mb-6 font-display">FILMY</p>
         <p className="text-zinc-500 dark:text-zinc-400 mb-8 sm:mb-12 leading-relaxed text-base sm:text-lg">
           Prywatna platforma wideo społeczności Alleria. Zaloguj się, aby uzyskać dostęp.
         </p>
@@ -121,7 +121,7 @@ export default function LoginPage() {
 
       <p className="mt-8 text-xs text-zinc-400 dark:text-zinc-600 relative z-10">
         © 2025 - {getCurrentYear()} Alleria.pl | built by{' '}
-        <a href="https://github.com/mrfroncu" target="_blank" rel="noopener noreferrer" className="text-rose-500 hover:text-rose-400 transition-colors">Matthew</a>
+        <a href="https://github.com/mrfroncu" target="_blank" rel="noopener noreferrer" className="text-violet-500 hover:text-violet-400 transition-colors">Matthew</a>
       </p>
     </div>
   );

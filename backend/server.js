@@ -1097,7 +1097,8 @@ app.delete('/api/favorites/:videoId', requireAuth, (req, res) => {
 
 app.get('/api/favorites/check/:videoId', requireAuth, (req, res) => {
   const fav = db.prepare('SELECT 1 FROM favorites WHERE user_id = ? AND video_id = ?').get(req.session.user.id, req.params.videoId);
-  res.json({ isFavorite: !!fav });
+  const count = db.prepare('SELECT COUNT(*) AS c FROM favorites WHERE video_id = ?').get(req.params.videoId);
+  res.json({ isFavorite: !!fav, count: count?.c || 0 });
 });
 
 // ============ WATCH HISTORY (personal) ============
@@ -1585,49 +1586,72 @@ app.post('/api/stream/cleanup', requireDev, async (req, res) => {
 });
 
 // ============ COMMENTS ============
-// Get comments for a video
 app.get('/api/videos/:id/comments', requireAuth, (req, res) => {
   try {
     const comments = db.prepare(`
       SELECT c.*, u.username, u.display_name, u.avatar
       FROM comments c JOIN users u ON c.user_id = u.id
-      WHERE c.video_id = ? ORDER BY c.created_at DESC
+      WHERE c.video_id = ? ORDER BY c.created_at ASC
     `).all(req.params.id);
     res.json(comments);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Add comment
 app.post('/api/videos/:id/comments', requireAuth, (req, res) => {
   try {
-    const { content } = req.body;
-    if (!content || !content.trim()) return res.status(400).json({ error: 'Treść komentarza jest wymagana.' });
-    const result = db.prepare('INSERT INTO comments (video_id, user_id, content) VALUES (?, ?, ?)').run(req.params.id, req.session.user.id, content.trim());
+    const { content, parent_id } = req.body;
+    if (!content || !content.trim()) return res.status(400).json({ error: 'Treść wymagana.' });
+    const result = db.prepare('INSERT INTO comments (video_id, user_id, content, parent_id) VALUES (?, ?, ?, ?)').run(req.params.id, req.session.user.id, content.trim(), parent_id || null);
     const comment = db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(result.lastInsertRowid);
     res.json(comment);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Delete comment (own or admin/dev)
+// Edit comment
+app.put('/api/comments/:id', requireAuth, (req, res) => {
+  try {
+    const comment = db.prepare('SELECT * FROM comments WHERE id = ?').get(req.params.id);
+    if (!comment) return res.status(404).json({ error: 'Nie znaleziono.' });
+    const isOwner = comment.user_id === req.session.user.id;
+    const isDev = req.session.user.role === 'dev';
+    if (!isOwner && !isDev) return res.status(403).json({ error: 'Brak uprawnień.' });
+
+    const { content, silent } = req.body;
+    if (!content?.trim()) return res.status(400).json({ error: 'Treść wymagana.' });
+
+    if (silent && isDev) {
+      // Dev silent edit — no edit trace
+      db.prepare('UPDATE comments SET content = ? WHERE id = ?').run(content.trim(), req.params.id);
+    } else {
+      // Normal edit — save history
+      let history = [];
+      try { history = JSON.parse(comment.edit_history || '[]'); } catch (e) {}
+      history.push({ content: comment.content, date: new Date().toISOString() });
+      db.prepare('UPDATE comments SET content = ?, edited = 1, edit_history = ? WHERE id = ?').run(content.trim(), JSON.stringify(history), req.params.id);
+    }
+
+    const updated = db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(req.params.id);
+    res.json(updated);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.delete('/api/comments/:id', requireAuth, (req, res) => {
   try {
     const comment = db.prepare('SELECT * FROM comments WHERE id = ?').get(req.params.id);
-    if (!comment) return res.status(404).json({ error: 'Komentarz nie istnieje.' });
+    if (!comment) return res.status(404).json({ error: 'Nie znaleziono.' });
     const isOwner = comment.user_id === req.session.user.id;
     const isAdmin = req.session.user.role === 'admin' || req.session.user.role === 'dev';
     if (!isOwner && !isAdmin) return res.status(403).json({ error: 'Brak uprawnień.' });
-    db.prepare('DELETE FROM comments WHERE id = ?').run(req.params.id);
+    db.prepare('DELETE FROM comments WHERE id = ? OR parent_id = ?').run(req.params.id, req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Dev: add comment as another user with custom date
 app.post('/api/comments/admin', requireDev, (req, res) => {
   try {
-    const { video_id, user_id, content, created_at } = req.body;
+    const { video_id, user_id, content, created_at, parent_id } = req.body;
     if (!video_id || !user_id || !content) return res.status(400).json({ error: 'video_id, user_id, content required' });
-    const dateStr = created_at || new Date().toISOString();
-    const result = db.prepare('INSERT INTO comments (video_id, user_id, content, created_at) VALUES (?, ?, ?, ?)').run(video_id, user_id, content.trim(), dateStr);
+    const result = db.prepare('INSERT INTO comments (video_id, user_id, content, created_at, parent_id) VALUES (?, ?, ?, ?, ?)').run(video_id, user_id, content.trim(), created_at || new Date().toISOString(), parent_id || null);
     const comment = db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(result.lastInsertRowid);
     res.json(comment);
   } catch (err) { res.status(500).json({ error: err.message }); }
