@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle } from 'lucide-react';
@@ -10,28 +10,21 @@ import VideoModal from '../components/VideoModal';
 
 function Portal({ children }) { return ReactDOM.createPortal(children, document.body); }
 
-// HTML embed via iframe — writes directly to iframe document, supports inline JS handlers
+// Blob URL iframe — creates a local blob:// URL from HTML string
+// This is the ONLY reliable way to render arbitrary HTML with inline JS handlers
+// doc.write() fails behind Cloudflare, srcDoc gets escaped by React, dangerouslySetInnerHTML strips JS
 function HtmlEmbed({ html }) {
-  const ref = useRef(null);
+  const [blobUrl, setBlobUrl] = useState(null);
   useEffect(() => {
-    const iframe = ref.current;
-    if (!iframe || !html) return;
-    // Wait for iframe to be ready
-    const write = () => {
-      try {
-        const doc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (!doc) return;
-        doc.open();
-        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center}</style></head><body>${html}</body></html>`);
-        doc.close();
-      } catch (e) { console.error('[HtmlEmbed] write error:', e); }
-    };
-    // Try immediately, retry on load
-    write();
-    iframe.addEventListener('load', write, { once: true });
+    if (!html) return;
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center}</style></head><body>${html}</body></html>`;
+    const blob = new Blob([fullHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    setBlobUrl(url);
+    return () => URL.revokeObjectURL(url);
   }, [html]);
-  // No sandbox — content is admin-supplied, needs full JS support (onmouseover etc.)
-  return <iframe ref={ref} className="w-full h-full border-0" allowFullScreen />;
+  if (!blobUrl) return null;
+  return <iframe src={blobUrl} className="w-full h-full border-0" allowFullScreen />;
 }
 
 // Comment — stable component outside render
@@ -122,27 +115,35 @@ export default function VideoPage() {
   const [devDate, setDevDate] = useState('');
   const [devParent, setDevParent] = useState('');
   const [allUsers, setAllUsers] = useState([]);
-  const [animKey, setAnimKey] = useState(0);
-  const [exiting, setExiting] = useState(false);
-  const [exitClass, setExitClass] = useState('');
+  
+  // Animation state machine: 'show' | 'exiting' | 'hidden' | 'entering'
+  const [phase, setPhase] = useState('show');
+  const [exitDir, setExitDir] = useState('');
+  const [pendingSlide, setPendingSlide] = useState(slideDir); // 'left' | 'right' | ''
 
   useEffect(() => {
-    // Don't clear video when switching — prevents flash. Keep old content during load.
     setActiveSource('main');
     setPrevVideo(null); setNextVideo(null);
     setEditingComment(null); setEditContent('');
     setComments([]); setReplyTo(null);
-    setExiting(false); setExitClass('');
     const vid = Number(id);
-    const isSwitch = !!video; // true if switching between videos (not first load)
-    if (!isSwitch) setLoading(true);
+    const isSwitch = !!video;
+    
+    // If switching between videos, go to hidden phase (between exit and enter)
+    if (isSwitch) {
+      setPhase('hidden');
+    } else {
+      setLoading(true);
+    }
+    
     Promise.all([
       api.getVideo(id),
       api.checkFavorite(id).catch(() => ({ isFavorite: false, count: 0 })),
     ]).then(([v, f]) => {
       setVideo(v); setIsFav(f.isFavorite); setFavCount(f.count || 0); setError(null);
-      // Trigger enter animation AFTER new data is set
-      setAnimKey(k => k + 1);
+      // NEW data is now in state → trigger enter animation
+      setPendingSlide(slideDir);
+      setPhase('entering');
       const admin = user?.role === 'admin' || user?.role === 'dev';
       if (admin) setCanEdit(true);
       else if (v.category_id) api.getCategories().then(cats => setCanEdit(cats.find(c => c.id === v.category_id)?.canEdit || false)).catch(() => setCanEdit(false));
@@ -160,11 +161,10 @@ export default function VideoPage() {
 
   useEffect(() => { if (user?.role === 'dev' && devOpen && !allUsers.length) api.getAllUsers().then(setAllUsers).catch(() => {}); }, [devOpen]);
 
-  // Navigate with exit animation first, then enter from other side
   const goToVideo = (videoId, dir) => {
-    if (exiting) return;
-    setExiting(true);
-    setExitClass(dir === 'next' ? 'anim-exit-left' : 'anim-exit-right');
+    if (phase === 'exiting') return;
+    setPhase('exiting');
+    setExitDir(dir === 'next' ? 'anim-exit-left' : 'anim-exit-right');
     const p = new URLSearchParams();
     if (fromCategory) p.set('from', fromCategory);
     p.set('slide', dir === 'next' ? 'right' : 'left');
@@ -215,13 +215,13 @@ export default function VideoPage() {
   ];
   const isDev = user?.role === 'dev';
   const activeCount = comments.filter(c => !c.deleted).length;
-  const enterClass = slideDir === 'right' ? 'anim-enter-right' : slideDir === 'left' ? 'anim-enter-left' : 'anim-enter-up';
+  // Animation class based on phase
+  const enterAnim = pendingSlide === 'right' ? 'anim-enter-right' : pendingSlide === 'left' ? 'anim-enter-left' : 'anim-enter-up';
+  const wrapperClass = phase === 'exiting' ? exitDir : phase === 'entering' ? enterAnim : phase === 'hidden' ? 'opacity-0' : '';
 
   return (
     <>
-      {/* Outer div for exit animation, inner key={animKey} for enter animation on new data */}
-      <div className={exiting ? exitClass : ''} style={{ overflow: exiting ? 'hidden' : undefined }}>
-        <div key={animKey} className={`p-6 sm:p-10 max-w-5xl mx-auto ${!exiting ? enterClass : ''}`}>
+      <div className={`p-6 sm:p-10 max-w-5xl mx-auto ${wrapperClass}`} onAnimationEnd={() => { if (phase === 'entering') setPhase('show'); }}>
         <button onClick={() => navigate(fromCategory ? `/category/${fromCategory}` : '/')} className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white font-medium text-sm mb-6 hover:gap-3 transition-all active:scale-95">
           <ArrowLeft className="w-4 h-4" /> {fromCategory ? 'Wróć do kategorii' : 'Wróć do bazy'}
         </button>
@@ -315,7 +315,6 @@ export default function VideoPage() {
             <div className="space-y-1">{tree.map(c => <CommentNode key={c.id} c={c} depth={0} replies={c._replies} user={user} editingId={editingComment} editContent={editContent} setEditContent={setEditContent} silentEdit={silentEdit} setSilentEdit={setSilentEdit} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete} editHistoryId={editHistoryPopup} setEditHistoryId={setEditHistoryPopup} />)}</div>
           )}
         </div>
-      </div>
       </div>
 
       {/* All modals via Portal — always centered in viewport */}

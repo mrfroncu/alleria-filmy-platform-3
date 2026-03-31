@@ -794,6 +794,7 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
       }
     }
 
+    audit(req.session.user.id, "edit", "video", parseInt(req.params.id), req.body.title || "");
     res.json({ success: true });
   } catch (err) {
     console.error('Error updating video:', err);
@@ -803,9 +804,10 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
 
 app.delete('/api/videos/:id', requireAdmin, (req, res) => {
   try {
+    const vid = db.prepare('SELECT title FROM videos WHERE id = ?').get(req.params.id);
     db.prepare('DELETE FROM videos WHERE id = ?').run(req.params.id);
+    audit(req.session.user.id, "delete", "video", parseInt(req.params.id), vid?.title || "");
     res.json({ success: true });
-    audit(req.session.user.id, "delete", "video", parseInt(req.params.id), "");
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete video' });
   }
@@ -825,7 +827,9 @@ app.get('/api/tags', requireAuth, (req, res) => {
 
 app.delete('/api/tags/:id', requireAdmin, (req, res) => {
   try {
+    const tag = db.prepare('SELECT name FROM tags WHERE id = ?').get(req.params.id);
     db.prepare('DELETE FROM tags WHERE id = ?').run(req.params.id);
+    audit(req.session.user.id, "delete", "tag", parseInt(req.params.id), tag?.name || "");
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete tag' });
@@ -888,6 +892,7 @@ app.put('/api/categories/:id', requireDev, (req, res) => {
     const slug = name ? name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : undefined;
     if (name) db.prepare('UPDATE categories SET name=?, slug=?, description=?, icon=?, sort_order=?, parent_id=?, webhook_url=?, webhook_template=? WHERE id=?')
       .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', req.params.id);
+    audit(req.session.user.id, "edit", "category", parseInt(req.params.id), name || "");
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -899,6 +904,7 @@ app.delete('/api/categories/:id', requireDev, (req, res) => {
     if (cat) db.prepare('UPDATE categories SET parent_id = ? WHERE parent_id = ?').run(cat.parent_id || null, req.params.id);
     db.prepare('UPDATE videos SET category_id = NULL WHERE category_id = ?').run(req.params.id);
     db.prepare('DELETE FROM categories WHERE id = ?').run(req.params.id);
+    audit(req.session.user.id, "delete", "category", parseInt(req.params.id), cat?.name || "");
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1630,8 +1636,8 @@ app.put('/api/comments/:id', requireAuth, (req, res) => {
       db.prepare('UPDATE comments SET content = ?, edited = 1, edit_history = ? WHERE id = ?').run(content.trim(), JSON.stringify(history), req.params.id);
     }
     const updated = db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(req.params.id);
+    audit(req.session.user.id, "edit", "comment", parseInt(req.params.id), content.trim().slice(0, 100));
     res.json(updated);
-    audit(req.session.user.id, "edit", "comment", parseInt(req.params.id), editContent.trim ? "" : "");
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

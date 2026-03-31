@@ -331,7 +331,7 @@ export default function DebugPage() {
         </div>
 
         {/* Category Management */}
-        <div className="card p-8 xl:row-span-6">
+        <div className="card p-8 xl:row-span-5">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 bg-cyan-50 dark:bg-cyan-500/10 rounded-2xl flex items-center justify-center shrink-0">
               <FolderPlus className="w-6 h-6 text-cyan-500" />
