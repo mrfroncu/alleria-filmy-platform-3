@@ -83,15 +83,26 @@
 .animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
 .animate-float { animation: float 3s ease-in-out infinite; }
 
-/* Video page directional transitions */
-.video-enter-up { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.video-enter-left { animation: slideInLeft 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.video-enter-right { animation: slideInRight 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.video-exit-left { animation: slideOutLeft 0.3s cubic-bezier(0.55, 0, 1, 0.45) both; }
-.video-exit-right { animation: slideOutRight 0.3s cubic-bezier(0.55, 0, 1, 0.45) both; }
-.video-slide-left { animation: slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-.video-slide-right { animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-.video-slide-up { animation: slideUp 0.35s ease-out; }
+/* Video page directional transitions — DRAMATIC */
+@keyframes enterFromRight { from { opacity: 0; transform: translateX(100vw); } to { opacity: 1; transform: translateX(0); } }
+@keyframes enterFromLeft { from { opacity: 0; transform: translateX(-100vw); } to { opacity: 1; transform: translateX(0); } }
+@keyframes enterFromUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes exitToLeft { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(-100vw); } }
+@keyframes exitToRight { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(100vw); } }
+
+.anim-enter-right { animation: enterFromRight 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-enter-left { animation: enterFromLeft 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-enter-up { animation: enterFromUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-exit-left { animation: exitToLeft 0.35s cubic-bezier(0.55, 0, 1, 0.45) both; }
+.anim-exit-right { animation: exitToRight 0.35s cubic-bezier(0.55, 0, 1, 0.45) both; }
+
+/* Legacy compat */
+.video-enter-right { animation: enterFromRight 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.video-enter-left { animation: enterFromLeft 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.video-enter-up { animation: enterFromUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.video-slide-left { animation: enterFromLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.video-slide-right { animation: enterFromRight 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.video-slide-up { animation: enterFromUp 0.35s ease-out; }
 
 /* Interactive hover micro-animations */
 .hover-lift { @apply transition-all duration-300; }

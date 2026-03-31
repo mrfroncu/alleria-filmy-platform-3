@@ -192,7 +192,7 @@ app.get('/videos', requireToken, (req, res) => {
 });
 
 // ============ HEALTH & VERSION ============
-const STREAM_VERSION = '1.40';
+const STREAM_VERSION = '1.4.0';
 app.get('/health', (req, res) => {
   let ffmpegOk = false;
   try { execSync('ffmpeg -version', { stdio: 'pipe' }); ffmpegOk = true; } catch (e) {}
