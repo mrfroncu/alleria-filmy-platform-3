@@ -160,6 +160,17 @@ function initDB() {
 
   try { db.exec(`ALTER TABLE comments ADD COLUMN deleted INTEGER DEFAULT 0`); } catch (e) {}
 
+  // Audit logs
+  db.exec(`CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    action TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id INTEGER,
+    details TEXT DEFAULT '',
+    created_at DATETIME DEFAULT (datetime('now'))
+  )`);
+
   return db;
 }
 

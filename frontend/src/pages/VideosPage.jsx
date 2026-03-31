@@ -24,10 +24,11 @@ export default function VideosPage() {
   const [config, setConfig] = useState({ videosPerPage: 12, gridColumns: 3 });
 
   useEffect(() => {
-    Promise.all([api.getTags(), api.getAuthors(), api.getCategories(), api.getConfig()])
+    const tagPromise = categorySlug ? api.getCategoryTags(categorySlug) : api.getTags();
+    Promise.all([tagPromise, api.getAuthors(), api.getCategories(), api.getConfig()])
       .then(([t, a, c, cfg]) => { setTags(t); setAuthors(a); setCategories(c); if (cfg) setConfig(cfg); })
       .catch(console.error);
-  }, []);
+  }, [categorySlug]);
 
   useEffect(() => {
     if (tagId) setSelectedTags([parseInt(tagId)]);

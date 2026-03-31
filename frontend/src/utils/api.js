@@ -43,6 +43,7 @@ export const api = {
 
   // Tags
   getTags: (search) => request(`/tags${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+  getCategoryTags: (slug) => request(`/tags/category/${slug}`),
   deleteTag: (id) => request(`/tags/${id}`, { method: 'DELETE' }),
 
   // Categories
@@ -161,6 +162,10 @@ export const api = {
   }),
   deleteComment: (commentId) => request(`/comments/${commentId}`, { method: 'DELETE' }),
   hardDeleteComment: (commentId) => request(`/comments/${commentId}/hard`, { method: 'DELETE' }),
+  getAuditLogs: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/audit-logs${q ? `?${q}` : ''}`);
+  },
   addAdminComment: (data) => request('/comments/admin', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
   }),

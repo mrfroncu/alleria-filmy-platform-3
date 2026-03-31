@@ -663,6 +663,7 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
 
     const videoId = result.lastInsertRowid;
 
+    audit(req.session.user.id, "create", "video", videoId, title);
     // Mark self-hosted videos as transcoding
     if (stream_video_id) {
       db.prepare(`UPDATE videos SET stream_status = 'transcoding' WHERE id = ?`).run(videoId);
@@ -804,6 +805,7 @@ app.delete('/api/videos/:id', requireAdmin, (req, res) => {
   try {
     db.prepare('DELETE FROM videos WHERE id = ?').run(req.params.id);
     res.json({ success: true });
+    audit(req.session.user.id, "delete", "video", parseInt(req.params.id), "");
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete video' });
   }
@@ -874,6 +876,7 @@ app.post('/api/categories', requireDev, (req, res) => {
     const result = db.prepare('INSERT INTO categories (name, slug, description, icon, sort_order, parent_id, webhook_url, webhook_template) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '');
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(result.lastInsertRowid);
+    audit(req.session.user.id, "create", "category", cat.id, name);
     res.json({ success: true, category: cat });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1628,6 +1631,7 @@ app.put('/api/comments/:id', requireAuth, (req, res) => {
     }
     const updated = db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(req.params.id);
     res.json(updated);
+    audit(req.session.user.id, "edit", "comment", parseInt(req.params.id), editContent.trim ? "" : "");
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1641,6 +1645,7 @@ app.delete('/api/comments/:id', requireAuth, (req, res) => {
     // Soft delete — keep record for threaded replies
     db.prepare("UPDATE comments SET deleted = 1, content = '' WHERE id = ?").run(req.params.id);
     res.json({ success: true, soft: true });
+    audit(req.session.user.id, "delete", "comment", parseInt(req.params.id), "soft");
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1651,6 +1656,7 @@ app.delete('/api/comments/:id/hard', requireDev, (req, res) => {
     db.prepare('DELETE FROM comments WHERE parent_id = ?').run(req.params.id);
     db.prepare('DELETE FROM comments WHERE id = ?').run(req.params.id);
     res.json({ success: true, hard: true });
+    audit(req.session.user.id, "delete", "comment", parseInt(req.params.id), "hard");
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1688,6 +1694,43 @@ function logLogin(userId, username, method, ip, success, reason) {
     console.error('Failed to log login:', e);
   }
 }
+
+function audit(userId, action, entityType, entityId, details) {
+  try {
+    db.prepare('INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)')
+      .run(userId, action, entityType, entityId || null, typeof details === 'string' ? details : JSON.stringify(details || ''));
+  } catch (e) {}
+}
+
+// ============ AUDIT LOGS ============
+app.get('/api/audit-logs', requireDev, (req, res) => {
+  const { page = 1, type, action } = req.query;
+  const perPage = 50;
+  const offset = (parseInt(page) - 1) * perPage;
+  let where = '1=1';
+  const params = [];
+  if (type) { where += ' AND a.entity_type = ?'; params.push(type); }
+  if (action) { where += ' AND a.action = ?'; params.push(action); }
+  const total = db.prepare(`SELECT COUNT(*) AS c FROM audit_logs a WHERE ${where}`).get(...params).c;
+  const logs = db.prepare(`SELECT a.*, u.display_name, u.username FROM audit_logs a LEFT JOIN users u ON a.user_id = u.id WHERE ${where} ORDER BY a.created_at DESC LIMIT ? OFFSET ?`).all(...params, perPage, offset);
+  res.json({ logs, total, page: parseInt(page), totalPages: Math.ceil(total / perPage) });
+});
+
+// Tags used in a specific category
+app.get('/api/tags/category/:slug', requireAuth, (req, res) => {
+  try {
+    const cat = db.prepare('SELECT id FROM categories WHERE slug = ?').get(req.params.slug);
+    if (!cat) return res.json([]);
+    const tags = db.prepare(`
+      SELECT DISTINCT t.* FROM tags t
+      JOIN video_tags vt ON t.id = vt.tag_id
+      JOIN videos v ON vt.video_id = v.id
+      WHERE v.category_id = ?
+      ORDER BY t.name ASC
+    `).all(cat.id);
+    res.json(tags);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 // ============ SERVE FRONTEND ============
 const frontendPath = path.join(__dirname, '..', 'frontend', 'dist');

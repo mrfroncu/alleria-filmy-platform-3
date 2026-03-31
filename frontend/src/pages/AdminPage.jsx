@@ -4,6 +4,85 @@ import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import VideoModal from '../components/VideoModal';
 
+function AuditLogsTab() {
+  const [logs, setLogs] = React.useState([]);
+  const [total, setTotal] = React.useState(0);
+  const [page, setPage] = React.useState(1);
+  const [totalPages, setTotalPages] = React.useState(1);
+  const [filter, setFilter] = React.useState('');
+  const [actionFilter, setActionFilter] = React.useState('');
+
+  React.useEffect(() => {
+    const params = { page };
+    if (filter) params.type = filter;
+    if (actionFilter) params.action = actionFilter;
+    api.getAuditLogs(params).then(r => {
+      setLogs(r.logs || []);
+      setTotal(r.total || 0);
+      setTotalPages(r.totalPages || 1);
+    }).catch(() => {});
+  }, [page, filter, actionFilter]);
+
+  const entityColors = { video: 'bg-violet-100 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300', comment: 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300', category: 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', tag: 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' };
+  const actionColors = { create: 'text-emerald-600', edit: 'text-amber-600', delete: 'text-red-600' };
+
+  return (
+    <div>
+      <h2 className="text-xl font-bold text-zinc-900 dark:text-white font-display mb-4">Audit Logs ({total})</h2>
+      <div className="flex flex-wrap gap-2 mb-4">
+        {['', 'video', 'comment', 'category', 'tag'].map(t => (
+          <button key={t} onClick={() => { setFilter(t); setPage(1); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${filter === t ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}>
+            {t || 'Wszystkie'}
+          </button>
+        ))}
+        <span className="text-zinc-300 dark:text-zinc-700">|</span>
+        {['', 'create', 'edit', 'delete'].map(a => (
+          <button key={a} onClick={() => { setActionFilter(a); setPage(1); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${actionFilter === a ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}>
+            {a || 'Wszystkie akcje'}
+          </button>
+        ))}
+      </div>
+      <div className="card overflow-hidden">
+        {logs.length === 0 ? (
+          <p className="text-zinc-400 text-sm text-center py-8">Brak logów</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-zinc-50 dark:bg-zinc-800/50 text-left">
+                <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Data</th>
+                <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Użytkownik</th>
+                <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Akcja</th>
+                <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Typ</th>
+                <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">ID</th>
+                <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Szczegóły</th>
+              </tr></thead>
+              <tbody>
+                {logs.map(l => (
+                  <tr key={l.id} className="border-t border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
+                    <td className="px-4 py-2.5 font-mono text-xs text-zinc-400 whitespace-nowrap">{formatDate(l.created_at)}</td>
+                    <td className="px-4 py-2.5 text-zinc-900 dark:text-white font-medium text-xs">{l.display_name || l.username || '—'}</td>
+                    <td className="px-4 py-2.5"><span className={`font-bold text-xs ${actionColors[l.action] || 'text-zinc-500'}`}>{l.action}</span></td>
+                    <td className="px-4 py-2.5"><span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${entityColors[l.entity_type] || 'bg-zinc-100 text-zinc-500'}`}>{l.entity_type}</span></td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-zinc-400">{l.entity_id || '—'}</td>
+                    <td className="px-4 py-2.5 text-xs text-zinc-500 max-w-[200px] truncate">{l.details || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      {totalPages > 1 && (
+        <div className="flex justify-center gap-2 mt-4">
+          {Array.from({ length: totalPages }, (_, i) => i + 1).slice(Math.max(0, page - 3), page + 2).map(p => (
+            <button key={p} onClick={() => setPage(p)} className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${p === page ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900'}`}>{p}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [videos, setVideos] = useState([]);
   const [users, setUsers] = useState([]);
@@ -119,6 +198,7 @@ export default function AdminPage() {
     { key: 'videos', label: 'Biblioteka', icon: Film },
     { key: 'users', label: 'Użytkownicy', icon: Users },
     { key: 'logs', label: 'Logi', icon: Eye },
+    { key: 'audit', label: 'Audit', icon: Eye },
     { key: 'tags', label: 'Tagi', icon: Tag },
   ];
 
@@ -478,6 +558,9 @@ export default function AdminPage() {
           )}
         </div>
       )}
+
+      {/* === AUDIT TAB === */}
+      {tab === 'audit' && <AuditLogsTab />}
 
       {/* === TAGS TAB === */}
       {tab === 'tags' && (
