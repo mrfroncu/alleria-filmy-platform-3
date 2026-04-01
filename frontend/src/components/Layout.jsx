@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import {
   Film, Shield, LogOut, Menu, X, Sun, Moon, Bug, ChevronRight, ChevronDown,
-  Heart, Clock, BarChart3, User, FolderOpen
+  Heart, Clock, BarChart3, User, FolderOpen, FileText
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
 
@@ -176,7 +176,6 @@ export default function Layout({ children }) {
 
             <NavLink to="/favorites" icon={Heart} label="Ulubione" active={isActive('/favorites')} />
             <NavLink to="/history" icon={Clock} label="Historia" active={isActive('/history')} />
-            <NavLink to="/stats" icon={BarChart3} label="Statystyki" active={isActive('/stats')} />
           </nav>
 
           <SectionLabel label="Konto" />
@@ -189,6 +188,8 @@ export default function Layout({ children }) {
               <SectionLabel label="Administracja" />
               <nav className="space-y-0.5">
                 {isAdmin && <NavLink to="/admin" icon={Shield} label="Panel Redaktora" active={isActive('/admin')} />}
+                {isAdmin && <NavLink to="/stats" icon={BarChart3} label="Statystyki" active={isActive('/stats')} />}
+                {isDev && <NavLink to="/logs" icon={FileText} label="Logi systemowe" active={isActive('/logs')} />}
                 {isDev && <NavLink to="/debug" icon={Bug} label="Debug Tools" active={isActive('/debug')} />}
               </nav>
             </>

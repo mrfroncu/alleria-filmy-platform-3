@@ -1,97 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Users, Eye, LogIn, Tag, Film, Search, X, CheckSquare, Square } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users, Tag, Film, Search, X, CheckSquare, Square } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import VideoModal from '../components/VideoModal';
-
-function AuditLogsTab() {
-  const [logs, setLogs] = React.useState([]);
-  const [total, setTotal] = React.useState(0);
-  const [page, setPage] = React.useState(1);
-  const [totalPages, setTotalPages] = React.useState(1);
-  const [filter, setFilter] = React.useState('');
-  const [actionFilter, setActionFilter] = React.useState('');
-
-  React.useEffect(() => {
-    const params = { page };
-    if (filter) params.type = filter;
-    if (actionFilter) params.action = actionFilter;
-    api.getAuditLogs(params).then(r => {
-      setLogs(r.logs || []);
-      setTotal(r.total || 0);
-      setTotalPages(r.totalPages || 1);
-    }).catch(() => {});
-  }, [page, filter, actionFilter]);
-
-  const entityColors = { video: 'bg-violet-100 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300', comment: 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300', category: 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', tag: 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' };
-  const actionColors = { create: 'text-emerald-600', edit: 'text-amber-600', delete: 'text-red-600' };
-
-  return (
-    <div>
-      <h2 className="text-xl font-bold text-zinc-900 dark:text-white font-display mb-4">Audit Logs ({total})</h2>
-      <div className="flex flex-wrap gap-2 mb-4">
-        {['', 'video', 'comment', 'category', 'tag'].map(t => (
-          <button key={t} onClick={() => { setFilter(t); setPage(1); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${filter === t ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}>
-            {t || 'Wszystkie'}
-          </button>
-        ))}
-        <span className="text-zinc-300 dark:text-zinc-700">|</span>
-        {['', 'create', 'edit', 'delete'].map(a => (
-          <button key={a} onClick={() => { setActionFilter(a); setPage(1); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${actionFilter === a ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}>
-            {a || 'Wszystkie akcje'}
-          </button>
-        ))}
-      </div>
-      <div className="card overflow-hidden">
-        {logs.length === 0 ? (
-          <p className="text-zinc-400 text-sm text-center py-8">Brak logów</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="bg-zinc-50 dark:bg-zinc-800/50 text-left">
-                <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Data</th>
-                <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Użytkownik</th>
-                <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Akcja</th>
-                <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Typ</th>
-                <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">ID</th>
-                <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Szczegóły</th>
-              </tr></thead>
-              <tbody>
-                {logs.map(l => (
-                  <tr key={l.id} className="border-t border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
-                    <td className="px-4 py-2.5 font-mono text-xs text-zinc-400 whitespace-nowrap">{formatDate(l.created_at)}</td>
-                    <td className="px-4 py-2.5 text-zinc-900 dark:text-white font-medium text-xs">{l.display_name || l.username || '—'}</td>
-                    <td className="px-4 py-2.5"><span className={`font-bold text-xs ${actionColors[l.action] || 'text-zinc-500'}`}>{l.action}</span></td>
-                    <td className="px-4 py-2.5"><span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${entityColors[l.entity_type] || 'bg-zinc-100 text-zinc-500'}`}>{l.entity_type}</span></td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-zinc-400">{l.entity_id || '—'}</td>
-                    <td className="px-4 py-2.5 text-xs text-zinc-500 max-w-[200px] truncate">{l.details || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
-          {Array.from({ length: totalPages }, (_, i) => i + 1).slice(Math.max(0, page - 3), page + 2).map(p => (
-            <button key={p} onClick={() => setPage(p)} className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${p === page ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900'}`}>{p}</button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function AdminPage() {
   const [videos, setVideos] = useState([]);
   const [users, setUsers] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
-  const [watchLogs, setWatchLogs] = useState([]);
-  const [loginLogs, setLoginLogs] = useState([]);
-  const [watchLogsMeta, setWatchLogsMeta] = useState({ total: 0, page: 1, totalPages: 1 });
-  const [loginLogsMeta, setLoginLogsMeta] = useState({ total: 0, page: 1, totalPages: 1 });
-  const [logSubTab, setLogSubTab] = useState('watch');
   const [tags, setTags] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -118,19 +34,7 @@ export default function AdminPage() {
     setLoading(false);
   };
 
-  const loadLogs = async (watchPage, loginPage) => {
-    try {
-      const [wl, ll] = await Promise.all([
-        api.getWatchLogs(watchPage || watchLogsMeta.page),
-        api.getLoginLogs(loginPage || loginLogsMeta.page)
-      ]);
-      setWatchLogs(wl.logs || []); setWatchLogsMeta({ total: wl.total, page: wl.page, totalPages: wl.totalPages });
-      setLoginLogs(ll.logs || []); setLoginLogsMeta({ total: ll.total, page: ll.page, totalPages: ll.totalPages });
-    } catch (err) { console.error(err); }
-  };
-
   useEffect(() => { loadData(); }, []);
-  useEffect(() => { if (tab === 'logs') loadLogs(1, 1); }, [tab]);
 
   // Auto-poll transcode status every 15 seconds
   const [transcodeProgress, setTranscodeProgress] = useState({});
@@ -197,8 +101,6 @@ export default function AdminPage() {
   const tabs = [
     { key: 'videos', label: 'Biblioteka', icon: Film },
     { key: 'users', label: 'Użytkownicy', icon: Users },
-    { key: 'logs', label: 'Logi', icon: Eye },
-    { key: 'audit', label: 'Audit', icon: Eye },
     { key: 'tags', label: 'Tagi', icon: Tag },
   ];
 
@@ -457,110 +359,6 @@ export default function AdminPage() {
           </div>
         </div>
       )}
-
-      {/* === LOGS TAB === */}
-      {tab === 'logs' && (
-        <div>
-          {/* Sub-tabs */}
-          <div className="flex gap-2 mb-6">
-            <button onClick={() => setLogSubTab('watch')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${logSubTab === 'watch' ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}>
-              <Eye className="w-4 h-4 inline mr-2" />Logi wyświetleń ({watchLogsMeta.total})
-            </button>
-            <button onClick={() => setLogSubTab('login')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${logSubTab === 'login' ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}>
-              <LogIn className="w-4 h-4 inline mr-2" />Logi logowania ({loginLogsMeta.total})
-            </button>
-          </div>
-
-          {/* Watch logs */}
-          {logSubTab === 'watch' && (
-            <div className="card overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-zinc-200 dark:border-zinc-800">
-                      <th className="text-left px-6 py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Użytkownik</th>
-                      <th className="text-left px-6 py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Film</th>
-                      <th className="text-left px-6 py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Data</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {watchLogs.map(log => (
-                      <tr key={log.id} className="border-b border-zinc-100 dark:border-zinc-800/50">
-                        <td className="px-6 py-3 text-sm font-medium text-zinc-900 dark:text-white">{log.user_display || log.username}</td>
-                        <td className="px-6 py-3 text-sm text-zinc-600 dark:text-zinc-400">{log.video_title || `#${log.video_id}`}</td>
-                        <td className="px-6 py-3 text-sm text-zinc-500 font-mono">{formatDate(log.watched_at)}</td>
-                      </tr>
-                    ))}
-                    {watchLogs.length === 0 && <tr><td colSpan={3} className="px-6 py-8 text-center text-zinc-400 text-sm">Brak logów</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-              {watchLogsMeta.totalPages > 1 && (
-                <div className="flex items-center justify-between px-6 py-3 border-t border-zinc-200 dark:border-zinc-800">
-                  <span className="text-xs text-zinc-500">Strona {watchLogsMeta.page} z {watchLogsMeta.totalPages} ({watchLogsMeta.total} rekordów)</span>
-                  <div className="flex gap-1">
-                    {Array.from({ length: Math.min(watchLogsMeta.totalPages, 10) }, (_, i) => i + 1).map(p => (
-                      <button key={p} onClick={() => { api.getWatchLogs(p).then(r => { setWatchLogs(r.logs); setWatchLogsMeta({ total: r.total, page: r.page, totalPages: r.totalPages }); }); }}
-                        className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${p === watchLogsMeta.page ? 'bg-violet-500 text-white' : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>{p}</button>
-                    ))}
-                    {watchLogsMeta.totalPages > 10 && <span className="text-xs text-zinc-400 px-2">...</span>}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Login logs */}
-          {logSubTab === 'login' && (
-            <div className="card overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-zinc-200 dark:border-zinc-800">
-                      <th className="text-left px-6 py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Użytkownik</th>
-                      <th className="text-left px-6 py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Metoda</th>
-                      <th className="text-left px-6 py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">IP</th>
-                      <th className="text-left px-6 py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Status</th>
-                      <th className="text-left px-6 py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Data</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loginLogs.map(log => (
-                      <tr key={log.id} className="border-b border-zinc-100 dark:border-zinc-800/50">
-                        <td className="px-6 py-3 text-sm font-medium text-zinc-900 dark:text-white">{log.username}</td>
-                        <td className="px-6 py-3 text-sm text-zinc-500">{log.auth_method}</td>
-                        <td className="px-6 py-3 text-sm text-zinc-500 font-mono">{log.ip_address}</td>
-                        <td className="px-6 py-3">
-                          <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold ${log.success ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300'}`}>
-                            {log.success ? 'OK' : 'FAIL'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-3 text-sm text-zinc-500 font-mono">{formatDate(log.logged_at)}</td>
-                      </tr>
-                    ))}
-                    {loginLogs.length === 0 && <tr><td colSpan={5} className="px-6 py-8 text-center text-zinc-400 text-sm">Brak logów</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-              {loginLogsMeta.totalPages > 1 && (
-                <div className="flex items-center justify-between px-6 py-3 border-t border-zinc-200 dark:border-zinc-800">
-                  <span className="text-xs text-zinc-500">Strona {loginLogsMeta.page} z {loginLogsMeta.totalPages} ({loginLogsMeta.total} rekordów)</span>
-                  <div className="flex gap-1">
-                    {Array.from({ length: Math.min(loginLogsMeta.totalPages, 10) }, (_, i) => i + 1).map(p => (
-                      <button key={p} onClick={() => { api.getLoginLogs(p).then(r => { setLoginLogs(r.logs); setLoginLogsMeta({ total: r.total, page: r.page, totalPages: r.totalPages }); }); }}
-                        className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${p === loginLogsMeta.page ? 'bg-violet-500 text-white' : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>{p}</button>
-                    ))}
-                    {loginLogsMeta.totalPages > 10 && <span className="text-xs text-zinc-400 px-2">...</span>}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* === AUDIT TAB === */}
-      {tab === 'audit' && <AuditLogsTab />}
 
       {/* === TAGS TAB === */}
       {tab === 'tags' && (

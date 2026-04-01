@@ -11,6 +11,7 @@ import FavoritesPage from './pages/FavoritesPage';
 import HistoryPage from './pages/HistoryPage';
 import StatsPage from './pages/StatsPage';
 import ProfilePage from './pages/ProfilePage';
+import LogsPage from './pages/LogsPage';
 
 function ProtectedRoute({ children, adminOnly, devOnly }) {
   const { user, loading, isAdmin, isDev } = useAuth();
@@ -53,9 +54,10 @@ export default function App() {
         <Route path="/category/:categorySlug" element={<P><VideosPage /></P>} />
         <Route path="/favorites" element={<P><FavoritesPage /></P>} />
         <Route path="/history" element={<P><HistoryPage /></P>} />
-        <Route path="/stats" element={<P><StatsPage /></P>} />
+        <Route path="/stats" element={<P adminOnly><StatsPage /></P>} />
         <Route path="/profile" element={<P><ProfilePage /></P>} />
         <Route path="/admin" element={<P adminOnly><AdminPage /></P>} />
+        <Route path="/logs" element={<P devOnly><LogsPage /></P>} />
         <Route path="/debug" element={<P devOnly><DebugPage /></P>} />
         <Route path="/author/:authorId" element={<P><VideosPage /></P>} />
         <Route path="/tag/:tagId" element={<P><VideosPage /></P>} />
