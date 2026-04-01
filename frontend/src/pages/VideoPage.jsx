@@ -256,25 +256,33 @@ export default function VideoPage() {
           {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
             <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} />
           ) : isPlex && src.url ? (
-            <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in bg-zinc-900 flex items-center justify-center">
-              <div className="flex flex-col items-center gap-4 p-10">
+            <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in plex-container flex items-center justify-center">
+              {/* Floating particles */}
+              <div className="plex-particle w-2 h-2 bg-amber-400/40 top-[20%] left-[15%]" style={{ animation: 'plexFloat1 6s ease-in-out infinite' }} />
+              <div className="plex-particle w-1.5 h-1.5 bg-emerald-400/30 top-[60%] right-[20%]" style={{ animation: 'plexFloat2 8s ease-in-out infinite 1s' }} />
+              <div className="plex-particle w-1 h-1 bg-amber-300/20 bottom-[25%] left-[30%]" style={{ animation: 'plexFloat3 7s ease-in-out infinite 2s' }} />
+              <div className="plex-particle w-2.5 h-2.5 bg-amber-500/20 top-[35%] right-[35%]" style={{ animation: 'plexFloat1 9s ease-in-out infinite 3s' }} />
+              <div className="plex-particle w-1 h-1 bg-emerald-300/15 top-[15%] right-[40%]" style={{ animation: 'plexFloat2 5s ease-in-out infinite 0.5s' }} />
+
+              <div className="flex flex-col items-center gap-6 p-10 relative z-10">
+                {/* Plex logo */}
+                <img src="https://alleria.pl/image/plex-play.png" alt="Plex" className="plex-logo w-20 h-20 object-contain mb-1" />
+
+                {/* Primary — Oglądaj w Plex */}
                 <a href={src.url} target="_blank" rel="noopener noreferrer"
-                  className="block w-[230px] text-center py-3.5 px-5 rounded-lg font-bold text-lg no-underline transition-all duration-200 hover:scale-105"
-                  style={{ background: 'linear-gradient(135deg, #e5a00d, #c28508)', color: '#1f2326', boxShadow: '0 4px 10px rgba(229, 160, 13, 0.4)' }}>
-                  Oglądaj w Plex
+                  className="plex-btn-primary block w-[280px] text-center py-4 px-8 rounded-2xl font-bold text-lg text-zinc-900 no-underline tracking-wide">
+                  ▶ Oglądaj w Plex
                 </a>
+
+                {/* Secondary — Uzyskaj dostęp */}
                 <a href="https://alleria.pl/plex/plex_access.php" target="_blank" rel="noopener noreferrer"
-                  className="plex-btn-access block w-[230px] text-center py-3 px-5 rounded-lg font-semibold text-base no-underline transition-all duration-300"
-                  style={{ border: '2px solid #0df0a3', color: '#ffffff', backgroundColor: 'transparent' }}
-                  onMouseEnter={e => { e.target.style.backgroundColor = '#0df0a3'; e.target.style.color = '#000'; e.target.style.boxShadow = '0 0 15px rgba(13,240,163,0.5)'; }}
-                  onMouseLeave={e => { e.target.style.backgroundColor = 'transparent'; e.target.style.color = '#fff'; e.target.style.boxShadow = 'none'; }}>
+                  className="plex-btn-access block w-[280px] text-center py-3.5 px-8 rounded-2xl font-semibold text-base no-underline tracking-wide">
                   Uzyskaj dostęp do Plex
                 </a>
+
+                {/* Tertiary — Czym jest Plex */}
                 <a href="https://alleria.pl/plex/" target="_blank" rel="noopener noreferrer"
-                  className="block text-center py-2 px-4 mt-2 rounded text-sm no-underline transition-all duration-200"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#aaa' }}
-                  onMouseEnter={e => { e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'; e.target.style.color = '#fff'; e.target.style.borderColor = 'rgba(255,255,255,0.3)'; }}
-                  onMouseLeave={e => { e.target.style.backgroundColor = 'rgba(255,255,255,0.05)'; e.target.style.color = '#aaa'; e.target.style.borderColor = 'rgba(255,255,255,0.1)'; }}>
+                  className="plex-btn-info block text-center py-2.5 px-6 rounded-xl text-sm no-underline">
                   Czym jest Plex?
                 </a>
               </div>

@@ -209,3 +209,92 @@
 /* Scroll-triggered fade (JS applies .visible) */
 .scroll-reveal { opacity: 0; transform: translateY(20px); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
 .scroll-reveal.visible { opacity: 1; transform: translateY(0); }
+
+/* ─── PLEX MIRROR — Spectacular Button Effects ─── */
+
+/* Ambient glow behind entire plex container */
+.plex-container {
+  position: relative;
+  background: radial-gradient(ellipse at 50% 0%, rgba(229,160,13,0.08) 0%, transparent 60%),
+              radial-gradient(ellipse at 50% 100%, rgba(13,240,163,0.04) 0%, transparent 50%),
+              linear-gradient(180deg, #0a0a0a 0%, #111 100%);
+}
+.plex-container::before {
+  content: ''; position: absolute; inset: -1px; border-radius: 32px; padding: 1px;
+  background: linear-gradient(160deg, rgba(229,160,13,0.2), transparent 40%, transparent 60%, rgba(13,240,163,0.15));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
+}
+
+/* Floating particles */
+@keyframes plexFloat1 { 0%,100% { transform: translate(0,0) scale(1); opacity: 0.3; } 50% { transform: translate(30px,-20px) scale(1.5); opacity: 0.6; } }
+@keyframes plexFloat2 { 0%,100% { transform: translate(0,0) scale(1); opacity: 0.2; } 50% { transform: translate(-25px,15px) scale(1.8); opacity: 0.5; } }
+@keyframes plexFloat3 { 0%,100% { transform: translate(0,0) scale(1); opacity: 0.15; } 50% { transform: translate(15px,25px) scale(1.3); opacity: 0.4; } }
+.plex-particle { position: absolute; border-radius: 50%; pointer-events: none; filter: blur(1px); }
+
+/* Logo pulse */
+@keyframes plexLogoPulse { 0%,100% { filter: drop-shadow(0 0 8px rgba(229,160,13,0.3)); } 50% { filter: drop-shadow(0 0 20px rgba(229,160,13,0.6)) drop-shadow(0 0 40px rgba(229,160,13,0.2)); } }
+.plex-logo { animation: plexLogoPulse 3s ease-in-out infinite; }
+
+/* Primary button — Oglądaj w Plex */
+.plex-btn-primary {
+  position: relative; overflow: hidden; z-index: 1;
+  background: linear-gradient(135deg, #e5a00d 0%, #f0b429 50%, #e5a00d 100%);
+  background-size: 200% 200%;
+  animation: plexBtnShimmer 3s ease-in-out infinite;
+  box-shadow: 0 4px 15px rgba(229,160,13,0.3), 0 0 0 0 rgba(229,160,13,0), inset 0 1px 0 rgba(255,255,255,0.2);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.plex-btn-primary::before {
+  content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 60%);
+  transform: scale(0); transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1); z-index: -1;
+}
+.plex-btn-primary::after {
+  content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  animation: plexSweep 4s ease-in-out infinite 1s;
+}
+.plex-btn-primary:hover {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 8px 30px rgba(229,160,13,0.5), 0 0 60px rgba(229,160,13,0.15), inset 0 1px 0 rgba(255,255,255,0.3);
+}
+.plex-btn-primary:hover::before { transform: scale(1); }
+.plex-btn-primary:active { transform: translateY(0) scale(0.98); }
+@keyframes plexBtnShimmer { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+@keyframes plexSweep { 0%,100% { left: -100%; } 50% { left: 100%; } }
+
+/* Secondary button — Uzyskaj dostęp */
+.plex-btn-access {
+  position: relative; overflow: hidden;
+  border: 2px solid #0df0a3; color: #fff; background: transparent;
+  box-shadow: 0 0 0 0 rgba(13,240,163,0), inset 0 0 0 0 rgba(13,240,163,0);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.plex-btn-access::before {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(13,240,163,0) 0%, rgba(13,240,163,0.05) 100%);
+  transition: all 0.4s; opacity: 0;
+}
+.plex-btn-access::after {
+  content: ''; position: absolute; bottom: 0; left: 50%; width: 0; height: 2px;
+  background: #0df0a3; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); transform: translateX(-50%);
+}
+.plex-btn-access:hover {
+  background: rgba(13,240,163,0.1); color: #0df0a3; border-color: #0df0a3;
+  box-shadow: 0 0 25px rgba(13,240,163,0.2), 0 4px 15px rgba(13,240,163,0.1), inset 0 0 20px rgba(13,240,163,0.05);
+  transform: translateY(-2px);
+}
+.plex-btn-access:hover::before { opacity: 1; }
+.plex-btn-access:hover::after { width: 60%; }
+.plex-btn-access:active { transform: translateY(0) scale(0.98); }
+
+/* Tertiary button — Czym jest Plex */
+.plex-btn-info {
+  position: relative; color: #666; border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.plex-btn-info:hover {
+  color: #ccc; background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15);
+  transform: translateY(-1px);
+}

@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
 
-const LOGO_URL = 'https://alleria.pl/image/logo-clr.png';
+const LOGO_URL = 'https://alleria.pl/image/favicon.png';
 
 function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlug }) {
   const children = cats.filter(c => (c.parent_id || null) === parentId);
@@ -46,7 +46,7 @@ export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [categories, setCategories] = useState([]);
   const [catsExpanded, setCatsExpanded] = useState(true);
-  const [versions, setVersions] = useState({ frontend: '', backend: '', stream: '', streamStatus: '' });
+  const [versions, setVersions] = useState({ panel: '', api: '', stream: '', streamStatus: '' });
   const [theme, setTheme] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('alleria-theme');
@@ -66,7 +66,7 @@ export default function Layout({ children }) {
       fetch('/api/version').then(r => r.json()).catch(() => ({})),
       fetch('/api/version/streaming').then(r => r.json()).catch(() => ({})),
     ]).then(([app, stream]) => {
-      setVersions({ frontend: app.frontend || app.version || '?', backend: app.version || '?', stream: stream.version || '?', streamStatus: stream.status || '' });
+      setVersions({ panel: app.version || '?', api: app.api || app.version || '?', stream: stream.version || '?', streamStatus: stream.status || '' });
     });
   }, []);
 
@@ -189,6 +189,7 @@ export default function Layout({ children }) {
               <nav className="space-y-0.5">
                 {isAdmin && <NavLink to="/admin" icon={Shield} label="Panel Redaktora" active={isActive('/admin')} />}
                 {isAdmin && <NavLink to="/stats" icon={BarChart3} label="Statystyki" active={isActive('/stats')} />}
+                {isDev && <NavLink to="/manage" icon={FolderOpen} label="Zarządzanie" active={isActive('/manage')} />}
                 {isDev && <NavLink to="/logs" icon={FileText} label="Logi systemowe" active={isActive('/logs')} />}
                 {isDev && <NavLink to="/debug" icon={Bug} label="Debug Tools" active={isActive('/debug')} />}
               </nav>
@@ -219,9 +220,9 @@ export default function Layout({ children }) {
             </button>
           </div>
           {/* Version info */}
-          {versions.frontend && (
+          {versions.panel && (
             <div className="px-3 pb-1 text-[8px] text-zinc-400 dark:text-zinc-600 font-mono text-center leading-relaxed">
-              Panel v{versions.frontend} • API v{versions.backend} • Stream v{versions.stream}
+              Panel v{versions.panel} • API v{versions.api} • Stream v{versions.stream}
               {versions.streamStatus === 'compatible' && <span className="text-emerald-500"> (compatible)</span>}
               {versions.streamStatus === 'deprecated' && <span className="text-amber-500"> (deprecated)</span>}
               {versions.streamStatus === 'offline' && <span className="text-red-500"> (offline)</span>}

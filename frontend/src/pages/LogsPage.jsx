@@ -87,41 +87,32 @@ export default function LogsPage() {
               </button>
             ))}
           </div>
-          <div className="card overflow-hidden">
-            {auditLogs.length === 0 ? <p className="text-zinc-400 text-sm text-center py-8">Brak logów</p> : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead><tr className="bg-zinc-50 dark:bg-zinc-800/50 text-left">
-                    <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Data</th>
-                    <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Użytkownik</th>
-                    <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Akcja</th>
-                    <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Typ</th>
-                    <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">ID</th>
-                    <th className="px-4 py-3 font-bold text-zinc-500 text-[10px] uppercase">Szczegóły</th>
-                  </tr></thead>
-                  <tbody>
-                    {auditLogs.map(l => (
-                      <tr key={l.id} className="border-t border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
-                        <td className="px-4 py-2.5 font-mono text-xs text-zinc-400 whitespace-nowrap">{formatDate(l.created_at)}</td>
-                        <td className="px-4 py-2.5 text-zinc-900 dark:text-white font-medium text-xs">{l.display_name || l.username || '—'}</td>
-                        <td className="px-4 py-2.5"><span className={`font-bold text-xs ${actionColors[l.action] || 'text-zinc-500'}`}>{l.action}</span></td>
-                        <td className="px-4 py-2.5"><span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${entityColors[l.entity_type] || 'bg-zinc-100 text-zinc-500'}`}>{l.entity_type}</span></td>
-                        <td className="px-4 py-2.5 font-mono text-xs text-zinc-400">{l.entity_id || '—'}</td>
-                        <td className="px-4 py-2.5 text-xs text-zinc-500 max-w-[400px]">{l.details || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <div className="space-y-2">
+            {auditLogs.length === 0 ? <div className="card p-8 text-center"><p className="text-zinc-400 text-sm">Brak logów</p></div> : auditLogs.map(l => (
+              <div key={l.id} className="card p-4 hover:shadow-md transition-all">
+                <div className="flex items-start gap-3">
+                  <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${l.action === 'create' ? 'bg-emerald-500' : l.action === 'edit' ? 'bg-amber-500' : 'bg-red-500'}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-sm font-bold text-zinc-900 dark:text-white">{l.display_name || l.username || '—'}</span>
+                      <span className={`font-bold text-xs ${actionColors[l.action] || 'text-zinc-500'}`}>{l.action}</span>
+                      <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${entityColors[l.entity_type] || 'bg-zinc-100 text-zinc-500'}`}>{l.entity_type}</span>
+                      {l.entity_id && <span className="font-mono text-[10px] text-zinc-400">#{l.entity_id}</span>}
+                      <span className="font-mono text-[10px] text-zinc-400 ml-auto whitespace-nowrap">{formatDate(l.created_at)}</span>
+                    </div>
+                    {l.details && <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed break-words whitespace-pre-wrap">{l.details}</p>}
+                  </div>
+                </div>
               </div>
-            )}
-            {auditPages > 1 && (
-              <div className="flex justify-center gap-2 p-4 border-t border-zinc-200 dark:border-zinc-800">
-                {Array.from({ length: auditPages }, (_, i) => i + 1).slice(Math.max(0, auditPage - 3), auditPage + 2).map(p => (
-                  <button key={p} onClick={() => setAuditPage(p)} className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${p === auditPage ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>{p}</button>
-                ))}
-              </div>
-            )}
+            ))}
           </div>
+          {auditPages > 1 && (
+            <div className="flex justify-center gap-2 mt-4">
+              {Array.from({ length: auditPages }, (_, i) => i + 1).slice(Math.max(0, auditPage - 3), auditPage + 2).map(p => (
+                <button key={p} onClick={() => setAuditPage(p)} className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${p === auditPage ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>{p}</button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

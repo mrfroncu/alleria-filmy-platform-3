@@ -3,7 +3,7 @@ RUN apk add --no-cache ffmpeg
 WORKDIR /app
 COPY package.json ./
 RUN npm install --production
-COPY server.js ./
+COPY server.js versions.js ./
 RUN mkdir -p /data/media /data/keys /data/uploads
 EXPOSE 4000
 CMD ["node", "server.js"]

@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, Upload, Trash2, AlertTriangle, Database, UserPlus, ChevronDown, Terminal, Play, FolderPlus, X, Shield, BarChart3, Loader2 } from 'lucide-react';
+import { Download, Upload, Trash2, AlertTriangle, Database, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2 } from 'lucide-react';
 import { api } from '../utils/api';
-import { buildCategoryTreeOptions } from '../utils/helpers';
 
 export default function DebugPage() {
   const [status, setStatus] = useState(null);
@@ -20,17 +19,6 @@ export default function DebugPage() {
   const [newDiscordId, setNewDiscordId] = useState('');
   const [newAvatar, setNewAvatar] = useState('');
 
-  // Category management
-  const [cats, setCats] = useState([]);
-  const [catName, setCatName] = useState('');
-  const [catDesc, setCatDesc] = useState('');
-  const [catOrder, setCatOrder] = useState('0');
-  const [catParentId, setCatParentId] = useState('');
-  const [editingCat, setEditingCat] = useState(null);
-  const [catViewerRoles, setCatViewerRoles] = useState('');
-  const [catEditorRoles, setCatEditorRoles] = useState('');
-  const [catWebhookUrl, setCatWebhookUrl] = useState('');
-  const [catWebhookTemplate, setCatWebhookTemplate] = useState('');
   const [cleanupLog, setCleanupLog] = useState([]);
 
   // Admin stats
@@ -39,7 +27,6 @@ export default function DebugPage() {
   const [transcodingVideos, setTranscodingVideos] = useState([]);
 
   useEffect(() => {
-    api.getCategories().then(setCats).catch(() => {});
     // Load stats
     fetch('/api/stream/stats').then(r => r.json()).then(setStreamStats).catch(() => {});
     api.execSQL('SELECT COUNT(*) AS videos FROM videos').then(r => {
@@ -326,156 +313,6 @@ export default function DebugPage() {
                 <Upload className="w-4 h-4" /> Wybierz plik JSON
                 <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} className="hidden" />
               </label>
-            </div>
-          </div>
-        </div>
-
-        {/* Category Management */}
-        <div className="card p-8 xl:row-span-3">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-cyan-50 dark:bg-cyan-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <FolderPlus className="w-6 h-6 text-cyan-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Zarządzanie kategoriami</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Twórz kategorie filmów i ustawiaj kto ma dostęp (jakie role Discord). Podaj ID ról oddzielone przecinkami.
-              </p>
-
-              {/* Add/Edit category form */}
-              <div className="space-y-3 mb-6 p-4 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="label-field">Nazwa kategorii</label>
-                    <input type="text" value={catName} onChange={e => setCatName(e.target.value)} className="input-field !py-3 text-sm" placeholder="np. Filmy akcji" />
-                  </div>
-                  <div>
-                    <label className="label-field">Kolejność sortowania</label>
-                    <input type="number" value={catOrder} onChange={e => setCatOrder(e.target.value)} className="input-field !py-3 text-sm" placeholder="0" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="label-field">Opis (opcjonalnie)</label>
-                    <input type="text" value={catDesc} onChange={e => setCatDesc(e.target.value)} className="input-field !py-3 text-sm" placeholder="Opis kategorii" />
-                  </div>
-                  <div>
-                    <label className="label-field">Kategoria nadrzędna</label>
-                    <select value={catParentId} onChange={e => setCatParentId(e.target.value)} className="input-field !py-3 text-sm appearance-none cursor-pointer">
-                      <option value="">Brak (główna)</option>
-                      {buildCategoryTreeOptions(cats, editingCat?.id).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="label-field">Role widzów (Discord Role IDs)</label>
-                    <input type="text" value={catViewerRoles} onChange={e => setCatViewerRoles(e.target.value)} className="input-field !py-3 text-sm font-mono" placeholder="ID1,ID2 (puste = wszyscy)" />
-                  </div>
-                  <div>
-                    <label className="label-field">Role redaktorów (Discord Role IDs)</label>
-                    <input type="text" value={catEditorRoles} onChange={e => setCatEditorRoles(e.target.value)} className="input-field !py-3 text-sm font-mono" placeholder="ID1,ID2" />
-                  </div>
-                </div>
-                <div>
-                  <label className="label-field">Discord Webhook URL (opcjonalnie)</label>
-                  <input type="text" value={catWebhookUrl} onChange={e => setCatWebhookUrl(e.target.value)} className="input-field !py-3 text-sm font-mono" placeholder="https://discord.com/api/webhooks/..." />
-                </div>
-                <div>
-                  <label className="label-field">Szablon wiadomości webhook</label>
-                  <textarea value={catWebhookTemplate} onChange={e => setCatWebhookTemplate(e.target.value)} className="input-field !py-3 text-sm font-mono resize-none h-20" placeholder={'🎬 **Nowy film:** {title}\n👤 Autor: {author}\n📁 Kategoria: {category}\n🔗 {url}'} />
-                  <p className="text-[9px] text-zinc-400 mt-1">Placeholdery: {'{title}'} {'{author}'} {'{category}'} {'{description}'} {'{date}'} {'{id}'} {'{url}'} {'{thumbnail}'}</p>
-                </div>
-                <button
-                  onClick={async () => {
-                    if (!catName.trim()) return;
-                    try {
-                      const catData = { name: catName, description: catDesc, sort_order: parseInt(catOrder) || 0, parent_id: catParentId ? parseInt(catParentId) : null, webhook_url: catWebhookUrl, webhook_template: catWebhookTemplate };
-                      if (editingCat) {
-                        await api.updateCategory(editingCat.id, catData);
-                        await api.setCategoryAccess(editingCat.id, {
-                          viewers: catViewerRoles.split(',').map(s => s.trim()).filter(Boolean),
-                          editors: catEditorRoles.split(',').map(s => s.trim()).filter(Boolean),
-                        });
-                        setStatus({ type: 'success', msg: `Kategoria "${catName}" zaktualizowana.` });
-                      } else {
-                        const r = await api.createCategory(catData);
-                        if (r.category && (catViewerRoles || catEditorRoles)) {
-                          await api.setCategoryAccess(r.category.id, {
-                            viewers: catViewerRoles.split(',').map(s => s.trim()).filter(Boolean),
-                            editors: catEditorRoles.split(',').map(s => s.trim()).filter(Boolean),
-                          });
-                        }
-                        setStatus({ type: 'success', msg: `Kategoria "${catName}" utworzona.` });
-                      }
-                      setCatName(''); setCatDesc(''); setCatOrder('0'); setCatParentId(''); setCatViewerRoles(''); setCatEditorRoles(''); setCatWebhookUrl(''); setCatWebhookTemplate(''); setEditingCat(null);
-                      api.getCategories().then(setCats).catch(() => {});
-                    } catch (e) { setStatus({ type: 'error', msg: e.message }); }
-                  }}
-                  className="btn-primary text-sm"
-                >
-                  {editingCat ? 'Zapisz zmiany' : 'Dodaj kategorię'}
-                </button>
-                {editingCat && (
-                  <button onClick={() => { setEditingCat(null); setCatName(''); setCatDesc(''); setCatOrder('0'); setCatParentId(''); setCatViewerRoles(''); setCatEditorRoles(''); setCatWebhookUrl(''); setCatWebhookTemplate(''); }} className="btn-secondary text-sm ml-2">
-                    Anuluj edycję
-                  </button>
-                )}
-              </div>
-
-              {/* Existing categories */}
-              {cats.length === 0 ? (
-                <p className="text-sm text-zinc-400 italic">Brak kategorii</p>
-              ) : (
-                <div className="space-y-2">
-                  {buildCategoryTreeOptions(cats).map(opt => {
-                    const cat = cats.find(c => c.id === opt.id);
-                    if (!cat) return null;
-                    return (
-                    <div key={cat.id} className="flex items-center gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl" style={{ marginLeft: opt.depth * 20 }}>
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm font-bold text-zinc-900 dark:text-white">{opt.depth > 0 ? '↳ ' : ''}{cat.name}</span>
-                        <span className="text-xs text-zinc-400 ml-2">({cat.videoCount || 0} filmów, sort: {cat.sort_order})</span>
-                        {cat.access && cat.access.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {cat.access.map((a, i) => (
-                              <span key={i} className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${a.access_type === 'editor' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300'}`}>
-                                {a.access_type === 'editor' ? '✏️' : '👁️'} {a.discord_role_id}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <button onClick={() => {
-                        setEditingCat(cat);
-                        setCatName(cat.name);
-                        setCatDesc(cat.description || '');
-                        setCatOrder(String(cat.sort_order || 0));
-                        setCatParentId(String(cat.parent_id || ''));
-                        setCatWebhookUrl(cat.webhook_url || '');
-                        setCatWebhookTemplate(cat.webhook_template || '');
-                        const viewers = (cat.access || []).filter(a => a.access_type === 'viewer').map(a => a.discord_role_id).join(',');
-                        const editors = (cat.access || []).filter(a => a.access_type === 'editor').map(a => a.discord_role_id).join(',');
-                        setCatViewerRoles(viewers);
-                        setCatEditorRoles(editors);
-                      }} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">
-                        <Shield className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={async () => {
-                        if (!confirm(`Usunąć kategorię "${cat.name}"?`)) return;
-                        try {
-                          await api.deleteCategory(cat.id);
-                          setCats(prev => prev.filter(c => c.id !== cat.id));
-                          setStatus({ type: 'success', msg: `Kategoria "${cat.name}" usunięta.` });
-                        } catch (e) { setStatus({ type: 'error', msg: e.message }); }
-                      }} className="p-1.5 hover:bg-red-100 dark:hover:bg-red-500/10 rounded-lg text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           </div>
         </div>

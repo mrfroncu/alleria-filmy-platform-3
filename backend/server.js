@@ -115,9 +115,9 @@ app.get('/api/config', (req, res) => {
 });
 
 // Version info
-const { PANEL_VERSION, FRONTEND_VERSION, STREAM_MIN_VERSION } = require('./versions');
+const { PANEL_VERSION, API_VERSION, STREAM_MIN_VERSION } = require('./versions');
 app.get('/api/version', (req, res) => {
-  res.json({ version: PANEL_VERSION, frontend: FRONTEND_VERSION, streamMinVersion: STREAM_MIN_VERSION, component: 'alleria-filmy' });
+  res.json({ version: PANEL_VERSION, api: API_VERSION, streamMinVersion: STREAM_MIN_VERSION, component: 'alleria-filmy' });
 });
 
 // Proxy streaming version with compatibility check
