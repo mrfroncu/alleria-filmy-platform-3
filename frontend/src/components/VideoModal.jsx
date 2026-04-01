@@ -36,10 +36,10 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const [thumbnailPreview, setThumbnailPreview] = useState('');
   const [mirror1Name, setMirror1Name] = useState('');
   const [mirror1Url, setMirror1Url] = useState('');
-  const [mirror1IsEmbed, setMirror1IsEmbed] = useState(false);
+  const [mirror1Type, setMirror1Type] = useState('link');
   const [mirror2Name, setMirror2Name] = useState('');
   const [mirror2Url, setMirror2Url] = useState('');
-  const [mirror2IsEmbed, setMirror2IsEmbed] = useState(false);
+  const [mirror2Type, setMirror2Type] = useState('link');
   const [description, setDescription] = useState('');
   const [publishDate, setPublishDate] = useState(new Date().toISOString());
   const [selectedTags, setSelectedTags] = useState([]);
@@ -78,10 +78,10 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
         setThumbnailPreview(video.thumbnail || '');
         setMirror1Name(video.mirror1_name || '');
         setMirror1Url(video.mirror1_url || '');
-        setMirror1IsEmbed(!!video.mirror1_is_embed);
+        setMirror1Type(video.mirror1_type || (video.mirror1_is_embed ? 'embed' : 'link'));
         setMirror2Name(video.mirror2_name || '');
         setMirror2Url(video.mirror2_url || '');
-        setMirror2IsEmbed(!!video.mirror2_is_embed);
+        setMirror2Type(video.mirror2_type || (video.mirror2_is_embed ? 'embed' : 'link'));
         setDescription(video.description || '');
         setPublishDate(video.publish_date || new Date().toISOString());
         setSelectedTags(video.tags || []);
@@ -264,8 +264,8 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
 
       if (thumbnailFile) formData.append('thumbnail_file', thumbnailFile);
       else if (thumbnail) formData.append('thumbnail', thumbnail);
-      if (showMirror1) { formData.append('mirror1_name', mirror1Name); formData.append('mirror1_url', mirror1Url); formData.append('mirror1_is_embed', mirror1IsEmbed ? 'true' : 'false'); }
-      if (showMirror2) { formData.append('mirror2_name', mirror2Name); formData.append('mirror2_url', mirror2Url); formData.append('mirror2_is_embed', mirror2IsEmbed ? 'true' : 'false'); }
+      if (showMirror1) { formData.append('mirror1_name', mirror1Name); formData.append('mirror1_url', mirror1Url); formData.append('mirror1_type', mirror1Type); }
+      if (showMirror2) { formData.append('mirror2_name', mirror2Name); formData.append('mirror2_url', mirror2Url); formData.append('mirror2_type', mirror2Type); }
 
       if (isEdit) await api.updateVideo(video.id, formData);
       else await api.createVideo(formData);
@@ -517,14 +517,15 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="label-field mb-0">Mirror 1</span>
-                    <button type="button" onClick={() => { setShowMirror1(false); setMirror1Name(''); setMirror1Url(''); setMirror1IsEmbed(false); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
+                    <button type="button" onClick={() => { setShowMirror1(false); setMirror1Name(''); setMirror1Url(''); setMirror1Type('link'); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
                   </div>
-                  <input type="text" value={mirror1Name} onChange={e => setMirror1Name(e.target.value)} className="input-field" placeholder="Nazwa (np. CDA, Mega)" />
-                  <input type="text" value={mirror1Url} onChange={e => setMirror1Url(e.target.value)} className="input-field" placeholder="URL lub kod embed" />
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" checked={mirror1IsEmbed} onChange={e => setMirror1IsEmbed(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-violet-500 focus:ring-violet-500" />
-                    <span className="text-sm text-zinc-600 dark:text-zinc-400 font-medium">To jest kod HTML embed (iframe)</span>
-                  </label>
+                  <input type="text" value={mirror1Name} onChange={e => setMirror1Name(e.target.value)} className="input-field" placeholder="Nazwa (np. CDA, Mega, Plex)" />
+                  <div className="flex gap-2">
+                    {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'}].map(o => (
+                      <button key={o.v} type="button" onClick={() => setMirror1Type(o.v)} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror1Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
+                    ))}
+                  </div>
+                  <input type="text" value={mirror1Url} onChange={e => setMirror1Url(e.target.value)} className="input-field" placeholder={mirror1Type === 'plex' ? 'Link do filmu w Plex (app.plex.tv/...)' : mirror1Type === 'embed' ? 'Kod HTML embed' : 'URL filmu'} />
                 </div>
               )}
               {showMirror1 && !showMirror2 && (
@@ -536,14 +537,15 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="label-field mb-0">Mirror 2</span>
-                    <button type="button" onClick={() => { setShowMirror2(false); setMirror2Name(''); setMirror2Url(''); setMirror2IsEmbed(false); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
+                    <button type="button" onClick={() => { setShowMirror2(false); setMirror2Name(''); setMirror2Url(''); setMirror2Type('link'); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
                   </div>
-                  <input type="text" value={mirror2Name} onChange={e => setMirror2Name(e.target.value)} className="input-field" placeholder="Nazwa (np. Streamable)" />
-                  <input type="text" value={mirror2Url} onChange={e => setMirror2Url(e.target.value)} className="input-field" placeholder="URL lub kod embed" />
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" checked={mirror2IsEmbed} onChange={e => setMirror2IsEmbed(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-violet-500 focus:ring-violet-500" />
-                    <span className="text-sm text-zinc-600 dark:text-zinc-400 font-medium">To jest kod HTML embed (iframe)</span>
-                  </label>
+                  <input type="text" value={mirror2Name} onChange={e => setMirror2Name(e.target.value)} className="input-field" placeholder="Nazwa (np. Streamable, Plex)" />
+                  <div className="flex gap-2">
+                    {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'}].map(o => (
+                      <button key={o.v} type="button" onClick={() => setMirror2Type(o.v)} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror2Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
+                    ))}
+                  </div>
+                  <input type="text" value={mirror2Url} onChange={e => setMirror2Url(e.target.value)} className="input-field" placeholder={mirror2Type === 'plex' ? 'Link do filmu w Plex (app.plex.tv/...)' : mirror2Type === 'embed' ? 'Kod HTML embed' : 'URL filmu'} />
                 </div>
               )}
             </div>

@@ -629,8 +629,8 @@ app.get('/api/videos/:id', requireAuth, (req, res) => {
 app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res) => {
   try {
     const { title, author_id, main_source, main_source_type, main_source_title,
-      thumbnail, mirror1_name, mirror1_url, mirror1_is_embed,
-      mirror2_name, mirror2_url, mirror2_is_embed, description, publish_date, tags,
+      thumbnail, mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type,
+      mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type, description, publish_date, tags,
       stream_video_id, drm_enhanced, category_id } = req.body;
 
     let thumbUrl = thumbnail || extractYoutubeThumbnail(main_source);
@@ -648,15 +648,18 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
       thumbUrl = `/stream/media/${stream_video_id}/thumb.jpg`;
     }
 
+    const m1t = mirror1_type || (mirror1_is_embed === 'true' || mirror1_is_embed === '1' ? 'embed' : 'link');
+    const m2t = mirror2_type || (mirror2_is_embed === 'true' || mirror2_is_embed === '1' ? 'embed' : 'link');
+
     const result = db.prepare(`
       INSERT INTO videos (title, author_id, main_source, main_source_type, main_source_title, thumbnail, custom_thumbnail,
-        mirror1_name, mirror1_url, mirror1_is_embed, mirror2_name, mirror2_url, mirror2_is_embed,
+        mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type, mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type,
         description, publish_date, stream_video_id, drm_enhanced, category_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(title, parseInt(author_id), main_source || '', main_source_type || 'youtube', main_source_title || '',
       thumbUrl, customThumb,
-      mirror1_name || null, mirror1_url || null, mirror1_is_embed === 'true' || mirror1_is_embed === '1' ? 1 : 0,
-      mirror2_name || null, mirror2_url || null, mirror2_is_embed === 'true' || mirror2_is_embed === '1' ? 1 : 0,
+      mirror1_name || null, mirror1_url || null, m1t === 'embed' ? 1 : 0, m1t,
+      mirror2_name || null, mirror2_url || null, m2t === 'embed' ? 1 : 0, m2t,
       description || '', publish_date,
       stream_video_id || null, drm_enhanced === 'true' || drm_enhanced === '1' ? 1 : 0,
       category_id ? parseInt(category_id) : null);
@@ -729,8 +732,8 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
 app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, res) => {
   try {
     const { title, author_id, main_source, main_source_type, main_source_title,
-      thumbnail, mirror1_name, mirror1_url, mirror1_is_embed,
-      mirror2_name, mirror2_url, mirror2_is_embed, description, publish_date, tags,
+      thumbnail, mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type,
+      mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type, description, publish_date, tags,
       category_id, stream_video_id, drm_enhanced, access_mode, allowed_users } = req.body;
 
     const existing = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
@@ -747,15 +750,19 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
       if (!thumbnail) thumbUrl = extractYoutubeThumbnail(main_source || existing.main_source);
     }
 
+    const m1type = mirror1_type || (mirror1_is_embed === 'true' || mirror1_is_embed === '1' ? 'embed' : 'link');
+    const m2type = mirror2_type || (mirror2_is_embed === 'true' || mirror2_is_embed === '1' ? 'embed' : 'link');
+
     db.prepare(`
       UPDATE videos SET title=?, author_id=?, main_source=?, main_source_type=?, main_source_title=?, thumbnail=?, custom_thumbnail=?,
-        mirror1_name=?, mirror1_url=?, mirror1_is_embed=?, mirror2_name=?, mirror2_url=?, mirror2_is_embed=?,
+        mirror1_name=?, mirror1_url=?, mirror1_is_embed=?, mirror1_type=?,
+        mirror2_name=?, mirror2_url=?, mirror2_is_embed=?, mirror2_type=?,
         description=?, publish_date=?, category_id=?, stream_video_id=?, drm_enhanced=?, access_mode=?,
         updated_at=datetime('now') WHERE id=?
     `).run(title, parseInt(author_id), main_source, main_source_type || 'youtube', main_source_title || '',
       thumbUrl, customThumb,
-      mirror1_name || null, mirror1_url || null, mirror1_is_embed === 'true' || mirror1_is_embed === '1' ? 1 : 0,
-      mirror2_name || null, mirror2_url || null, mirror2_is_embed === 'true' || mirror2_is_embed === '1' ? 1 : 0,
+      mirror1_name || null, mirror1_url || null, m1type === 'embed' ? 1 : 0, m1type,
+      mirror2_name || null, mirror2_url || null, m2type === 'embed' ? 1 : 0, m2type,
       description || '', publish_date,
       category_id ? parseInt(category_id) : null,
       stream_video_id || existing.stream_video_id || null,
@@ -794,7 +801,21 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
       }
     }
 
-    audit(req.session.user.id, "edit", "video", parseInt(req.params.id), req.body.title || "");
+    // Build detailed audit diff
+    const changes = [];
+    if (title !== existing.title) changes.push(`tytuł: "${existing.title}" → "${title}"`);
+    if (parseInt(author_id) !== existing.author_id) { const oldA = db.prepare('SELECT display_name,username FROM users WHERE id=?').get(existing.author_id); const newA = db.prepare('SELECT display_name,username FROM users WHERE id=?').get(parseInt(author_id)); changes.push(`autor: "${oldA?.display_name||oldA?.username||'?'}" → "${newA?.display_name||newA?.username||'?'}"`); }
+    if (main_source !== existing.main_source) changes.push(`źródło: "${(existing.main_source||'').slice(0,60)}" → "${(main_source||'').slice(0,60)}"`);
+    if ((main_source_type||'youtube') !== (existing.main_source_type||'youtube')) changes.push(`typ źródła: ${existing.main_source_type} → ${main_source_type}`);
+    if ((description||'') !== (existing.description||'')) changes.push(`opis zmieniony`);
+    if (publish_date !== existing.publish_date) changes.push(`data: ${existing.publish_date} → ${publish_date}`);
+    if ((mirror1_url||'') !== (existing.mirror1_url||'')) changes.push(`mirror1: "${(existing.mirror1_url||'brak').slice(0,50)}" → "${(mirror1_url||'brak').slice(0,50)}"`);
+    if ((mirror2_url||'') !== (existing.mirror2_url||'')) changes.push(`mirror2: "${(existing.mirror2_url||'brak').slice(0,50)}" → "${(mirror2_url||'brak').slice(0,50)}"`);
+    if ((mirror1_name||'') !== (existing.mirror1_name||'')) changes.push(`mirror1 nazwa: "${existing.mirror1_name||''}" → "${mirror1_name||''}"`);
+    if ((mirror2_name||'') !== (existing.mirror2_name||'')) changes.push(`mirror2 nazwa: "${existing.mirror2_name||''}" → "${mirror2_name||''}"`);
+    if (category_id && parseInt(category_id) !== existing.category_id) { const oldC = existing.category_id ? db.prepare('SELECT name FROM categories WHERE id=?').get(existing.category_id)?.name : 'brak'; const newC = db.prepare('SELECT name FROM categories WHERE id=?').get(parseInt(category_id))?.name || '?'; changes.push(`kategoria: "${oldC}" → "${newC}"`); }
+    if (thumbUrl !== existing.thumbnail) changes.push(`miniatura zmieniona`);
+    audit(req.session.user.id, "edit", "video", parseInt(req.params.id), changes.length ? changes.join('; ') : `edycja filmu "${title}"`);
     res.json({ success: true });
   } catch (err) {
     console.error('Error updating video:', err);
@@ -1628,6 +1649,7 @@ app.put('/api/comments/:id', requireAuth, (req, res) => {
     if (!isOwner && !isDev) return res.status(403).json({ error: 'Brak uprawnień.' });
     const { content, silent } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: 'Treść wymagana.' });
+    const oldText = comment.content;
     if (silent && isDev) {
       db.prepare('UPDATE comments SET content = ? WHERE id = ?').run(content.trim(), req.params.id);
     } else {
@@ -1636,7 +1658,7 @@ app.put('/api/comments/:id', requireAuth, (req, res) => {
       db.prepare('UPDATE comments SET content = ?, edited = 1, edit_history = ? WHERE id = ?').run(content.trim(), JSON.stringify(history), req.params.id);
     }
     const updated = db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(req.params.id);
-    audit(req.session.user.id, "edit", "comment", parseInt(req.params.id), content.trim().slice(0, 100));
+    audit(req.session.user.id, "edit", "comment", parseInt(req.params.id), `${silent?'[cicha] ':''}"${oldText.slice(0,50)}" → "${content.trim().slice(0,50)}"`);
     res.json(updated);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1644,25 +1666,25 @@ app.put('/api/comments/:id', requireAuth, (req, res) => {
 // Soft delete comment (marks as deleted, keeps for thread integrity)
 app.delete('/api/comments/:id', requireAuth, (req, res) => {
   try {
-    const comment = db.prepare('SELECT * FROM comments WHERE id = ?').get(req.params.id);
+    const comment = db.prepare('SELECT c.*, u.display_name, u.username FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(req.params.id);
     if (!comment) return res.status(404).json({ error: 'Nie znaleziono.' });
     const canDel = comment.user_id === req.session.user.id || req.session.user.role === 'admin' || req.session.user.role === 'dev';
     if (!canDel) return res.status(403).json({ error: 'Brak uprawnień.' });
-    // Soft delete — keep record for threaded replies
+    audit(req.session.user.id, "delete", "comment", parseInt(req.params.id), `[soft] autor: ${comment.display_name||comment.username}, treść: "${comment.content.slice(0,80)}"`);
     db.prepare("UPDATE comments SET deleted = 1, content = '' WHERE id = ?").run(req.params.id);
     res.json({ success: true, soft: true });
-    audit(req.session.user.id, "delete", "comment", parseInt(req.params.id), "soft");
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Hard delete comment + all replies (dev only)
 app.delete('/api/comments/:id/hard', requireDev, (req, res) => {
   try {
-    // Delete all replies first, then the comment
+    const comment = db.prepare('SELECT c.*, u.display_name, u.username FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(req.params.id);
+    const replyCount = db.prepare('SELECT COUNT(*) as c FROM comments WHERE parent_id = ?').get(req.params.id)?.c || 0;
+    audit(req.session.user.id, "delete", "comment", parseInt(req.params.id), `[hard] autor: ${comment?.display_name||comment?.username||'?'}, treść: "${(comment?.content||'').slice(0,80)}", +${replyCount} odpowiedzi`);
     db.prepare('DELETE FROM comments WHERE parent_id = ?').run(req.params.id);
     db.prepare('DELETE FROM comments WHERE id = ?').run(req.params.id);
     res.json({ success: true, hard: true });
-    audit(req.session.user.id, "delete", "comment", parseInt(req.params.id), "hard");
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

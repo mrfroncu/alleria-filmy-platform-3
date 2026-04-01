@@ -205,9 +205,14 @@ export default function VideoPage() {
   if (loading && !video) return <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-fade-in"><div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[32px] skeleton mb-6" /><div className="h-8 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-2/3 mb-4" /><div className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-1/3" /></div>;
   if (error || !video) return <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-scale-in"><div className="card p-16 text-center"><p className="text-red-500 font-bold text-lg mb-2">Błąd</p><p className="text-zinc-500">{error || 'Film nie znaleziony.'}</p><Link to="/" className="btn-primary mt-6 inline-block">Wróć</Link></div></div>;
 
-  const src = activeSource === 'mirror1' ? { url: video.mirror1_url, type: video.mirror1_type } : activeSource === 'mirror2' ? { url: video.mirror2_url, type: video.mirror2_type } : { url: video.main_source, type: video.main_source_type };
+  const src = activeSource === 'mirror1'
+    ? { url: video.mirror1_url, type: video.mirror1_type || (video.mirror1_is_embed ? 'embed' : 'link') }
+    : activeSource === 'mirror2'
+    ? { url: video.mirror2_url, type: video.mirror2_type || (video.mirror2_is_embed ? 'embed' : 'link') }
+    : { url: video.main_source, type: video.main_source_type };
+  const isPlex = src.type === 'plex';
   const isHtml = src.type === 'embed' || src.type === 'html';
-  const embedUrl = isHtml ? null : youtubeToEmbed(src.url);
+  const embedUrl = (isHtml || isPlex) ? null : youtubeToEmbed(src.url);
   const sources = [
     { key: 'main', label: video.main_source_title || 'Główne źródło' },
     ...(video.mirror1_url ? [{ key: 'mirror1', label: video.mirror1_name || 'Mirror 1' }] : []),
@@ -250,6 +255,30 @@ export default function VideoPage() {
         <div className="mb-8 anim-stagger-2" key={`player-${activeSource}`}>
           {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
             <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} />
+          ) : isPlex && src.url ? (
+            <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in bg-zinc-900 flex items-center justify-center">
+              <div className="flex flex-col items-center gap-4 p-10">
+                <a href={src.url} target="_blank" rel="noopener noreferrer"
+                  className="block w-[230px] text-center py-3.5 px-5 rounded-lg font-bold text-lg no-underline transition-all duration-200 hover:scale-105"
+                  style={{ background: 'linear-gradient(135deg, #e5a00d, #c28508)', color: '#1f2326', boxShadow: '0 4px 10px rgba(229, 160, 13, 0.4)' }}>
+                  Oglądaj w Plex
+                </a>
+                <a href="https://alleria.pl/plex/plex_access.php" target="_blank" rel="noopener noreferrer"
+                  className="plex-btn-access block w-[230px] text-center py-3 px-5 rounded-lg font-semibold text-base no-underline transition-all duration-300"
+                  style={{ border: '2px solid #0df0a3', color: '#ffffff', backgroundColor: 'transparent' }}
+                  onMouseEnter={e => { e.target.style.backgroundColor = '#0df0a3'; e.target.style.color = '#000'; e.target.style.boxShadow = '0 0 15px rgba(13,240,163,0.5)'; }}
+                  onMouseLeave={e => { e.target.style.backgroundColor = 'transparent'; e.target.style.color = '#fff'; e.target.style.boxShadow = 'none'; }}>
+                  Uzyskaj dostęp do Plex
+                </a>
+                <a href="https://alleria.pl/plex/" target="_blank" rel="noopener noreferrer"
+                  className="block text-center py-2 px-4 mt-2 rounded text-sm no-underline transition-all duration-200"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#aaa' }}
+                  onMouseEnter={e => { e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'; e.target.style.color = '#fff'; e.target.style.borderColor = 'rgba(255,255,255,0.3)'; }}
+                  onMouseLeave={e => { e.target.style.backgroundColor = 'rgba(255,255,255,0.05)'; e.target.style.color = '#aaa'; e.target.style.borderColor = 'rgba(255,255,255,0.1)'; }}>
+                  Czym jest Plex?
+                </a>
+              </div>
+            </div>
           ) : embedUrl ? (
             <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in"><iframe src={embedUrl} className="w-full h-full" allowFullScreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" /></div>
           ) : isHtml && src.url ? (

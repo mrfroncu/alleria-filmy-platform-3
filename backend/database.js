@@ -159,6 +159,12 @@ function initDB() {
   try { db.exec(`ALTER TABLE comments ADD COLUMN edit_history TEXT DEFAULT '[]'`); } catch (e) {}
 
   try { db.exec(`ALTER TABLE comments ADD COLUMN deleted INTEGER DEFAULT 0`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror1_type TEXT DEFAULT 'link'`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror2_type TEXT DEFAULT 'link'`); } catch (e) {}
+
+  // Migrate: is_embed=1 → type='embed'
+  try { db.exec(`UPDATE videos SET mirror1_type='embed' WHERE mirror1_is_embed=1 AND mirror1_type='link'`); } catch (e) {}
+  try { db.exec(`UPDATE videos SET mirror2_type='embed' WHERE mirror2_is_embed=1 AND mirror2_type='link'`); } catch (e) {}
 
   // Audit logs
   db.exec(`CREATE TABLE IF NOT EXISTS audit_logs (
