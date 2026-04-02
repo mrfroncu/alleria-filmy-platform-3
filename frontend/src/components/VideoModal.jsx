@@ -117,8 +117,8 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const resetForm = () => {
     setTitle(''); setAuthorId(''); setMainSource(''); setMainSourceTitle('');
     setThumbnail(''); setThumbnailFile(null); setThumbnailPreview('');
-    setMirror1Name(''); setMirror1Url(''); setMirror1IsEmbed(false);
-    setMirror2Name(''); setMirror2Url(''); setMirror2IsEmbed(false);
+    setMirror1Name(''); setMirror1Url(''); setMirror1Type('link');
+    setMirror2Name(''); setMirror2Url(''); setMirror2Type('link');
     setDescription(''); setPublishDate(new Date().toISOString());
     setSelectedTags([]); setTagInput(''); setShowMirror1(false); setShowMirror2(false);
     setIsSelfHosted(false); setVideoFile(null); setDrmEnhanced(false); setUploadProgress(''); setUploadPercent(0); setChunkPercent(0); setStreamVideoId(''); setCategoryId(''); setAccessMode('category'); setAllowedUsers([]);
