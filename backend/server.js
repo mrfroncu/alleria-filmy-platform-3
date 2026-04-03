@@ -65,9 +65,10 @@ app.set('trust proxy', 1);
 app.use((req, res, next) => {
   // Permissions-Policy: deny display capture for the whole page
   res.set('Permissions-Policy', 'display-capture=(), screen-wake-lock=()');
-  // Prevent embedding in iframes (clickjacking + capture protection)
+  // Allow embedding in iframes from same origin and alleria.pl
+  // X-Frame-Options does not support allowlists; rely on CSP frame-ancestors for modern browsers
   res.set('X-Frame-Options', 'SAMEORIGIN');
-  res.set('Content-Security-Policy', "frame-ancestors 'self'");
+  res.set('Content-Security-Policy', "frame-ancestors 'self' https://alleria.pl https://www.alleria.pl");
   next();
 });
 
