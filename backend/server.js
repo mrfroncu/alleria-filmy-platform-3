@@ -180,6 +180,13 @@ function discordRedirectHandler(req, res) {
   // Save return URL so user gets redirected back after login
   if (req.query.returnTo) {
     req.session.returnTo = req.query.returnTo;
+  }
+  // Track popup flow — used when the app is embedded in an iframe
+  const isPopupFlow = req.query.popup === 'true';
+  if (isPopupFlow) {
+    req.session.popup = true;
+  }
+  if (req.query.returnTo || isPopupFlow) {
     req.session.save(() => {});
   }
   const params = new URLSearchParams({
@@ -306,10 +313,13 @@ async function discordCallbackHandler(req, res) {
         console.error('[AUTH] Session save error:', err);
         return res.redirect('/login?error=auth_failed');
       }
+      const isPopup = req.session.popup;
       const returnTo = req.session.returnTo || '/';
       delete req.session.returnTo;
-      console.log(`[AUTH] Session saved, redirecting to ${returnTo}`);
-      res.redirect(returnTo);
+      delete req.session.popup;
+      const redirectTarget = isPopup ? '/login?popup_auth=success' : returnTo;
+      console.log(`[AUTH] Session saved, redirecting to ${redirectTarget}`);
+      res.redirect(redirectTarget);
     });
 
   } catch (err) {
