@@ -62,13 +62,24 @@ app.use('/api/stream/upload', (req, res, next) => {
 app.set('trust proxy', 1);
 
 // DRM security headers — restrict screen capture APIs
+const iframeEnabled = process.env.IFRAME_EMBED_ENABLED === 'true';
+const iframeAllowedOrigins = (process.env.IFRAME_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(o => /^https?:\/\/[^;\s]+$/.test(o));
+
 app.use((req, res, next) => {
   // Permissions-Policy: deny display capture for the whole page
   res.set('Permissions-Policy', 'display-capture=(), screen-wake-lock=()');
-  // Allow embedding in iframes from same origin and alleria.pl
   // X-Frame-Options does not support allowlists; rely on CSP frame-ancestors for modern browsers
   res.set('X-Frame-Options', 'SAMEORIGIN');
-  res.set('Content-Security-Policy', "frame-ancestors 'self' https://alleria.pl https://www.alleria.pl");
+  if (iframeEnabled && iframeAllowedOrigins.length > 0) {
+    // Allow embedding from same origin and the configured allowed origins
+    res.set('Content-Security-Policy', `frame-ancestors 'self' ${iframeAllowedOrigins.join(' ')}`);
+  } else {
+    // Block all cross-origin embedding
+    res.set('Content-Security-Policy', "frame-ancestors 'self'");
+  }
   next();
 });
 
