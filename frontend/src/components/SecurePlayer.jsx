@@ -27,6 +27,8 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
   const [error, setError] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [volume, setVolume] = useState(1);
+  const [showVolume, setShowVolume] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [qualities, setQualities] = useState([]);
@@ -233,6 +235,29 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
     else v.pause();
   };
 
+  const toggleMute = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    const newMuted = !muted;
+    v.muted = newMuted;
+    if (!newMuted) v.volume = volume;
+    setMuted(newMuted);
+  };
+
+  const changeVolume = (newVolume) => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.volume = newVolume;
+    setVolume(newVolume);
+    if (newVolume === 0) {
+      v.muted = true;
+      setMuted(true);
+    } else if (muted && newVolume > 0) {
+      v.muted = false;
+      setMuted(false);
+    }
+  };
+
   const seek = (e) => {
     const v = videoRef.current;
     if (!v || !duration) return;
@@ -395,9 +420,27 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
               <button onClick={togglePlay} className="p-1.5 text-white hover:text-violet-400 transition-colors">
                 {playing ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" fill="white" />}
               </button>
-              <button onClick={() => { videoRef.current.muted = !muted; setMuted(!muted); }} className="p-1.5 text-white hover:text-violet-400 transition-colors">
-                {muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-              </button>
+              <div
+                className="flex items-center gap-1.5"
+                onMouseEnter={() => setShowVolume(true)}
+                onMouseLeave={() => setShowVolume(false)}
+              >
+                <button onClick={toggleMute} className="p-1.5 text-white hover:text-violet-400 transition-colors">
+                  {muted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                </button>
+                <div className={`overflow-hidden transition-all duration-200 ${showVolume ? 'w-20 opacity-100' : 'w-0 opacity-0'}`}>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={muted ? 0 : volume}
+                    onChange={e => changeVolume(parseFloat(e.target.value))}
+                    className="w-full accent-violet-500 cursor-pointer"
+                    style={{ height: '4px' }}
+                  />
+                </div>
+              </div>
               <span className="text-white/80 text-xs font-mono">
                 {formatTime(currentTime)} / {formatTime(duration)}
               </span>

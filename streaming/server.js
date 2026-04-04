@@ -348,6 +348,7 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
       // Use CRF for source quality (faster, better adaptive bitrate), bitrate for presets
       ...(q.isSource ? ['-crf', '18'] : ['-b:v', q.bitrate, '-maxrate', q.maxrate, '-bufsize', q.bufsize]),
       '-c:a', 'aac', '-b:a', keepHighFps ? '192k' : '128k', '-ac', '2',
+      '-af', 'alimiter=limit=0.9:attack=5:release=50',
       '-hls_time', '6',
       '-hls_list_size', '0',
       '-hls_segment_filename', path.join(qDir, 'seg_%04d.ts'),
