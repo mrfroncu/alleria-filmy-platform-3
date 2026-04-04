@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
@@ -43,6 +43,7 @@ function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlu
 export default function Layout({ children }) {
   const { user, logout, isAdmin, isDev } = useAuth();
   const location = useLocation();
+  const mainRef = useRef(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [categories, setCategories] = useState([]);
   const [catsExpanded, setCatsExpanded] = useState(true);
@@ -54,6 +55,11 @@ export default function Layout({ children }) {
     }
     return 'dark';
   });
+
+  // Scroll main content to top on route change
+  useEffect(() => {
+    if (mainRef.current) mainRef.current.scrollTop = 0;
+  }, [location.pathname]);
 
   // Refresh categories on route change
   useEffect(() => {
@@ -231,7 +237,7 @@ export default function Layout({ children }) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto relative flex flex-col">
+      <main ref={mainRef} className="flex-1 overflow-y-auto relative flex flex-col">
         <div className="lg:hidden flex items-center justify-between p-4 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
           <div className="flex items-center gap-2.5">
             <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain" />
