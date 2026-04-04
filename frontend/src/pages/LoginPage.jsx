@@ -8,10 +8,12 @@ export default function LoginPage() {
   const [configOk, setConfigOk] = useState(true);
 
   // Get returnTo from URL — set by ProtectedRoute redirect
+  // Only allow relative same-origin paths (starts with / but not //) to prevent open redirect attacks.
   const returnTo = (() => {
     const params = new URLSearchParams(window.location.search);
     const r = params.get('returnTo');
-    return r && r !== '/' && r !== '/login' ? r : '';
+    if (r && r.startsWith('/') && !r.startsWith('//') && r !== '/login') return r;
+    return '';
   })();
 
   const [error, setError] = useState(() => {
@@ -36,6 +38,44 @@ export default function LoginPage() {
       })
       .catch(() => setConfigOk(false));
   }, []);
+
+  // Listen for auth success message from the popup (when we are the opener inside the iframe)
+  useEffect(() => {
+    const handleMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'discord_auth_success') {
+        // Re-validate returnTo before navigating to guard against open redirect
+        const dest = (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) ? returnTo : '/';
+        window.location.href = dest;
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [returnTo]);
+
+  // Handle Discord login button click — open a popup when embedded in an iframe
+  // because Discord blocks its OAuth page from being loaded inside iframes.
+  const handleDiscordLogin = (e) => {
+    const inIframe = window.self !== window.top;
+    if (inIframe) {
+      e.preventDefault();
+      const authUrl = '/auth/discord?popup=true';
+      const width = 600;
+      const height = 800;
+      const left = Math.round(window.screen.width / 2 - width / 2);
+      const top = Math.round(window.screen.height / 2 - height / 2);
+      const popup = window.open(
+        authUrl,
+        'discord_oauth',
+        `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,status=no`
+      );
+      // Fall back to top-level navigation if the popup was blocked by the browser
+      if (!popup) {
+        window.top.location.href = authUrl;
+      }
+    }
+    // Not in an iframe — let the <a> tag navigate normally
+  };
 
   const handleTeamspeakLogin = async () => {
     setTsLoading(true);
@@ -86,9 +126,10 @@ export default function LoginPage() {
         )}
 
         <div className="space-y-4">
-          {/* Direct <a> tag with returnTo for post-login redirect */}
+          {/* Discord login — uses a popup when embedded in an iframe to bypass Discord's iframe restrictions */}
           <a
             href={`/auth/discord${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`}
+            onClick={handleDiscordLogin}
             className="w-full py-4 sm:py-5 bg-[#5865F2] text-white rounded-2xl font-bold hover:bg-[#4752C4] transition-all active:scale-[0.98] flex items-center justify-center gap-4 shadow-xl shadow-[#5865F2]/20 text-base sm:text-lg no-underline"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">

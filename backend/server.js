@@ -180,6 +180,13 @@ function discordRedirectHandler(req, res) {
   // Save return URL so user gets redirected back after login
   if (req.query.returnTo) {
     req.session.returnTo = req.query.returnTo;
+  }
+  // Track popup flow — used when the app is embedded in an iframe
+  const isPopupFlow = req.query.popup === 'true';
+  if (isPopupFlow) {
+    req.session.popup = true;
+  }
+  if (req.query.returnTo || isPopupFlow) {
     req.session.save(() => {});
   }
   const params = new URLSearchParams({
@@ -306,8 +313,20 @@ async function discordCallbackHandler(req, res) {
         console.error('[AUTH] Session save error:', err);
         return res.redirect('/login?error=auth_failed');
       }
+      const isPopup = req.session.popup;
       const returnTo = req.session.returnTo || '/';
       delete req.session.returnTo;
+      delete req.session.popup;
+
+      if (isPopup) {
+        // Serve a minimal page that notifies the opener and closes the popup.
+        // Using inline HTML avoids React's auth guards (GuestRoute redirects
+        // authenticated users away from /login, preventing the postMessage effect
+        // from ever running).
+        console.log('[AUTH] Session saved, closing popup and notifying opener');
+        return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>try{if(window.opener){window.opener.postMessage({type:'discord_auth_success'},window.location.origin);}window.close();}catch(e){window.close();}</script></body></html>`);
+      }
+
       console.log(`[AUTH] Session saved, redirecting to ${returnTo}`);
       res.redirect(returnTo);
     });
