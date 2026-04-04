@@ -1801,6 +1801,7 @@ app.use(express.static(frontendPath));
 app.get('*', (req, res) => {
   const indexPath = path.join(frontendPath, 'index.html');
   if (fs.existsSync(indexPath)) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.sendFile(indexPath);
   } else {
     res.status(503).send('<h1>ALLERIA FILMY</h1><p>Frontend not built. Run <code>cd frontend && npm run build</code></p>');
