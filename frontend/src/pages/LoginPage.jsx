@@ -39,15 +39,6 @@ export default function LoginPage() {
       .catch(() => setConfigOk(false));
   }, []);
 
-  // If this page is the popup after successful Discord auth, notify opener and close
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('popup_auth') === 'success' && window.opener) {
-      window.opener.postMessage({ type: 'discord_auth_success' }, window.location.origin);
-      window.close();
-    }
-  }, []);
-
   // Listen for auth success message from the popup (when we are the opener inside the iframe)
   useEffect(() => {
     const handleMessage = (event) => {

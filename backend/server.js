@@ -317,9 +317,18 @@ async function discordCallbackHandler(req, res) {
       const returnTo = req.session.returnTo || '/';
       delete req.session.returnTo;
       delete req.session.popup;
-      const redirectTarget = isPopup ? '/login?popup_auth=success' : returnTo;
-      console.log(`[AUTH] Session saved, redirecting to ${redirectTarget}`);
-      res.redirect(redirectTarget);
+
+      if (isPopup) {
+        // Serve a minimal page that notifies the opener and closes the popup.
+        // Using inline HTML avoids React's auth guards (GuestRoute redirects
+        // authenticated users away from /login, preventing the postMessage effect
+        // from ever running).
+        console.log('[AUTH] Session saved, closing popup and notifying opener');
+        return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>try{if(window.opener){window.opener.postMessage({type:'discord_auth_success'},window.location.origin);}window.close();}catch(e){window.close();}</script></body></html>`);
+      }
+
+      console.log(`[AUTH] Session saved, redirecting to ${returnTo}`);
+      res.redirect(returnTo);
     });
 
   } catch (err) {
