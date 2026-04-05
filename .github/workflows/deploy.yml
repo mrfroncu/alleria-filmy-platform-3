@@ -22,12 +22,12 @@ jobs:
             --exclude='.github' \
             --exclude='.env' \
             -e "ssh -o StrictHostKeyChecking=no" \
-            ./ deploy@${{ secrets.SSH_HOST }}:/srv/video-new-gen5/1/
+            ./ deploy@${{ secrets.SSH_HOST }}:/root/video-new-gen5/1/
 
       - name: Run Docker Compose
         run: |
           sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -o StrictHostKeyChecking=no deploy@${{ secrets.SSH_HOST }} << 'EOF'
-            cd /srv/video-new-gen5/1/
+            cd /root/video-new-gen5/1/
 
             docker compose down
             docker compose build --no-cache
