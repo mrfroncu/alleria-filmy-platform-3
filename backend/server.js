@@ -1254,61 +1254,56 @@ app.put('/api/profile', requireAuth, (req, res) => {
 });
 
 // ============ DEBUG / DEV API ============
+const EXPORT_SKIP_TABLES = new Set(['sessions']);
+
 app.get('/api/debug/export', requireDev, (req, res) => {
   try {
-    const data = {
-      users: db.prepare('SELECT * FROM users').all(),
-      videos: db.prepare('SELECT * FROM videos').all(),
-      tags: db.prepare('SELECT * FROM tags').all(),
-      video_tags: db.prepare('SELECT * FROM video_tags').all(),
-      watch_logs: db.prepare('SELECT * FROM watch_logs').all(),
-      login_logs: db.prepare('SELECT * FROM login_logs').all()
-    };
+    const tables = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+    ).all();
+    const data = {};
+    for (const { name } of tables) {
+      if (EXPORT_SKIP_TABLES.has(name)) continue;
+      data[name] = db.prepare(`SELECT * FROM "${name}"`).all();
+    }
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed: ' + err.message });
   }
 });
 
 app.post('/api/debug/import', requireDev, (req, res) => {
   try {
     const data = req.body;
-    const transaction = db.transaction(() => {
-      // Clear tables in order
-      db.prepare('DELETE FROM video_tags').run();
-      db.prepare('DELETE FROM watch_logs').run();
-      db.prepare('DELETE FROM login_logs').run();
-      db.prepare('DELETE FROM videos').run();
-      db.prepare('DELETE FROM tags').run();
-      db.prepare('DELETE FROM users').run();
+    // Disable FK checks outside the transaction (SQLite does not allow PRAGMA inside a transaction)
+    db.prepare('PRAGMA foreign_keys = OFF').run();
+    try {
+      const transaction = db.transaction(() => {
+        const tables = db.prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        ).all().map(r => r.name).filter(n => !EXPORT_SKIP_TABLES.has(n));
 
-      // Re-insert
-      if (data.users) {
-        const stmt = db.prepare('INSERT INTO users (id, discord_id, username, display_name, avatar, role, auth_method, ts_ip, ts_uid, created_at, last_login) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        data.users.forEach(u => stmt.run(u.id, u.discord_id, u.username, u.display_name, u.avatar, u.role, u.auth_method, u.ts_ip, u.ts_uid, u.created_at, u.last_login));
-      }
-      if (data.tags) {
-        const stmt = db.prepare('INSERT INTO tags (id, name, created_at) VALUES (?, ?, ?)');
-        data.tags.forEach(t => stmt.run(t.id, t.name, t.created_at));
-      }
-      if (data.videos) {
-        const stmt = db.prepare('INSERT INTO videos (id, title, author_id, main_source, main_source_type, main_source_title, thumbnail, custom_thumbnail, mirror1_name, mirror1_url, mirror1_is_embed, mirror2_name, mirror2_url, mirror2_is_embed, description, publish_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        data.videos.forEach(v => stmt.run(v.id, v.title, v.author_id, v.main_source, v.main_source_type, v.main_source_title, v.thumbnail, v.custom_thumbnail, v.mirror1_name, v.mirror1_url, v.mirror1_is_embed, v.mirror2_name, v.mirror2_url, v.mirror2_is_embed, v.description, v.publish_date, v.created_at, v.updated_at));
-      }
-      if (data.video_tags) {
-        const stmt = db.prepare('INSERT OR IGNORE INTO video_tags (video_id, tag_id) VALUES (?, ?)');
-        data.video_tags.forEach(vt => stmt.run(vt.video_id, vt.tag_id));
-      }
-      if (data.watch_logs) {
-        const stmt = db.prepare('INSERT INTO watch_logs (id, user_id, video_id, watched_at) VALUES (?, ?, ?, ?)');
-        data.watch_logs.forEach(w => stmt.run(w.id, w.user_id, w.video_id, w.watched_at));
-      }
-      if (data.login_logs) {
-        const stmt = db.prepare('INSERT INTO login_logs (id, user_id, username, auth_method, ip_address, success, reason, logged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-        data.login_logs.forEach(l => stmt.run(l.id, l.user_id, l.username, l.auth_method, l.ip_address, l.success, l.reason, l.logged_at));
-      }
-    });
-    transaction();
+        // Clear all tables
+        for (const name of tables) {
+          db.prepare(`DELETE FROM "${name}"`).run();
+        }
+
+        // Re-insert rows using column names taken from the data itself
+        for (const [tableName, rows] of Object.entries(data)) {
+          if (!Array.isArray(rows) || rows.length === 0) continue;
+          const cols = Object.keys(rows[0]);
+          const colList = cols.map(c => `"${c}"`).join(', ');
+          const placeholders = cols.map(() => '?').join(', ');
+          const stmt = db.prepare(`INSERT OR IGNORE INTO "${tableName}" (${colList}) VALUES (${placeholders})`);
+          for (const row of rows) {
+            stmt.run(cols.map(c => row[c]));
+          }
+        }
+      });
+      transaction();
+    } finally {
+      db.prepare('PRAGMA foreign_keys = ON').run();
+    }
     res.json({ success: true });
   } catch (err) {
     console.error('Import error:', err);
