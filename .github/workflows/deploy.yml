@@ -17,7 +17,7 @@ jobs:
 
       - name: Rsync deploy
         run: |
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" rsync -avz --delete \
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" rsync -avz \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='.env' \
