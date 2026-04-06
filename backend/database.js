@@ -166,6 +166,17 @@ function initDB() {
   try { db.exec(`UPDATE videos SET mirror1_type='embed' WHERE mirror1_is_embed=1 AND mirror1_type='link'`); } catch (e) {}
   try { db.exec(`UPDATE videos SET mirror2_type='embed' WHERE mirror2_is_embed=1 AND mirror2_type='link'`); } catch (e) {}
 
+  // Mirrors 3–5
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror3_name TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror3_url TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror3_type TEXT DEFAULT 'link'`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror4_name TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror4_url TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror4_type TEXT DEFAULT 'link'`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror5_name TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror5_url TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror5_type TEXT DEFAULT 'link'`); } catch (e) {}
+
   // Audit logs
   db.exec(`CREATE TABLE IF NOT EXISTS audit_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

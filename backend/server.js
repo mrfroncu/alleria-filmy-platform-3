@@ -661,7 +661,11 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
   try {
     const { title, author_id, main_source, main_source_type, main_source_title,
       thumbnail, mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type,
-      mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type, description, publish_date, tags,
+      mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type,
+      mirror3_name, mirror3_url, mirror3_type,
+      mirror4_name, mirror4_url, mirror4_type,
+      mirror5_name, mirror5_url, mirror5_type,
+      description, publish_date, tags,
       stream_video_id, drm_enhanced, category_id } = req.body;
 
     let thumbUrl = thumbnail || extractYoutubeThumbnail(main_source);
@@ -681,16 +685,24 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
 
     const m1t = mirror1_type || (mirror1_is_embed === 'true' || mirror1_is_embed === '1' ? 'embed' : 'link');
     const m2t = mirror2_type || (mirror2_is_embed === 'true' || mirror2_is_embed === '1' ? 'embed' : 'link');
+    const m3t = mirror3_type || 'link';
+    const m4t = mirror4_type || 'link';
+    const m5t = mirror5_type || 'link';
 
     const result = db.prepare(`
       INSERT INTO videos (title, author_id, main_source, main_source_type, main_source_title, thumbnail, custom_thumbnail,
         mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type, mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type,
+        mirror3_name, mirror3_url, mirror3_type, mirror4_name, mirror4_url, mirror4_type,
+        mirror5_name, mirror5_url, mirror5_type,
         description, publish_date, stream_video_id, drm_enhanced, category_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(title, parseInt(author_id), main_source || '', main_source_type || 'youtube', main_source_title || '',
       thumbUrl, customThumb,
       mirror1_name || null, mirror1_url || null, m1t === 'embed' ? 1 : 0, m1t,
       mirror2_name || null, mirror2_url || null, m2t === 'embed' ? 1 : 0, m2t,
+      mirror3_name || null, mirror3_url || null, m3t,
+      mirror4_name || null, mirror4_url || null, m4t,
+      mirror5_name || null, mirror5_url || null, m5t,
       description || '', publish_date,
       stream_video_id || null, drm_enhanced === 'true' || drm_enhanced === '1' ? 1 : 0,
       category_id ? parseInt(category_id) : null);
@@ -764,7 +776,11 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
   try {
     const { title, author_id, main_source, main_source_type, main_source_title,
       thumbnail, mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type,
-      mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type, description, publish_date, tags,
+      mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type,
+      mirror3_name, mirror3_url, mirror3_type,
+      mirror4_name, mirror4_url, mirror4_type,
+      mirror5_name, mirror5_url, mirror5_type,
+      description, publish_date, tags,
       category_id, stream_video_id, drm_enhanced, access_mode, allowed_users } = req.body;
 
     const existing = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
@@ -783,17 +799,26 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
 
     const m1type = mirror1_type || (mirror1_is_embed === 'true' || mirror1_is_embed === '1' ? 'embed' : 'link');
     const m2type = mirror2_type || (mirror2_is_embed === 'true' || mirror2_is_embed === '1' ? 'embed' : 'link');
+    const m3type = mirror3_type || 'link';
+    const m4type = mirror4_type || 'link';
+    const m5type = mirror5_type || 'link';
 
     db.prepare(`
       UPDATE videos SET title=?, author_id=?, main_source=?, main_source_type=?, main_source_title=?, thumbnail=?, custom_thumbnail=?,
         mirror1_name=?, mirror1_url=?, mirror1_is_embed=?, mirror1_type=?,
         mirror2_name=?, mirror2_url=?, mirror2_is_embed=?, mirror2_type=?,
+        mirror3_name=?, mirror3_url=?, mirror3_type=?,
+        mirror4_name=?, mirror4_url=?, mirror4_type=?,
+        mirror5_name=?, mirror5_url=?, mirror5_type=?,
         description=?, publish_date=?, category_id=?, stream_video_id=?, drm_enhanced=?, access_mode=?,
         updated_at=datetime('now') WHERE id=?
     `).run(title, parseInt(author_id), main_source, main_source_type || 'youtube', main_source_title || '',
       thumbUrl, customThumb,
       mirror1_name || null, mirror1_url || null, m1type === 'embed' ? 1 : 0, m1type,
       mirror2_name || null, mirror2_url || null, m2type === 'embed' ? 1 : 0, m2type,
+      mirror3_name || null, mirror3_url || null, m3type,
+      mirror4_name || null, mirror4_url || null, m4type,
+      mirror5_name || null, mirror5_url || null, m5type,
       description || '', publish_date,
       category_id ? parseInt(category_id) : null,
       stream_video_id || existing.stream_video_id || null,
@@ -842,8 +867,14 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
     if (publish_date !== existing.publish_date) changes.push(`data: ${existing.publish_date} → ${publish_date}`);
     if ((mirror1_url||'') !== (existing.mirror1_url||'')) changes.push(`mirror1: "${(existing.mirror1_url||'brak').slice(0,50)}" → "${(mirror1_url||'brak').slice(0,50)}"`);
     if ((mirror2_url||'') !== (existing.mirror2_url||'')) changes.push(`mirror2: "${(existing.mirror2_url||'brak').slice(0,50)}" → "${(mirror2_url||'brak').slice(0,50)}"`);
+    if ((mirror3_url||'') !== (existing.mirror3_url||'')) changes.push(`mirror3: "${(existing.mirror3_url||'brak').slice(0,50)}" → "${(mirror3_url||'brak').slice(0,50)}"`);
+    if ((mirror4_url||'') !== (existing.mirror4_url||'')) changes.push(`mirror4: "${(existing.mirror4_url||'brak').slice(0,50)}" → "${(mirror4_url||'brak').slice(0,50)}"`);
+    if ((mirror5_url||'') !== (existing.mirror5_url||'')) changes.push(`mirror5: "${(existing.mirror5_url||'brak').slice(0,50)}" → "${(mirror5_url||'brak').slice(0,50)}"`);
     if ((mirror1_name||'') !== (existing.mirror1_name||'')) changes.push(`mirror1 nazwa: "${existing.mirror1_name||''}" → "${mirror1_name||''}"`);
     if ((mirror2_name||'') !== (existing.mirror2_name||'')) changes.push(`mirror2 nazwa: "${existing.mirror2_name||''}" → "${mirror2_name||''}"`);
+    if ((mirror3_name||'') !== (existing.mirror3_name||'')) changes.push(`mirror3 nazwa: "${existing.mirror3_name||''}" → "${mirror3_name||''}"`);
+    if ((mirror4_name||'') !== (existing.mirror4_name||'')) changes.push(`mirror4 nazwa: "${existing.mirror4_name||''}" → "${mirror4_name||''}"`);
+    if ((mirror5_name||'') !== (existing.mirror5_name||'')) changes.push(`mirror5 nazwa: "${existing.mirror5_name||''}" → "${mirror5_name||''}"`);
     if (category_id && parseInt(category_id) !== existing.category_id) { const oldC = existing.category_id ? db.prepare('SELECT name FROM categories WHERE id=?').get(existing.category_id)?.name : 'brak'; const newC = db.prepare('SELECT name FROM categories WHERE id=?').get(parseInt(category_id))?.name || '?'; changes.push(`kategoria: "${oldC}" → "${newC}"`); }
     if (thumbUrl !== existing.thumbnail) changes.push(`miniatura zmieniona`);
     audit(req.session.user.id, "edit", "video", parseInt(req.params.id), changes.length ? changes.join('; ') : `edycja filmu "${title}"`);
