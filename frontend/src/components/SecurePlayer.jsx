@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
-import { Shield, Lock, Play, Pause, Volume2, VolumeX, Maximize, Settings } from 'lucide-react';
+import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Settings } from 'lucide-react';
 
 /*
  * SecurePlayer — encrypted HLS player with DRM protections
@@ -27,6 +27,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
   const [error, setError] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [volume, setVolume] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [qualities, setQualities] = useState([]);
@@ -233,6 +234,16 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
     else v.pause();
   };
 
+  const changeVolume = (e) => {
+    const v = videoRef.current;
+    const val = parseFloat(e.target.value);
+    if (!v) return;
+    v.volume = val;
+    v.muted = val === 0;
+    setVolume(val);
+    setMuted(val === 0);
+  };
+
   const seek = (e) => {
     const v = videoRef.current;
     if (!v || !duration) return;
@@ -395,9 +406,38 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
               <button onClick={togglePlay} className="p-1.5 text-white hover:text-violet-400 transition-colors">
                 {playing ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" fill="white" />}
               </button>
-              <button onClick={() => { videoRef.current.muted = !muted; setMuted(!muted); }} className="p-1.5 text-white hover:text-violet-400 transition-colors">
-                {muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-              </button>
+              <div className="flex items-center gap-1 group/vol">
+                <button
+                  onClick={() => {
+                    const v = videoRef.current;
+                    if (!v) return;
+                    if (muted) {
+                      const restoredVolume = volume === 0 ? 1 : volume;
+                      v.muted = false;
+                      v.volume = restoredVolume;
+                      setMuted(false);
+                      setVolume(restoredVolume);
+                    } else {
+                      v.muted = true;
+                      setMuted(true);
+                    }
+                  }}
+                  className="p-1.5 text-white hover:text-violet-400 transition-colors"
+                >
+                  {muted || volume === 0 ? <VolumeX className="w-5 h-5" /> : volume < 0.5 ? <Volume1 className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                </button>
+                <div className="w-0 overflow-hidden transition-all duration-200 group-hover/vol:w-20">
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={volume}
+                    onChange={changeVolume}
+                    className="w-20 accent-violet-500 cursor-pointer"
+                  />
+                </div>
+              </div>
               <span className="text-white/80 text-xs font-mono">
                 {formatTime(currentTime)} / {formatTime(duration)}
               </span>
