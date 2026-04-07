@@ -3,6 +3,7 @@ import { X, Upload, Plus } from 'lucide-react';
 import { api } from '../utils/api';
 import { extractYoutubeId, buildCategoryTreeOptions } from '../utils/helpers';
 import DateTimePicker from './DateTimePicker';
+import { useAuth } from '../contexts/AuthContext';
 
 function SmartThumbnail({ ytId, customSrc, alt }) {
   const [src, setSrc] = useState('');
@@ -27,6 +28,7 @@ function SmartThumbnail({ ytId, customSrc, alt }) {
 
 export default function VideoModal({ isOpen, onClose, video, users = [], onSaved }) {
   const isEdit = !!video;
+  const { user: currentUser } = useAuth();
   const [title, setTitle] = useState('');
   const [authorId, setAuthorId] = useState('');
   const [mainSource, setMainSource] = useState('');
@@ -154,7 +156,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const showMainSourceTitle = showMirror1 || showMirror2 || showMirror3 || showMirror4 || showMirror5;
 
   const resetForm = () => {
-    setTitle(''); setAuthorId(''); setMainSource(''); setMainSourceTitle('');
+    setTitle(''); setAuthorId(currentUser ? String(currentUser.id) : ''); setMainSource(''); setMainSourceTitle('');
     setThumbnail(''); setThumbnailFile(null); setThumbnailPreview('');
     setMirror1Name(''); setMirror1Url(''); setMirror1Type('link'); setMirror1VideoFile(null); setMirror1StreamVideoId('');
     setMirror2Name(''); setMirror2Url(''); setMirror2Type('link'); setMirror2VideoFile(null); setMirror2StreamVideoId('');
