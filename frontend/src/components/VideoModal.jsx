@@ -37,9 +37,28 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const [mirror1Name, setMirror1Name] = useState('');
   const [mirror1Url, setMirror1Url] = useState('');
   const [mirror1Type, setMirror1Type] = useState('link');
+  const [mirror1VideoFile, setMirror1VideoFile] = useState(null);
+  const [mirror1StreamVideoId, setMirror1StreamVideoId] = useState('');
   const [mirror2Name, setMirror2Name] = useState('');
   const [mirror2Url, setMirror2Url] = useState('');
   const [mirror2Type, setMirror2Type] = useState('link');
+  const [mirror2VideoFile, setMirror2VideoFile] = useState(null);
+  const [mirror2StreamVideoId, setMirror2StreamVideoId] = useState('');
+  const [mirror3Name, setMirror3Name] = useState('');
+  const [mirror3Url, setMirror3Url] = useState('');
+  const [mirror3Type, setMirror3Type] = useState('link');
+  const [mirror3VideoFile, setMirror3VideoFile] = useState(null);
+  const [mirror3StreamVideoId, setMirror3StreamVideoId] = useState('');
+  const [mirror4Name, setMirror4Name] = useState('');
+  const [mirror4Url, setMirror4Url] = useState('');
+  const [mirror4Type, setMirror4Type] = useState('link');
+  const [mirror4VideoFile, setMirror4VideoFile] = useState(null);
+  const [mirror4StreamVideoId, setMirror4StreamVideoId] = useState('');
+  const [mirror5Name, setMirror5Name] = useState('');
+  const [mirror5Url, setMirror5Url] = useState('');
+  const [mirror5Type, setMirror5Type] = useState('link');
+  const [mirror5VideoFile, setMirror5VideoFile] = useState(null);
+  const [mirror5StreamVideoId, setMirror5StreamVideoId] = useState('');
   const [description, setDescription] = useState('');
   const [publishDate, setPublishDate] = useState(new Date().toISOString());
   const [selectedTags, setSelectedTags] = useState([]);
@@ -49,6 +68,9 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const [submitting, setSubmitting] = useState(false);
   const [showMirror1, setShowMirror1] = useState(false);
   const [showMirror2, setShowMirror2] = useState(false);
+  const [showMirror3, setShowMirror3] = useState(false);
+  const [showMirror4, setShowMirror4] = useState(false);
+  const [showMirror5, setShowMirror5] = useState(false);
   const [isSelfHosted, setIsSelfHosted] = useState(false);
   const [videoFile, setVideoFile] = useState(null);
   const [drmEnhanced, setDrmEnhanced] = useState(false);
@@ -62,6 +84,11 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const [allowedUsers, setAllowedUsers] = useState([]);
   const fileInputRef = useRef(null);
   const videoFileRef = useRef(null);
+  const mirror1VideoRef = useRef(null);
+  const mirror2VideoRef = useRef(null);
+  const mirror3VideoRef = useRef(null);
+  const mirror4VideoRef = useRef(null);
+  const mirror5VideoRef = useRef(null);
   const tagInputRef = useRef(null);
 
   useEffect(() => {
@@ -82,11 +109,23 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
         setMirror2Name(video.mirror2_name || '');
         setMirror2Url(video.mirror2_url || '');
         setMirror2Type(video.mirror2_type || (video.mirror2_is_embed ? 'embed' : 'link'));
+        setMirror3Name(video.mirror3_name || '');
+        setMirror3Url(video.mirror3_url || '');
+        setMirror3Type(video.mirror3_type || 'link');
+        setMirror4Name(video.mirror4_name || '');
+        setMirror4Url(video.mirror4_url || '');
+        setMirror4Type(video.mirror4_type || 'link');
+        setMirror5Name(video.mirror5_name || '');
+        setMirror5Url(video.mirror5_url || '');
+        setMirror5Type(video.mirror5_type || 'link');
         setDescription(video.description || '');
         setPublishDate(video.publish_date || new Date().toISOString());
         setSelectedTags(video.tags || []);
         setShowMirror1(!!video.mirror1_url);
         setShowMirror2(!!video.mirror2_url);
+        setShowMirror3(!!video.mirror3_url);
+        setShowMirror4(!!video.mirror4_url);
+        setShowMirror5(!!video.mirror5_url);
         setIsSelfHosted(!!video.stream_video_id);
         setStreamVideoId(video.stream_video_id || '');
         setDrmEnhanced(!!video.drm_enhanced);
@@ -112,15 +151,18 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   }, [isOpen, onClose]);
 
   const ytId = (!thumbnail && !thumbnailFile) ? extractYoutubeId(mainSource) : null;
-  const showMainSourceTitle = showMirror1 || showMirror2;
+  const showMainSourceTitle = showMirror1 || showMirror2 || showMirror3 || showMirror4 || showMirror5;
 
   const resetForm = () => {
     setTitle(''); setAuthorId(''); setMainSource(''); setMainSourceTitle('');
     setThumbnail(''); setThumbnailFile(null); setThumbnailPreview('');
-    setMirror1Name(''); setMirror1Url(''); setMirror1Type('link');
-    setMirror2Name(''); setMirror2Url(''); setMirror2Type('link');
+    setMirror1Name(''); setMirror1Url(''); setMirror1Type('link'); setMirror1VideoFile(null); setMirror1StreamVideoId('');
+    setMirror2Name(''); setMirror2Url(''); setMirror2Type('link'); setMirror2VideoFile(null); setMirror2StreamVideoId('');
+    setMirror3Name(''); setMirror3Url(''); setMirror3Type('link'); setMirror3VideoFile(null); setMirror3StreamVideoId('');
+    setMirror4Name(''); setMirror4Url(''); setMirror4Type('link'); setMirror4VideoFile(null); setMirror4StreamVideoId('');
+    setMirror5Name(''); setMirror5Url(''); setMirror5Type('link'); setMirror5VideoFile(null); setMirror5StreamVideoId('');
     setDescription(''); setPublishDate(new Date().toISOString());
-    setSelectedTags([]); setTagInput(''); setShowMirror1(false); setShowMirror2(false);
+    setSelectedTags([]); setTagInput(''); setShowMirror1(false); setShowMirror2(false); setShowMirror3(false); setShowMirror4(false); setShowMirror5(false);
     setIsSelfHosted(false); setVideoFile(null); setDrmEnhanced(false); setUploadProgress(''); setUploadPercent(0); setChunkPercent(0); setStreamVideoId(''); setCategoryId(''); setAccessMode('category'); setAllowedUsers([]);
   };
 
@@ -160,6 +202,69 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     if (file) { setThumbnailFile(file); setThumbnailPreview(URL.createObjectURL(file)); setThumbnail(''); }
   };
 
+  // Reusable chunked upload helper
+  const uploadVideoFile = async (file, label) => {
+    const CHUNK_SIZE = 50 * 1024 * 1024;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const totalMb = (file.size / 1024 / 1024).toFixed(1);
+
+    setUploadProgress(`${label}: inicjalizacja (${totalMb} MB, ${totalChunks} części)...`);
+    setUploadPercent(0);
+
+    const initRes = await api.streamUploadInit({
+      filename: file.name,
+      filesize: file.size,
+      total_chunks: totalChunks,
+      drm_enhanced: false,
+    });
+    if (!initRes.success) throw new Error(initRes.error || 'Init failed');
+    const uploadId = initRes.upload_id;
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunk = file.slice(start, end);
+      const chunkMb = ((end - start) / 1024 / 1024).toFixed(1);
+
+      const chunkForm = new FormData();
+      chunkForm.append('chunk', chunk, `chunk_${i}`);
+      chunkForm.append('upload_id', uploadId);
+      chunkForm.append('chunk_index', String(i));
+
+      setUploadPercent(Math.round((i / totalChunks) * 90));
+      setChunkPercent(0);
+      setUploadProgress(`${label}: część ${i + 1}/${totalChunks} (${chunkMb} MB)...`);
+
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) setChunkPercent(Math.round((e.loaded / e.total) * 100));
+        });
+        xhr.addEventListener('load', () => {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (xhr.status >= 200 && xhr.status < 300 && data.success) { setChunkPercent(100); resolve(data); }
+            else reject(new Error(data.error || `Chunk ${i} HTTP ${xhr.status}`));
+          } catch (e) { reject(new Error('Invalid chunk response')); }
+        });
+        xhr.addEventListener('error', () => reject(new Error(`Chunk ${i} network error`)));
+        xhr.addEventListener('timeout', () => reject(new Error(`Chunk ${i} timeout`)));
+        xhr.timeout = 5 * 60 * 1000;
+        xhr.open('POST', '/api/stream/upload/chunk');
+        xhr.withCredentials = true;
+        xhr.send(chunkForm);
+      });
+
+      setUploadPercent(Math.round(((i + 1) / totalChunks) * 90));
+    }
+
+    setUploadProgress(`${label}: składanie pliku...`);
+    setUploadPercent(95);
+    const completeRes = await api.streamUploadComplete(uploadId);
+    if (!completeRes.success) throw new Error(completeRes.error || 'Complete failed');
+    setUploadPercent(100);
+    return completeRes.video_id;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -169,7 +274,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     try {
       let finalStreamId = streamVideoId;
 
-      // Step 1: Chunked upload for self-hosted videos
+      // Step 1: Chunked upload for self-hosted main source
       if (isSelfHosted && videoFile && !streamVideoId) {
         const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB chunks — safe under Cloudflare 100MB limit
         const totalChunks = Math.ceil(videoFile.size / CHUNK_SIZE);
@@ -246,6 +351,29 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
         setUploadPercent(100);
       }
 
+      // Step 1b: Upload streamer-type mirrors
+      let finalMirror1Url = mirror1Url;
+      let finalMirror2Url = mirror2Url;
+      let finalMirror3Url = mirror3Url;
+      let finalMirror4Url = mirror4Url;
+      let finalMirror5Url = mirror5Url;
+
+      const mirrorUploads = [
+        { show: showMirror1, type: mirror1Type, file: mirror1VideoFile, existingId: mirror1StreamVideoId, setUrl: v => { finalMirror1Url = v; }, setId: setMirror1StreamVideoId, label: 'Mirror 1' },
+        { show: showMirror2, type: mirror2Type, file: mirror2VideoFile, existingId: mirror2StreamVideoId, setUrl: v => { finalMirror2Url = v; }, setId: setMirror2StreamVideoId, label: 'Mirror 2' },
+        { show: showMirror3, type: mirror3Type, file: mirror3VideoFile, existingId: mirror3StreamVideoId, setUrl: v => { finalMirror3Url = v; }, setId: setMirror3StreamVideoId, label: 'Mirror 3' },
+        { show: showMirror4, type: mirror4Type, file: mirror4VideoFile, existingId: mirror4StreamVideoId, setUrl: v => { finalMirror4Url = v; }, setId: setMirror4StreamVideoId, label: 'Mirror 4' },
+        { show: showMirror5, type: mirror5Type, file: mirror5VideoFile, existingId: mirror5StreamVideoId, setUrl: v => { finalMirror5Url = v; }, setId: setMirror5StreamVideoId, label: 'Mirror 5' },
+      ];
+
+      for (const m of mirrorUploads) {
+        if (m.show && m.type === 'streamer' && m.file && !m.existingId) {
+          const vid = await uploadVideoFile(m.file, m.label);
+          m.setUrl(`self-hosted:${vid}`);
+          m.setId(vid);
+        }
+      }
+
       // Step 2: Save video record
       const formData = new FormData();
       formData.append('title', title.trim());
@@ -264,8 +392,11 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
 
       if (thumbnailFile) formData.append('thumbnail_file', thumbnailFile);
       else if (thumbnail) formData.append('thumbnail', thumbnail);
-      if (showMirror1) { formData.append('mirror1_name', mirror1Name); formData.append('mirror1_url', mirror1Url); formData.append('mirror1_type', mirror1Type); }
-      if (showMirror2) { formData.append('mirror2_name', mirror2Name); formData.append('mirror2_url', mirror2Url); formData.append('mirror2_type', mirror2Type); }
+      if (showMirror1) { formData.append('mirror1_name', mirror1Name); formData.append('mirror1_url', finalMirror1Url); formData.append('mirror1_type', mirror1Type); }
+      if (showMirror2) { formData.append('mirror2_name', mirror2Name); formData.append('mirror2_url', finalMirror2Url); formData.append('mirror2_type', mirror2Type); }
+      if (showMirror3) { formData.append('mirror3_name', mirror3Name); formData.append('mirror3_url', finalMirror3Url); formData.append('mirror3_type', mirror3Type); }
+      if (showMirror4) { formData.append('mirror4_name', mirror4Name); formData.append('mirror4_url', finalMirror4Url); formData.append('mirror4_type', mirror4Type); }
+      if (showMirror5) { formData.append('mirror5_name', mirror5Name); formData.append('mirror5_url', finalMirror5Url); formData.append('mirror5_type', mirror5Type); }
 
       if (isEdit) await api.updateVideo(video.id, formData);
       else await api.createVideo(formData);
@@ -517,15 +648,31 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="label-field mb-0">Mirror 1</span>
-                    <button type="button" onClick={() => { setShowMirror1(false); setMirror1Name(''); setMirror1Url(''); setMirror1Type('link'); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
+                    <button type="button" onClick={() => { setShowMirror1(false); setMirror1Name(''); setMirror1Url(''); setMirror1Type('link'); setMirror1VideoFile(null); setMirror1StreamVideoId(''); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
                   </div>
                   <input type="text" value={mirror1Name} onChange={e => setMirror1Name(e.target.value)} className="input-field" placeholder="Nazwa (np. CDA, Mega, Plex)" />
-                  <div className="flex gap-2">
-                    {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'}].map(o => (
-                      <button key={o.v} type="button" onClick={() => setMirror1Type(o.v)} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror1Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
+                  <div className="flex flex-wrap gap-2">
+                    {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'},{v:'streamer',l:'Upload'}].map(o => (
+                      <button key={o.v} type="button" onClick={() => { setMirror1Type(o.v); setMirror1VideoFile(null); setMirror1StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror1Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
                     ))}
                   </div>
-                  <input type="text" value={mirror1Url} onChange={e => setMirror1Url(e.target.value)} className="input-field" placeholder={mirror1Type === 'plex' ? 'Link do filmu w Plex (app.plex.tv/...)' : mirror1Type === 'embed' ? 'Kod HTML embed' : 'URL filmu'} />
+                  {mirror1Type === 'streamer' ? (
+                    mirror1StreamVideoId ? (
+                      <div className="flex items-center gap-2 p-3 bg-emerald-100 dark:bg-emerald-500/10 rounded-xl">
+                        <svg className="w-4 h-4 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">Wideo przesłane: <code className="text-xs font-mono">{mirror1StreamVideoId}</code></span>
+                      </div>
+                    ) : (
+                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror1VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror1VideoRef.current?.click()}>
+                        <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
+                        {mirror1VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror1VideoFile.name} ({(mirror1VideoFile.size/1024/1024).toFixed(1)} MB)</p>
+                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> — max 20 GB</p>}
+                        <input ref={mirror1VideoRef} type="file" accept="video/*" onChange={e => setMirror1VideoFile(e.target.files?.[0] || null)} className="hidden" />
+                      </div>
+                    )
+                  ) : (
+                    <input type="text" value={mirror1Url} onChange={e => setMirror1Url(e.target.value)} className="input-field" placeholder={mirror1Type === 'plex' ? 'Link do filmu w Plex (app.plex.tv/...)' : mirror1Type === 'embed' ? 'Kod HTML embed' : 'URL filmu'} />
+                  )}
                 </div>
               )}
               {showMirror1 && !showMirror2 && (
@@ -537,15 +684,139 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="label-field mb-0">Mirror 2</span>
-                    <button type="button" onClick={() => { setShowMirror2(false); setMirror2Name(''); setMirror2Url(''); setMirror2Type('link'); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
+                    <button type="button" onClick={() => { setShowMirror2(false); setMirror2Name(''); setMirror2Url(''); setMirror2Type('link'); setMirror2VideoFile(null); setMirror2StreamVideoId(''); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
                   </div>
                   <input type="text" value={mirror2Name} onChange={e => setMirror2Name(e.target.value)} className="input-field" placeholder="Nazwa (np. Streamable, Plex)" />
-                  <div className="flex gap-2">
-                    {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'}].map(o => (
-                      <button key={o.v} type="button" onClick={() => setMirror2Type(o.v)} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror2Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
+                  <div className="flex flex-wrap gap-2">
+                    {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'},{v:'streamer',l:'Upload'}].map(o => (
+                      <button key={o.v} type="button" onClick={() => { setMirror2Type(o.v); setMirror2VideoFile(null); setMirror2StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror2Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
                     ))}
                   </div>
-                  <input type="text" value={mirror2Url} onChange={e => setMirror2Url(e.target.value)} className="input-field" placeholder={mirror2Type === 'plex' ? 'Link do filmu w Plex (app.plex.tv/...)' : mirror2Type === 'embed' ? 'Kod HTML embed' : 'URL filmu'} />
+                  {mirror2Type === 'streamer' ? (
+                    mirror2StreamVideoId ? (
+                      <div className="flex items-center gap-2 p-3 bg-emerald-100 dark:bg-emerald-500/10 rounded-xl">
+                        <svg className="w-4 h-4 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">Wideo przesłane: <code className="text-xs font-mono">{mirror2StreamVideoId}</code></span>
+                      </div>
+                    ) : (
+                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror2VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror2VideoRef.current?.click()}>
+                        <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
+                        {mirror2VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror2VideoFile.name} ({(mirror2VideoFile.size/1024/1024).toFixed(1)} MB)</p>
+                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> — max 20 GB</p>}
+                        <input ref={mirror2VideoRef} type="file" accept="video/*" onChange={e => setMirror2VideoFile(e.target.files?.[0] || null)} className="hidden" />
+                      </div>
+                    )
+                  ) : (
+                    <input type="text" value={mirror2Url} onChange={e => setMirror2Url(e.target.value)} className="input-field" placeholder={mirror2Type === 'plex' ? 'Link do filmu w Plex (app.plex.tv/...)' : mirror2Type === 'embed' ? 'Kod HTML embed' : 'URL filmu'} />
+                  )}
+                </div>
+              )}
+              {showMirror2 && !showMirror3 && (
+                <button type="button" onClick={() => setShowMirror3(true)} className="flex items-center gap-2 text-sm font-bold text-violet-500 hover:text-violet-400 transition-colors">
+                  <Plus className="w-4 h-4" /> Dodaj mirror 3
+                </button>
+              )}
+              {showMirror3 && (
+                <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="label-field mb-0">Mirror 3</span>
+                    <button type="button" onClick={() => { setShowMirror3(false); setMirror3Name(''); setMirror3Url(''); setMirror3Type('link'); setMirror3VideoFile(null); setMirror3StreamVideoId(''); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
+                  </div>
+                  <input type="text" value={mirror3Name} onChange={e => setMirror3Name(e.target.value)} className="input-field" placeholder="Nazwa" />
+                  <div className="flex flex-wrap gap-2">
+                    {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'},{v:'streamer',l:'Upload'}].map(o => (
+                      <button key={o.v} type="button" onClick={() => { setMirror3Type(o.v); setMirror3VideoFile(null); setMirror3StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror3Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
+                    ))}
+                  </div>
+                  {mirror3Type === 'streamer' ? (
+                    mirror3StreamVideoId ? (
+                      <div className="flex items-center gap-2 p-3 bg-emerald-100 dark:bg-emerald-500/10 rounded-xl">
+                        <svg className="w-4 h-4 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">Wideo przesłane: <code className="text-xs font-mono">{mirror3StreamVideoId}</code></span>
+                      </div>
+                    ) : (
+                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror3VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror3VideoRef.current?.click()}>
+                        <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
+                        {mirror3VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror3VideoFile.name} ({(mirror3VideoFile.size/1024/1024).toFixed(1)} MB)</p>
+                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> — max 20 GB</p>}
+                        <input ref={mirror3VideoRef} type="file" accept="video/*" onChange={e => setMirror3VideoFile(e.target.files?.[0] || null)} className="hidden" />
+                      </div>
+                    )
+                  ) : (
+                    <input type="text" value={mirror3Url} onChange={e => setMirror3Url(e.target.value)} className="input-field" placeholder={mirror3Type === 'plex' ? 'Link do filmu w Plex (app.plex.tv/...)' : mirror3Type === 'embed' ? 'Kod HTML embed' : 'URL filmu'} />
+                  )}
+                </div>
+              )}
+              {showMirror3 && !showMirror4 && (
+                <button type="button" onClick={() => setShowMirror4(true)} className="flex items-center gap-2 text-sm font-bold text-violet-500 hover:text-violet-400 transition-colors">
+                  <Plus className="w-4 h-4" /> Dodaj mirror 4
+                </button>
+              )}
+              {showMirror4 && (
+                <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="label-field mb-0">Mirror 4</span>
+                    <button type="button" onClick={() => { setShowMirror4(false); setMirror4Name(''); setMirror4Url(''); setMirror4Type('link'); setMirror4VideoFile(null); setMirror4StreamVideoId(''); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
+                  </div>
+                  <input type="text" value={mirror4Name} onChange={e => setMirror4Name(e.target.value)} className="input-field" placeholder="Nazwa" />
+                  <div className="flex flex-wrap gap-2">
+                    {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'},{v:'streamer',l:'Upload'}].map(o => (
+                      <button key={o.v} type="button" onClick={() => { setMirror4Type(o.v); setMirror4VideoFile(null); setMirror4StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror4Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
+                    ))}
+                  </div>
+                  {mirror4Type === 'streamer' ? (
+                    mirror4StreamVideoId ? (
+                      <div className="flex items-center gap-2 p-3 bg-emerald-100 dark:bg-emerald-500/10 rounded-xl">
+                        <svg className="w-4 h-4 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">Wideo przesłane: <code className="text-xs font-mono">{mirror4StreamVideoId}</code></span>
+                      </div>
+                    ) : (
+                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror4VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror4VideoRef.current?.click()}>
+                        <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
+                        {mirror4VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror4VideoFile.name} ({(mirror4VideoFile.size/1024/1024).toFixed(1)} MB)</p>
+                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> — max 20 GB</p>}
+                        <input ref={mirror4VideoRef} type="file" accept="video/*" onChange={e => setMirror4VideoFile(e.target.files?.[0] || null)} className="hidden" />
+                      </div>
+                    )
+                  ) : (
+                    <input type="text" value={mirror4Url} onChange={e => setMirror4Url(e.target.value)} className="input-field" placeholder={mirror4Type === 'plex' ? 'Link do filmu w Plex (app.plex.tv/...)' : mirror4Type === 'embed' ? 'Kod HTML embed' : 'URL filmu'} />
+                  )}
+                </div>
+              )}
+              {showMirror4 && !showMirror5 && (
+                <button type="button" onClick={() => setShowMirror5(true)} className="flex items-center gap-2 text-sm font-bold text-violet-500 hover:text-violet-400 transition-colors">
+                  <Plus className="w-4 h-4" /> Dodaj mirror 5
+                </button>
+              )}
+              {showMirror5 && (
+                <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="label-field mb-0">Mirror 5</span>
+                    <button type="button" onClick={() => { setShowMirror5(false); setMirror5Name(''); setMirror5Url(''); setMirror5Type('link'); setMirror5VideoFile(null); setMirror5StreamVideoId(''); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
+                  </div>
+                  <input type="text" value={mirror5Name} onChange={e => setMirror5Name(e.target.value)} className="input-field" placeholder="Nazwa" />
+                  <div className="flex flex-wrap gap-2">
+                    {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'},{v:'streamer',l:'Upload'}].map(o => (
+                      <button key={o.v} type="button" onClick={() => { setMirror5Type(o.v); setMirror5VideoFile(null); setMirror5StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror5Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
+                    ))}
+                  </div>
+                  {mirror5Type === 'streamer' ? (
+                    mirror5StreamVideoId ? (
+                      <div className="flex items-center gap-2 p-3 bg-emerald-100 dark:bg-emerald-500/10 rounded-xl">
+                        <svg className="w-4 h-4 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">Wideo przesłane: <code className="text-xs font-mono">{mirror5StreamVideoId}</code></span>
+                      </div>
+                    ) : (
+                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror5VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror5VideoRef.current?.click()}>
+                        <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
+                        {mirror5VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror5VideoFile.name} ({(mirror5VideoFile.size/1024/1024).toFixed(1)} MB)</p>
+                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> — max 20 GB</p>}
+                        <input ref={mirror5VideoRef} type="file" accept="video/*" onChange={e => setMirror5VideoFile(e.target.files?.[0] || null)} className="hidden" />
+                      </div>
+                    )
+                  ) : (
+                    <input type="text" value={mirror5Url} onChange={e => setMirror5Url(e.target.value)} className="input-field" placeholder={mirror5Type === 'plex' ? 'Link do filmu w Plex (app.plex.tv/...)' : mirror5Type === 'embed' ? 'Kod HTML embed' : 'URL filmu'} />
+                  )}
                 </div>
               )}
             </div>

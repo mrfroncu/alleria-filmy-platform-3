@@ -209,14 +209,25 @@ export default function VideoPage() {
     ? { url: video.mirror1_url, type: video.mirror1_type || (video.mirror1_is_embed ? 'embed' : 'link') }
     : activeSource === 'mirror2'
     ? { url: video.mirror2_url, type: video.mirror2_type || (video.mirror2_is_embed ? 'embed' : 'link') }
+    : activeSource === 'mirror3'
+    ? { url: video.mirror3_url, type: video.mirror3_type || 'link' }
+    : activeSource === 'mirror4'
+    ? { url: video.mirror4_url, type: video.mirror4_type || 'link' }
+    : activeSource === 'mirror5'
+    ? { url: video.mirror5_url, type: video.mirror5_type || 'link' }
     : { url: video.main_source, type: video.main_source_type };
+  const isStreamer = src.type === 'streamer';
+  const streamerVideoId = isStreamer ? src.url?.replace('self-hosted:', '') : null;
   const isPlex = src.type === 'plex';
   const isHtml = src.type === 'embed' || src.type === 'html';
-  const embedUrl = (isHtml || isPlex) ? null : youtubeToEmbed(src.url);
+  const embedUrl = (isHtml || isPlex || isStreamer) ? null : youtubeToEmbed(src.url);
   const sources = [
     { key: 'main', label: video.main_source_title || 'Główne źródło' },
     ...(video.mirror1_url ? [{ key: 'mirror1', label: video.mirror1_name || 'Mirror 1' }] : []),
     ...(video.mirror2_url ? [{ key: 'mirror2', label: video.mirror2_name || 'Mirror 2' }] : []),
+    ...(video.mirror3_url ? [{ key: 'mirror3', label: video.mirror3_name || 'Mirror 3' }] : []),
+    ...(video.mirror4_url ? [{ key: 'mirror4', label: video.mirror4_name || 'Mirror 4' }] : []),
+    ...(video.mirror5_url ? [{ key: 'mirror5', label: video.mirror5_name || 'Mirror 5' }] : []),
   ];
   const isDev = user?.role === 'dev';
   const activeCount = comments.filter(c => !c.deleted).length;
@@ -255,6 +266,8 @@ export default function VideoPage() {
         <div className="mb-8 anim-stagger-2" key={`player-${activeSource}`}>
           {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
             <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} />
+          ) : isStreamer && streamerVideoId ? (
+            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} />
           ) : isPlex && src.url ? (
             <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in plex-container flex items-center justify-center">
               {/* Floating particles */}
