@@ -614,7 +614,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
             {showMainSourceTitle && (
               <div>
                 <label className="label-field">Tytuł głównego źródła</label>
-                <input type="text" value={mainSourceTitle} onChange={e => setMainSourceTitle(e.target.value)} className="input-field" placeholder="np. YouTube" />
+                <input type="text" value={mainSourceTitle} onChange={e => setMainSourceTitle(e.target.value)} className="input-field" placeholder="np. YouTube" maxLength={80} />
               </div>
             )}
 
@@ -652,7 +652,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                     <span className="label-field mb-0">Mirror 1</span>
                     <button type="button" onClick={() => { setShowMirror1(false); setMirror1Name(''); setMirror1Url(''); setMirror1Type('link'); setMirror1VideoFile(null); setMirror1StreamVideoId(''); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
                   </div>
-                  <input type="text" value={mirror1Name} onChange={e => setMirror1Name(e.target.value)} className="input-field" placeholder="Nazwa (np. CDA, Mega, Plex)" />
+                  <input type="text" value={mirror1Name} onChange={e => setMirror1Name(e.target.value)} className="input-field" placeholder="Nazwa (np. CDA, Mega, Plex)" maxLength={80} />
                   <div className="flex flex-wrap gap-2">
                     {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'},{v:'streamer',l:'Upload'}].map(o => (
                       <button key={o.v} type="button" onClick={() => { setMirror1Type(o.v); setMirror1VideoFile(null); setMirror1StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror1Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
@@ -688,7 +688,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                     <span className="label-field mb-0">Mirror 2</span>
                     <button type="button" onClick={() => { setShowMirror2(false); setMirror2Name(''); setMirror2Url(''); setMirror2Type('link'); setMirror2VideoFile(null); setMirror2StreamVideoId(''); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
                   </div>
-                  <input type="text" value={mirror2Name} onChange={e => setMirror2Name(e.target.value)} className="input-field" placeholder="Nazwa (np. Streamable, Plex)" />
+                  <input type="text" value={mirror2Name} onChange={e => setMirror2Name(e.target.value)} className="input-field" placeholder="Nazwa (np. Streamable, Plex)" maxLength={80} />
                   <div className="flex flex-wrap gap-2">
                     {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'},{v:'streamer',l:'Upload'}].map(o => (
                       <button key={o.v} type="button" onClick={() => { setMirror2Type(o.v); setMirror2VideoFile(null); setMirror2StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror2Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
@@ -724,7 +724,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                     <span className="label-field mb-0">Mirror 3</span>
                     <button type="button" onClick={() => { setShowMirror3(false); setMirror3Name(''); setMirror3Url(''); setMirror3Type('link'); setMirror3VideoFile(null); setMirror3StreamVideoId(''); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
                   </div>
-                  <input type="text" value={mirror3Name} onChange={e => setMirror3Name(e.target.value)} className="input-field" placeholder="Nazwa" />
+                  <input type="text" value={mirror3Name} onChange={e => setMirror3Name(e.target.value)} className="input-field" placeholder="Nazwa" maxLength={80} />
                   <div className="flex flex-wrap gap-2">
                     {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'},{v:'streamer',l:'Upload'}].map(o => (
                       <button key={o.v} type="button" onClick={() => { setMirror3Type(o.v); setMirror3VideoFile(null); setMirror3StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror3Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
@@ -760,7 +760,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                     <span className="label-field mb-0">Mirror 4</span>
                     <button type="button" onClick={() => { setShowMirror4(false); setMirror4Name(''); setMirror4Url(''); setMirror4Type('link'); setMirror4VideoFile(null); setMirror4StreamVideoId(''); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
                   </div>
-                  <input type="text" value={mirror4Name} onChange={e => setMirror4Name(e.target.value)} className="input-field" placeholder="Nazwa" />
+                  <input type="text" value={mirror4Name} onChange={e => setMirror4Name(e.target.value)} className="input-field" placeholder="Nazwa" maxLength={80} />
                   <div className="flex flex-wrap gap-2">
                     {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'},{v:'streamer',l:'Upload'}].map(o => (
                       <button key={o.v} type="button" onClick={() => { setMirror4Type(o.v); setMirror4VideoFile(null); setMirror4StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror4Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
@@ -796,7 +796,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                     <span className="label-field mb-0">Mirror 5</span>
                     <button type="button" onClick={() => { setShowMirror5(false); setMirror5Name(''); setMirror5Url(''); setMirror5Type('link'); setMirror5VideoFile(null); setMirror5StreamVideoId(''); }} className="text-red-500 hover:text-red-400 text-xs font-bold">Usuń</button>
                   </div>
-                  <input type="text" value={mirror5Name} onChange={e => setMirror5Name(e.target.value)} className="input-field" placeholder="Nazwa" />
+                  <input type="text" value={mirror5Name} onChange={e => setMirror5Name(e.target.value)} className="input-field" placeholder="Nazwa" maxLength={80} />
                   <div className="flex flex-wrap gap-2">
                     {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'},{v:'streamer',l:'Upload'}].map(o => (
                       <button key={o.v} type="button" onClick={() => { setMirror5Type(o.v); setMirror5VideoFile(null); setMirror5StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror5Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
