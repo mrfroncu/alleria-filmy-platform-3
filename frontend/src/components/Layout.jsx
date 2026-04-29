@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import {
-  Film, Shield, LogOut, Menu, X, Sun, Moon, Bug, ChevronRight, ChevronDown,
+  Film, Shield, LogOut, Menu, X, Bug, ChevronRight, ChevronDown,
   Heart, Clock, BarChart3, User, FolderOpen, FileText, MessageSquarePlus
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
@@ -47,14 +47,7 @@ export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [categories, setCategories] = useState([]);
   const [catsExpanded, setCatsExpanded] = useState(true);
-  const [versions, setVersions] = useState({ panel: '', api: '', stream: '', streamStatus: '' });
-  const [theme, setTheme] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('alleria-theme');
-      if (saved) { document.documentElement.classList.toggle('dark', saved === 'dark'); return saved; }
-    }
-    return 'dark';
-  });
+  const [versions, setVersions] = useState({ panel: '', stream: '', streamStatus: '' });
 
   // Scroll main content to top on route change
   useEffect(() => {
@@ -72,16 +65,9 @@ export default function Layout({ children }) {
       fetch('/api/version').then(r => r.json()).catch(() => ({})),
       fetch('/api/version/streaming').then(r => r.json()).catch(() => ({})),
     ]).then(([app, stream]) => {
-      setVersions({ panel: app.version || '?', api: app.api || app.version || '?', stream: stream.version || '?', streamStatus: stream.status || '' });
+      setVersions({ panel: app.version || '?', stream: stream.version || '?', streamStatus: stream.status || '' });
     });
   }, []);
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    document.documentElement.classList.toggle('dark', next === 'dark');
-    localStorage.setItem('alleria-theme', next);
-  };
 
   const isActive = (path, prefixes) => {
     if (prefixes) return prefixes.some(p => location.pathname.startsWith(p)) || location.pathname === path;
@@ -201,24 +187,23 @@ export default function Layout({ children }) {
               </nav>
             </>
           )}
-        </div>
 
-        {/* Report Issue */}
-        <div className="px-4 pb-2 relative z-10 shrink-0">
-          <a
-            href="https://github.com/mrfroncu/alleria-filmy-platform-3/issues"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white transition-all duration-300 font-semibold text-[11px]"
-          >
-            <MessageSquarePlus className="w-3.5 h-3.5 shrink-0" />
-            Report Issue / Request Feature
-          </a>
+          <div className="mt-2">
+            <a
+              href="https://github.com/mrfroncu/alleria-filmy-platform-3/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white transition-all duration-300 font-semibold text-[13px]"
+            >
+              <MessageSquarePlus className="w-[18px] h-[18px] shrink-0" />
+              Report Issue / Request Feature
+            </a>
+          </div>
         </div>
 
         {/* User card */}
         <div className="p-4 relative z-10 shrink-0">
-          <div className="p-3 bg-zinc-50 dark:bg-white/5 rounded-2xl border border-zinc-200 dark:border-white/10 mb-3 backdrop-blur-md">
+          <div className="p-3 bg-zinc-50 dark:bg-white/5 rounded-2xl border border-zinc-200 dark:border-white/10 backdrop-blur-md">
             <div className="flex items-center gap-3">
               <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=6366f1&color=fff&size=80`} alt="" className="w-9 h-9 rounded-xl shadow-sm border border-zinc-200 dark:border-white/10 object-cover" />
               <div className="flex-1 min-w-0">
@@ -228,28 +213,18 @@ export default function Layout({ children }) {
                   {user?.role?.toUpperCase()}
                 </p>
               </div>
+              <button onClick={logout} className="p-1.5 rounded-lg text-zinc-400 hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 transition-all duration-300 shrink-0" title="Wyloguj">
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button onClick={logout} className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400 transition-all duration-300 font-bold text-[12px]">
-              <LogOut className="w-3.5 h-3.5" /> Wyloguj
-            </button>
-            <button onClick={toggleTheme} className="p-2.5 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white transition-all duration-300" title={theme === 'dark' ? 'Tryb jasny' : 'Tryb ciemny'}>
-              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
           </div>
           {/* Version info */}
           {versions.panel && (
-            <div className="px-3 pb-1 font-mono text-center leading-relaxed space-y-0.5">
-              <div className="text-[8px] text-zinc-400 dark:text-zinc-600">
-                Panel v{versions.panel} • API v{versions.api}
-              </div>
-              <div className="text-[8px]">
-                <span className="text-zinc-400 dark:text-zinc-600">Streamer v{versions.stream} — </span>
-                {versions.streamStatus === 'compatible' && <span className="text-emerald-500">compatible</span>}
-                {versions.streamStatus === 'deprecated' && <span className="text-amber-500">deprecated</span>}
-                {versions.streamStatus === 'offline' && <span className="text-red-500">offline</span>}
-              </div>
+            <div className="pt-2 text-[8px] text-zinc-400 dark:text-zinc-600 font-mono text-center">
+              Panel & API: v{versions.panel} | Player: v{versions.stream}{' '}
+              {versions.streamStatus === 'compatible' && <span className="text-emerald-500">(compatible)</span>}
+              {versions.streamStatus === 'deprecated' && <span className="text-amber-500">(deprecated)</span>}
+              {versions.streamStatus === 'offline' && <span className="text-red-500">(offline)</span>}
             </div>
           )}
         </div>
