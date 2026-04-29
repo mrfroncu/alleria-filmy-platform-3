@@ -2,8 +2,8 @@
 // Edit versions here — backend and frontend read from this file
 
 module.exports = {
-  PANEL_VERSION: '3.8.0',
-  API_VERSION: '3.8.0',
+  PANEL_VERSION: '3.9.0',
+  API_VERSION: '3.9.0',
   // Minimum compatible streaming version — if streaming reports older, show "deprecated"
   STREAM_MIN_VERSION: '1.6.0',
 };

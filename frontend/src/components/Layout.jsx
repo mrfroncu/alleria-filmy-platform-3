@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import {
   Film, Shield, LogOut, Menu, X, Sun, Moon, Bug, ChevronRight, ChevronDown,
-  Heart, Clock, BarChart3, User, FolderOpen, FileText
+  Heart, Clock, BarChart3, User, FolderOpen, FileText, MessageSquarePlus
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
 
@@ -203,6 +203,19 @@ export default function Layout({ children }) {
           )}
         </div>
 
+        {/* Report Issue */}
+        <div className="px-4 pb-2 relative z-10 shrink-0">
+          <a
+            href="https://github.com/mrfroncu/alleria-filmy-platform-3/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white transition-all duration-300 font-semibold text-[11px]"
+          >
+            <MessageSquarePlus className="w-3.5 h-3.5 shrink-0" />
+            Report Issue / Request Feature
+          </a>
+        </div>
+
         {/* User card */}
         <div className="p-4 relative z-10 shrink-0">
           <div className="p-3 bg-zinc-50 dark:bg-white/5 rounded-2xl border border-zinc-200 dark:border-white/10 mb-3 backdrop-blur-md">
@@ -227,11 +240,16 @@ export default function Layout({ children }) {
           </div>
           {/* Version info */}
           {versions.panel && (
-            <div className="px-3 pb-1 text-[8px] text-zinc-400 dark:text-zinc-600 font-mono text-center leading-relaxed">
-              Panel v{versions.panel} • API v{versions.api} • Stream v{versions.stream}
-              {versions.streamStatus === 'compatible' && <span className="text-emerald-500"> (compatible)</span>}
-              {versions.streamStatus === 'deprecated' && <span className="text-amber-500"> (deprecated)</span>}
-              {versions.streamStatus === 'offline' && <span className="text-red-500"> (offline)</span>}
+            <div className="px-3 pb-1 font-mono text-center leading-relaxed space-y-0.5">
+              <div className="text-[8px] text-zinc-400 dark:text-zinc-600">
+                Panel v{versions.panel} • API v{versions.api}
+              </div>
+              <div className="text-[8px]">
+                <span className="text-zinc-400 dark:text-zinc-600">Streamer v{versions.stream} — </span>
+                {versions.streamStatus === 'compatible' && <span className="text-emerald-500">compatible</span>}
+                {versions.streamStatus === 'deprecated' && <span className="text-amber-500">deprecated</span>}
+                {versions.streamStatus === 'offline' && <span className="text-red-500">offline</span>}
+              </div>
             </div>
           )}
         </div>
