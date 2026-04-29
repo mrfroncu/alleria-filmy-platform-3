@@ -161,12 +161,11 @@ export default function WatchPartyPage() {
       sourceKey: src.key,
       title: video.title,
       thumbnail: video.thumbnail,
-      // Pre-computed source data so we don't re-fetch
-      sourceUrl: src.url,
-      sourceType: src.type,
-      streamVideoId: src.type === 'streamer' ? src.url?.replace('self-hosted:', '') : null,
+      // Main HLS stream (transcoded) — separate from source URL
+      stream_video_id: video.stream_video_id || null,
+      stream_status: video.stream_status || null,
       drm_enhanced: video.drm_enhanced,
-      sources: buildSources(video),
+      sources,
     };
     send({ type: 'queue_add', item });
     setAddingVideo(null);
@@ -186,9 +185,19 @@ export default function WatchPartyPage() {
 
   const currentItem = party.currentIndex >= 0 ? party.queue[party.currentIndex] : null;
   const currentSourceKey = currentItem?.sourceKey || 'main';
-  const currentSrc = currentItem?.sources?.find(s => s.key === currentSourceKey) || (currentItem ? { key: 'main', url: currentItem.sourceUrl, type: currentItem.sourceType } : null);
+  const currentSrc = currentItem?.sources?.find(s => s.key === currentSourceKey) || null;
 
-  const isStreamer = currentSrc?.type === 'streamer';
+  // For main source: prefer the transcoded HLS stream if available
+  const useMainHls = currentSourceKey === 'main' && currentItem?.stream_video_id && currentItem?.stream_status === 'ready';
+  const isMirrorStreamer = !useMainHls && currentSrc?.type === 'streamer';
+  const isStreamer = useMainHls || isMirrorStreamer;
+  // Derive the actual streamVideoId from the current source
+  const activeStreamVideoId = useMainHls
+    ? currentItem.stream_video_id
+    : isMirrorStreamer
+      ? currentSrc?.url?.replace('self-hosted:', '')
+      : null;
+
   const isHtml = currentSrc?.type === 'embed' || currentSrc?.type === 'html';
   const embedUrl = (isStreamer || isHtml || currentSrc?.type === 'plex') ? null : currentSrc ? youtubeToEmbed(currentSrc.url) : null;
 
@@ -196,6 +205,10 @@ export default function WatchPartyPage() {
     <div className="flex h-full bg-zinc-950">
       {/* Main content: player + queue browser */}
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Beta banner */}
+        <div className="bg-red-600 text-white text-[10px] font-bold tracking-[0.2em] uppercase text-center py-1 shrink-0">
+          ⚠ BETA — funkcja w fazie testów, mogą wystąpić błędy
+        </div>
         {/* Header bar */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
           <Users className="w-4 h-4 text-violet-400" />
@@ -232,15 +245,18 @@ export default function WatchPartyPage() {
                 </button>
               )}
             </div>
-          ) : isStreamer && currentItem.streamVideoId ? (
+          ) : isStreamer && activeStreamVideoId ? (
             <div className="w-full h-full">
               <SecurePlayer
                 key={`${currentItem.videoId}-${currentSourceKey}`}
-                streamVideoId={currentItem.streamVideoId}
+                streamVideoId={activeStreamVideoId}
                 drmEnhanced={currentItem.drm_enhanced}
                 title={currentItem.title}
                 controlRef={playerControlRef}
                 onTimeUpdate={(t) => { lastSyncRef.current.position = t; }}
+                onPlay={canControl ? (pos) => send({ type: 'play', position: pos }) : undefined}
+                onPause={canControl ? (pos) => send({ type: 'pause', position: pos }) : undefined}
+                onSeek={canControl ? (pos) => send({ type: 'seek', position: pos }) : undefined}
               />
             </div>
           ) : embedUrl ? (
