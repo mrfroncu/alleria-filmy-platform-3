@@ -1,7 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, LogIn, Shield, FileText } from 'lucide-react';
+import { Eye, LogIn, Shield, Users, Search, Trash2 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
+
+const WP_ACTIONS = [
+  { key: '', label: 'Wszystkie' },
+  { key: 'party_created', label: 'Utworzono', color: 'bg-emerald-500/10 text-emerald-400' },
+  { key: 'party_ended', label: 'Zakończono', color: 'bg-red-500/10 text-red-400' },
+  { key: 'user_joined', label: 'Dołączył', color: 'bg-violet-500/10 text-violet-400' },
+  { key: 'user_left', label: 'Opuścił', color: 'bg-zinc-500/10 text-zinc-400' },
+  { key: 'user_kicked', label: 'Wyrzucono', color: 'bg-orange-500/10 text-orange-400' },
+  { key: 'play', label: 'Play', color: 'bg-emerald-500/10 text-emerald-400' },
+  { key: 'pause', label: 'Pause', color: 'bg-amber-500/10 text-amber-400' },
+  { key: 'seek', label: 'Seek', color: 'bg-blue-500/10 text-blue-400' },
+  { key: 'source_change', label: 'Zmiana źródła', color: 'bg-cyan-500/10 text-cyan-400' },
+  { key: 'queue_add', label: 'Dodano do kolejki', color: 'bg-violet-500/10 text-violet-400' },
+  { key: 'queue_play', label: 'Odtworzono z kolejki', color: 'bg-emerald-500/10 text-emerald-400' },
+  { key: 'queue_remove', label: 'Usunięto z kolejki', color: 'bg-red-500/10 text-red-400' },
+  { key: 'set_control', label: 'Uprawnienia', color: 'bg-indigo-500/10 text-indigo-400' },
+  { key: 'host_changed', label: 'Nowy host', color: 'bg-amber-500/10 text-amber-400' },
+];
+
+function actionMeta(action) {
+  return WP_ACTIONS.find(a => a.key === action) || { label: action, color: 'bg-zinc-500/10 text-zinc-400' };
+}
 
 export default function LogsPage() {
   const [tab, setTab] = useState('audit');
@@ -19,12 +41,30 @@ export default function LogsPage() {
   const [auditType, setAuditType] = useState('');
   const [auditAction, setAuditAction] = useState('');
 
+  // Watch Party logs
+  const [wpLogs, setWpLogs] = useState([]);
+  const [wpMeta, setWpMeta] = useState({ total: 0, page: 1, totalPages: 1 });
+  const [wpAction, setWpAction] = useState('');
+  const [wpCodeFilter, setWpCodeFilter] = useState('');
+  const [wpCodeInput, setWpCodeInput] = useState('');
+
   const loadWatch = (p) => api.getWatchLogs(p).then(r => { setWatchLogs(r.logs || []); setWatchMeta({ total: r.total, page: r.page, totalPages: r.totalPages }); }).catch(() => {});
   const loadLogin = (p) => api.getLoginLogs(p).then(r => { setLoginLogs(r.logs || []); setLoginMeta({ total: r.total, page: r.page, totalPages: r.totalPages }); }).catch(() => {});
+
+  const loadWpLogs = (p = 1, code = wpCodeFilter, action = wpAction) => {
+    const params = { page: p };
+    if (code) params.code = code;
+    if (action) params.action = action;
+    api.getWatchPartyLogs(params).then(r => {
+      setWpLogs(r.logs || []);
+      setWpMeta({ total: r.total || 0, page: r.page || 1, totalPages: r.totalPages || 1 });
+    }).catch(() => {});
+  };
 
   useEffect(() => {
     if (tab === 'watch') loadWatch(1);
     else if (tab === 'login') loadLogin(1);
+    else if (tab === 'watchparty') loadWpLogs(1, '', '');
   }, [tab]);
 
   useEffect(() => {
@@ -56,12 +96,13 @@ export default function LogsPage() {
     <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
       <div className="mb-8">
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">Logi systemowe</h1>
-        <p className="text-zinc-500 dark:text-zinc-400">Przeglądanie logów wyświetleń, logowania i audytu zmian.</p>
+        <p className="text-zinc-500 dark:text-zinc-400">Przeglądanie logów wyświetleń, logowania, audytu i Watch Party.</p>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-8">
         {[
           { key: 'audit', label: 'Audit Log', icon: Shield },
+          { key: 'watchparty', label: 'Watch Party', icon: Users },
           { key: 'watch', label: 'Wyświetlenia', icon: Eye },
           { key: 'login', label: 'Logowania', icon: LogIn },
         ].map(t => (
@@ -113,6 +154,124 @@ export default function LogsPage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ─── WATCH PARTY ─── */}
+      {tab === 'watchparty' && (
+        <div className="space-y-4">
+          {/* Filters */}
+          <div className="flex flex-wrap gap-2 items-center">
+            {/* Code filter */}
+            <div className="flex gap-1.5">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                <input
+                  value={wpCodeInput}
+                  onChange={e => setWpCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+                  onKeyDown={e => { if (e.key === 'Enter') { setWpCodeFilter(wpCodeInput); loadWpLogs(1, wpCodeInput, wpAction); } }}
+                  placeholder="Kod party"
+                  className="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-white text-xs pl-8 pr-3 py-2 rounded-xl font-mono tracking-widest w-36 focus:outline-none focus:border-violet-500 transition-colors"
+                  maxLength={6}
+                />
+              </div>
+              <button
+                onClick={() => { setWpCodeFilter(wpCodeInput); loadWpLogs(1, wpCodeInput, wpAction); }}
+                className="px-3 py-2 bg-violet-500 hover:bg-violet-400 text-white text-xs font-bold rounded-xl transition-all"
+              >
+                Filtruj
+              </button>
+              {wpCodeFilter && (
+                <button
+                  onClick={() => { setWpCodeFilter(''); setWpCodeInput(''); loadWpLogs(1, '', wpAction); }}
+                  className="px-3 py-2 bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 text-xs font-bold rounded-xl transition-all"
+                >
+                  ✕ {wpCodeFilter}
+                </button>
+              )}
+            </div>
+
+            <span className="text-zinc-300 dark:text-zinc-700 self-center">|</span>
+
+            {/* Action filter */}
+            <div className="flex flex-wrap gap-1.5">
+              {WP_ACTIONS.slice(0, 8).map(a => (
+                <button key={a.key} onClick={() => { setWpAction(a.key); loadWpLogs(1, wpCodeFilter, a.key); }}
+                  className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all ${wpAction === a.key ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}>
+                  {a.label}
+                </button>
+              ))}
+              <select
+                value={wpAction}
+                onChange={e => { setWpAction(e.target.value); loadWpLogs(1, wpCodeFilter, e.target.value); }}
+                className="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-[11px] px-2 py-1.5 rounded-xl focus:outline-none"
+              >
+                {WP_ACTIONS.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+              </select>
+            </div>
+
+            <div className="ml-auto">
+              <button
+                onClick={() => { if (!confirm('Wyczyścić logi Watch Party?')) return; api.clearWatchPartyLogs(wpCodeFilter).then(() => loadWpLogs(1)); }}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 rounded-xl transition-all font-semibold"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {wpCodeFilter ? `Wyczyść ${wpCodeFilter}` : 'Wyczyść wszystkie'}
+              </button>
+            </div>
+          </div>
+
+          {/* Summary */}
+          <p className="text-xs text-zinc-500">{wpMeta.total} rekordów{wpCodeFilter ? ` dla party ${wpCodeFilter}` : ''}{wpAction ? ` · akcja: ${actionMeta(wpAction).label}` : ''}</p>
+
+          {/* Log entries */}
+          <div className="card overflow-hidden">
+            {wpLogs.length === 0 ? (
+              <div className="p-8 text-center text-zinc-400 text-sm">Brak logów</div>
+            ) : (
+              <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                {wpLogs.map(l => {
+                  const meta = actionMeta(l.action);
+                  return (
+                    <div key={l.id} className="flex items-start gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
+                      {/* Action badge */}
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap shrink-0 mt-0.5 ${meta.color}`}>
+                        {meta.label}
+                      </span>
+
+                      {/* Party code */}
+                      <span className="font-mono text-[11px] text-violet-400 font-bold shrink-0 mt-0.5">{l.party_code}</span>
+
+                      {/* User */}
+                      <div className="flex-1 min-w-0 space-y-0.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {l.user_name && (
+                            <span className="text-sm font-semibold text-zinc-900 dark:text-white">{l.user_name}</span>
+                          )}
+                          {l.target_user_name && (
+                            <>
+                              <span className="text-zinc-400 text-xs">→</span>
+                              <span className="text-sm text-zinc-600 dark:text-zinc-300">{l.target_user_name}</span>
+                            </>
+                          )}
+                          {!l.user_name && !l.target_user_name && (
+                            <span className="text-xs text-zinc-400">system</span>
+                          )}
+                        </div>
+                        {l.details && (
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400 break-words">{l.details}</p>
+                        )}
+                      </div>
+
+                      {/* Timestamp */}
+                      <span className="font-mono text-[10px] text-zinc-400 shrink-0 whitespace-nowrap mt-0.5">{formatDate(l.created_at)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <Pagination meta={wpMeta} onPage={p => loadWpLogs(p)} />
+          </div>
         </div>
       )}
 

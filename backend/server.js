@@ -155,7 +155,8 @@ app.delete('/api/watch-party/:code', requireAuth, (req, res) => {
   const party = getParty(req.params.code.toUpperCase());
   if (!party) return res.status(404).json({ error: 'Party not found' });
   if (party.hostId !== req.session.user.id) return res.status(403).json({ error: 'Not the host' });
-  deleteParty(req.params.code.toUpperCase());
+  const u = req.session.user;
+  deleteParty(req.params.code.toUpperCase(), u.id, u.display_name || u.username);
   res.json({ ok: true });
 });
 
@@ -1420,6 +1421,36 @@ app.delete('/api/logs/login/clear', requireAdmin, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Watch Party logs
+app.get('/api/logs/watch-party', requireAdmin, (req, res) => {
+  try {
+    const perPage = parseInt(process.env.LOGS_PER_PAGE) || 50;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const code = (req.query.code || '').toUpperCase();
+    const action = req.query.action || '';
+
+    let where = '1=1';
+    const params = [];
+    if (code) { where += ' AND party_code = ?'; params.push(code); }
+    if (action) { where += ' AND action = ?'; params.push(action); }
+
+    const total = db.prepare(`SELECT COUNT(*) AS c FROM watch_party_logs WHERE ${where}`).get(...params).c;
+    const offset = (page - 1) * perPage;
+    const logs = db.prepare(`SELECT * FROM watch_party_logs WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, perPage, offset);
+    res.json({ logs, total, page, totalPages: Math.ceil(total / perPage) || 1 });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/logs/watch-party/clear', requireAdmin, (req, res) => {
+  try {
+    const code = (req.query.code || '').toUpperCase();
+    const info = code
+      ? db.prepare('DELETE FROM watch_party_logs WHERE party_code = ?').run(code)
+      : db.prepare('DELETE FROM watch_party_logs').run();
+    res.json({ success: true, deleted: info.changes });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ============ STREAMING PROXY ============
 const STREAM_URL = process.env.STREAM_URL || 'http://streaming:4000';
 const STREAM_SECRET = process.env.STREAM_SECRET || 'alleria-stream-key';
@@ -1862,7 +1893,7 @@ app.get('*', (req, res) => {
 });
 
 const httpServer = http.createServer(app);
-setupWatchPartyWS(httpServer);
+setupWatchPartyWS(httpServer, db);
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   const rUri = process.env.DISCORD_REDIRECT_URI || '';

@@ -188,6 +188,19 @@ function initDB() {
     created_at DATETIME DEFAULT (datetime('now'))
   )`);
 
+  // Watch Party logs
+  db.exec(`CREATE TABLE IF NOT EXISTS watch_party_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at DATETIME DEFAULT (datetime('now')),
+    party_code TEXT NOT NULL,
+    action TEXT NOT NULL,
+    user_id INTEGER,
+    user_name TEXT,
+    target_user_id INTEGER,
+    target_user_name TEXT,
+    details TEXT DEFAULT ''
+  )`);
+
   return db;
 }
 

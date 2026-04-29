@@ -5,6 +5,22 @@ const { v4: uuidv4 } = require('uuid');
 // Party: { id, code, hostId, queue, currentIndex, position, playing, positionUpdatedAt, members: Map<userId, {user, ws, canControl}> }
 const parties = new Map();
 
+// DB reference — set via setupWatchPartyWS(server, db)
+let _db = null;
+
+function wpLog(partyCode, action, userId, userName, targetUserId, targetUserName, details) {
+  if (!_db) return;
+  try {
+    _db.prepare(
+      'INSERT INTO watch_party_logs (party_code, action, user_id, user_name, target_user_id, target_user_name, details) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(partyCode, action, userId ?? null, userName ?? null, targetUserId ?? null, targetUserName ?? null, details ?? '');
+  } catch (_) {}
+}
+
+function uname(user) {
+  return user?.display_name || user?.username || null;
+}
+
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code, tries = 0;
@@ -82,6 +98,7 @@ function createParty(host) {
     createdAt: Date.now(),
   };
   parties.set(code, party);
+  wpLog(code, 'party_created', host.id, uname(host), null, null, '');
   return party;
 }
 
@@ -89,9 +106,10 @@ function getParty(code) {
   return parties.get(code) || null;
 }
 
-function deleteParty(code) {
+function deleteParty(code, byUserId, byUserName) {
   const party = parties.get(code);
   if (!party) return;
+  wpLog(code, 'party_ended', byUserId ?? null, byUserName ?? null, null, null, '');
   broadcast(party, { type: 'party_deleted' });
   for (const m of party.members.values()) {
     try { m.ws.close(); } catch (_) {}
@@ -109,12 +127,14 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-function setupWatchPartyWS(server) {
+function setupWatchPartyWS(server, db) {
+  _db = db;
   const wss = new WebSocketServer({ server, path: '/ws/watch-party' });
 
   wss.on('connection', (ws) => {
     let userId = null;
     let partyCode = null;
+    let userName = null;
 
     ws.on('message', (raw) => {
       let msg;
@@ -134,6 +154,7 @@ function setupWatchPartyWS(server) {
           return;
         }
         userId = user.id;
+        userName = uname(user);
 
         const code = (msg.code || '').toUpperCase();
         const party = parties.get(code);
@@ -153,6 +174,9 @@ function setupWatchPartyWS(server) {
         }
 
         party.members.set(userId, { user, ws, canControl: isHost || existingCanControl });
+
+        wpLog(partyCode, 'user_joined', userId, userName, null, null,
+          isHost ? 'host' : '');
 
         sendMsg(ws, { type: 'state', party: getPartyState(party) });
         broadcast(party, {
@@ -176,6 +200,8 @@ function setupWatchPartyWS(server) {
           party.playing = true;
           if (msg.position !== undefined) party.position = msg.position;
           party.positionUpdatedAt = Date.now();
+          wpLog(partyCode, 'play', userId, userName, null, null,
+            `pozycja: ${party.position.toFixed(1)}s`);
           broadcast(party, { type: 'play', position: party.position }, userId);
           break;
 
@@ -186,6 +212,8 @@ function setupWatchPartyWS(server) {
             ? msg.position
             : party.position + (Date.now() - party.positionUpdatedAt) / 1000;
           party.positionUpdatedAt = Date.now();
+          wpLog(partyCode, 'pause', userId, userName, null, null,
+            `pozycja: ${party.position.toFixed(1)}s`);
           broadcast(party, { type: 'pause', position: party.position }, userId);
           break;
 
@@ -193,6 +221,8 @@ function setupWatchPartyWS(server) {
           if (!canControl) return;
           party.position = msg.position;
           party.positionUpdatedAt = Date.now();
+          wpLog(partyCode, 'seek', userId, userName, null, null,
+            `pozycja: ${party.position.toFixed(1)}s`);
           broadcast(party, { type: 'seek', position: party.position, playing: party.playing }, userId);
           break;
 
@@ -203,6 +233,8 @@ function setupWatchPartyWS(server) {
           }
           party.position = 0;
           party.positionUpdatedAt = Date.now();
+          wpLog(partyCode, 'source_change', userId, userName, null, null,
+            `źródło: ${msg.sourceKey}`);
           broadcast(party, { type: 'source_change', sourceKey: msg.sourceKey, position: 0 });
           break;
 
@@ -215,25 +247,37 @@ function setupWatchPartyWS(server) {
             party.playing = false;
             party.positionUpdatedAt = Date.now();
           }
+          wpLog(partyCode, 'queue_add', userId, userName, null, null,
+            `"${msg.item?.title || '?'}" (źródło: ${msg.item?.sourceKey || '?'})`);
           broadcast(party, { type: 'queue_update', queue: party.queue, currentIndex: party.currentIndex });
           break;
 
         case 'queue_play':
           if (!isHost) return;
-          party.currentIndex = msg.index;
-          party.position = 0;
-          party.playing = false;
-          party.positionUpdatedAt = Date.now();
-          broadcast(party, { type: 'state', party: getPartyState(party) });
+          {
+            const playedItem = party.queue[msg.index];
+            party.currentIndex = msg.index;
+            party.position = 0;
+            party.playing = false;
+            party.positionUpdatedAt = Date.now();
+            wpLog(partyCode, 'queue_play', userId, userName, null, null,
+              `[${msg.index}] "${playedItem?.title || '?'}"`);
+            broadcast(party, { type: 'state', party: getPartyState(party) });
+          }
           break;
 
         case 'queue_remove':
           if (!isHost) return;
-          party.queue.splice(msg.index, 1);
-          if (party.currentIndex >= party.queue.length) {
-            party.currentIndex = Math.max(-1, party.queue.length - 1);
+          {
+            const removedItem = party.queue[msg.index];
+            wpLog(partyCode, 'queue_remove', userId, userName, null, null,
+              `[${msg.index}] "${removedItem?.title || '?'}"`);
+            party.queue.splice(msg.index, 1);
+            if (party.currentIndex >= party.queue.length) {
+              party.currentIndex = Math.max(-1, party.queue.length - 1);
+            }
+            broadcast(party, { type: 'queue_update', queue: party.queue, currentIndex: party.currentIndex });
           }
-          broadcast(party, { type: 'queue_update', queue: party.queue, currentIndex: party.currentIndex });
           break;
 
         case 'set_control': {
@@ -243,6 +287,8 @@ function setupWatchPartyWS(server) {
           const target = party.members.get(targetId);
           if (!target) return;
           target.canControl = !!msg.canControl;
+          wpLog(partyCode, 'set_control', userId, userName, targetId, uname(target.user),
+            msg.canControl ? 'przyznano sterowanie' : 'odebrano sterowanie');
           broadcast(party, { type: 'control_changed', userId: targetId, canControl: !!msg.canControl });
           break;
         }
@@ -253,6 +299,7 @@ function setupWatchPartyWS(server) {
           if (kickId === party.hostId) return;
           const kicked = party.members.get(kickId);
           if (!kicked) return;
+          wpLog(partyCode, 'user_kicked', userId, userName, kickId, uname(kicked.user), '');
           sendMsg(kicked.ws, { type: 'kicked' });
           try { kicked.ws.close(); } catch (_) {}
           party.members.delete(kickId);
@@ -274,7 +321,11 @@ function setupWatchPartyWS(server) {
       if (!partyCode || userId === null) return;
       const party = parties.get(partyCode);
       if (!party) return;
+
+      const leavingMember = party.members.get(userId);
+      const leavingName = leavingMember ? uname(leavingMember.user) : userName;
       party.members.delete(userId);
+      wpLog(partyCode, 'user_left', userId, leavingName, null, null, '');
       broadcast(party, { type: 'member_left', userId });
 
       if (party.hostId === userId) {
@@ -282,9 +333,9 @@ function setupWatchPartyWS(server) {
           const [newHostId, newHost] = party.members.entries().next().value;
           party.hostId = newHostId;
           newHost.canControl = true;
+          wpLog(partyCode, 'host_changed', null, null, newHostId, uname(newHost.user), 'poprzedni host opuścił party');
           broadcast(party, { type: 'host_changed', hostId: newHostId });
         }
-        // Empty party stays in map until cleanup interval
       }
     });
   });

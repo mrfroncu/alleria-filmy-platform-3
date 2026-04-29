@@ -173,7 +173,7 @@ function buildSources(video) {
 
 export default function WatchPartyPage() {
   const { user } = useAuth();
-  const { party, inParty, disconnectReason, clearDisconnectReason, send, joinParty, leaveParty, endParty, registerSyncCallback } = useWatchParty();
+  const { party, inParty, connecting, disconnectReason, clearDisconnectReason, send, joinParty, leaveParty, endParty, registerSyncCallback } = useWatchParty();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -192,16 +192,24 @@ export default function WatchPartyPage() {
   const [addingVideo, setAddingVideo] = useState(null); // video being configured for queue
   const [addSourceKey, setAddSourceKey] = useState('main');
   const [accessWarnings, setAccessWarnings] = useState({}); // videoId → [memberNames]
+  const [ytUrl, setYtUrl] = useState('');
+  const [ytLoading, setYtLoading] = useState(false);
+  const [ytError, setYtError] = useState('');
 
-  // Auto-join from invite link
+  // Auto-join from invite link, or redirect home if not in party and not connecting
+  const joinAttemptedRef = useRef(false);
   useEffect(() => {
+    if (inParty || disconnectReason) return;
+    if (connecting) return; // WS establishing — wait for it
+
     const joinCode = searchParams.get('join');
-    if (joinCode && !inParty) {
+    if (joinCode && !joinAttemptedRef.current) {
+      joinAttemptedRef.current = true;
       joinParty(joinCode).catch(() => navigate('/'));
-    } else if (!inParty && !joinCode) {
+    } else if (!joinCode) {
       navigate('/');
     }
-  }, []);
+  }, [inParty, connecting, disconnectReason]);
 
   // Register direct sync callback — bypasses React render cycle for immediate video control
   useEffect(() => {
@@ -256,6 +264,33 @@ export default function WatchPartyPage() {
     // For simplicity, we just show a generic note rather than deep role checking
     // TODO: could be enhanced with actual role matching
     setAccessWarnings({});
+  };
+
+  const handleAddYoutube = async () => {
+    const videoId = extractYoutubeId(ytUrl.trim());
+    if (!videoId) { setYtError('Nieprawidłowy link YouTube'); return; }
+    setYtLoading(true); setYtError('');
+    try {
+      let title = `YouTube: ${videoId}`;
+      try {
+        const r = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
+        if (r.ok) { const d = await r.json(); if (d.title) title = d.title; }
+      } catch (_) {}
+      const item = {
+        videoId: `yt-${videoId}`,
+        sourceKey: 'main',
+        title,
+        thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+        stream_video_id: null,
+        stream_status: null,
+        drm_enhanced: false,
+        sources: [{ key: 'main', label: 'YouTube', url: `https://www.youtube.com/watch?v=${videoId}`, type: 'link' }],
+      };
+      send({ type: 'queue_add', item });
+      setYtUrl('');
+      setShowBrowser(false);
+    } catch (_) { setYtError('Nie udało się dodać filmiku'); }
+    setYtLoading(false);
   };
 
   const handleAddToQueue = (video, sourceKey) => {
@@ -572,6 +607,28 @@ export default function WatchPartyPage() {
               </div>
             ) : (
               <>
+                {/* YouTube URL quick-add */}
+                <div className="px-4 py-3 border-b border-zinc-800 shrink-0 bg-zinc-800/50">
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-2">Dodaj z YouTube</p>
+                  <div className="flex gap-2">
+                    <input
+                      value={ytUrl}
+                      onChange={e => { setYtUrl(e.target.value); setYtError(''); }}
+                      onKeyDown={e => e.key === 'Enter' && handleAddYoutube()}
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      className="flex-1 bg-zinc-700 border border-zinc-600 text-white text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-violet-500 transition-colors placeholder:text-zinc-500"
+                    />
+                    <button
+                      onClick={handleAddYoutube}
+                      disabled={ytLoading || !ytUrl.trim()}
+                      className="px-3 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50 shrink-0"
+                    >
+                      {ytLoading ? '...' : '+ Dodaj'}
+                    </button>
+                  </div>
+                  {ytError && <p className="text-red-400 text-[11px] mt-1">{ytError}</p>}
+                </div>
+
                 {/* Filters */}
                 <div className="px-4 py-3 border-b border-zinc-800 flex gap-2 shrink-0">
                   <div className="flex-1 relative">

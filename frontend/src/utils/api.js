@@ -157,6 +157,11 @@ export const api = {
   createWatchParty: () => request('/watch-party', { method: 'POST' }),
   getWatchParty: (code) => request(`/watch-party/${code}`),
   deleteWatchParty: (code) => request(`/watch-party/${code}`, { method: 'DELETE' }),
+  getWatchPartyLogs: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/logs/watch-party${q ? `?${q}` : ''}`);
+  },
+  clearWatchPartyLogs: (code) => request(`/logs/watch-party/clear${code ? `?code=${code}` : ''}`, { method: 'DELETE' }),
 
   // Comments
   getComments: (videoId) => request(`/videos/${videoId}/comments`),
