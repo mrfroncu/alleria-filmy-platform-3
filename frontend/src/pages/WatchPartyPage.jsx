@@ -8,7 +8,7 @@ import { useWatchParty } from '../contexts/WatchPartyContext';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import SecurePlayer from '../components/SecurePlayer';
-import { youtubeToEmbed } from '../utils/helpers';
+import { youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
 
 // Blob iframe for HTML embed sources (same as VideoPage)
 function HtmlEmbed({ html }) {
@@ -23,6 +23,140 @@ function HtmlEmbed({ html }) {
   }, [html]);
   if (!blobUrl) return null;
   return <iframe src={blobUrl} className="w-full h-full border-0" allowFullScreen />;
+}
+
+// YouTube IFrame API — loaded once, shared across all instances
+let _ytApiReady = false;
+let _ytApiCallbacks = [];
+function loadYtApi() {
+  if (_ytApiReady) return Promise.resolve();
+  return new Promise((resolve) => {
+    _ytApiCallbacks.push(resolve);
+    if (document.getElementById('yt-iframe-api')) return;
+    const tag = document.createElement('script');
+    tag.id = 'yt-iframe-api';
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+    window.onYouTubeIframeAPIReady = () => {
+      _ytApiReady = true;
+      _ytApiCallbacks.forEach(cb => cb());
+      _ytApiCallbacks = [];
+    };
+  });
+}
+
+function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek }) {
+  const divIdRef = useRef(null);
+  if (!divIdRef.current) divIdRef.current = `yt-${Math.random().toString(36).slice(2)}`;
+  const divId = divIdRef.current;
+
+  const playerRef = useRef(null);
+  const syncingRef = useRef(false);
+  const playingRef = useRef(false);
+  const expectedTimeRef = useRef(0);
+  const lastCheckRef = useRef(Date.now());
+  const onPlayRef = useRef(onPlay);
+  const onPauseRef = useRef(onPause);
+  const onSeekRef = useRef(onSeek);
+
+  useEffect(() => { onPlayRef.current = onPlay; }, [onPlay]);
+  useEffect(() => { onPauseRef.current = onPause; }, [onPause]);
+  useEffect(() => { onSeekRef.current = onSeek; }, [onSeek]);
+
+  useEffect(() => {
+    let destroyed = false;
+    let player = null;
+    let pollId = null;
+
+    const stopPoll = () => { clearInterval(pollId); pollId = null; };
+    const startPoll = () => {
+      stopPoll();
+      pollId = setInterval(() => {
+        if (!playerRef.current || !playingRef.current || syncingRef.current) return;
+        const now = Date.now();
+        const elapsed = (now - lastCheckRef.current) / 1000;
+        const expected = expectedTimeRef.current + elapsed;
+        const actual = playerRef.current.getCurrentTime();
+        if (Math.abs(actual - expected) > 2.5) {
+          // User seeked
+          expectedTimeRef.current = actual;
+          lastCheckRef.current = now;
+          onSeekRef.current?.(actual);
+        } else {
+          expectedTimeRef.current = actual;
+          lastCheckRef.current = now;
+        }
+      }, 1000);
+    };
+
+    loadYtApi().then(() => {
+      if (destroyed) return;
+      player = new window.YT.Player(divId, {
+        videoId,
+        playerVars: { rel: 0, modestbranding: 1, enablejsapi: 1 },
+        events: {
+          onReady: () => { if (!destroyed) playerRef.current = player; },
+          onStateChange: (e) => {
+            if (destroyed) return;
+            const state = e.data;
+            if (state === window.YT.PlayerState.PLAYING) {
+              const t = player.getCurrentTime();
+              playingRef.current = true;
+              expectedTimeRef.current = t;
+              lastCheckRef.current = Date.now();
+              if (!syncingRef.current) onPlayRef.current?.(t);
+              startPoll();
+            } else if (state === window.YT.PlayerState.PAUSED) {
+              stopPoll();
+              playingRef.current = false;
+              const t = player.getCurrentTime();
+              if (!syncingRef.current) onPauseRef.current?.(t);
+            } else if (state === window.YT.PlayerState.ENDED) {
+              stopPoll();
+              playingRef.current = false;
+            }
+          },
+        },
+      });
+    });
+
+    return () => {
+      destroyed = true;
+      stopPoll();
+      try { player?.destroy(); } catch (_) {}
+      playerRef.current = null;
+    };
+  }, [videoId, divId]);
+
+  // Expose control interface via controlRef
+  useEffect(() => {
+    if (!controlRef) return;
+    controlRef.current = {
+      seek: (t) => {
+        if (!playerRef.current) return;
+        syncingRef.current = true;
+        playerRef.current.seekTo(t, true);
+        expectedTimeRef.current = t;
+        lastCheckRef.current = Date.now();
+        setTimeout(() => { syncingRef.current = false; }, 1500);
+      },
+      play: () => {
+        if (!playerRef.current) return;
+        syncingRef.current = true;
+        playerRef.current.playVideo();
+        setTimeout(() => { syncingRef.current = false; }, 1500);
+      },
+      pause: () => {
+        if (!playerRef.current) return;
+        syncingRef.current = true;
+        playerRef.current.pauseVideo();
+        setTimeout(() => { syncingRef.current = false; }, 1500);
+      },
+      getCurrentTime: () => playerRef.current?.getCurrentTime() ?? 0,
+    };
+  });
+
+  return <div id={divId} className="w-full h-full" />;
 }
 
 // Build source list from a video object (same logic as VideoPage)
@@ -171,7 +305,8 @@ export default function WatchPartyPage() {
       : null;
 
   const isHtml = currentSrc?.type === 'embed' || currentSrc?.type === 'html';
-  const embedUrl = (isStreamer || isHtml || currentSrc?.type === 'plex') ? null : currentSrc ? youtubeToEmbed(currentSrc.url) : null;
+  const youtubeId = (!isStreamer && !isHtml && currentSrc?.type !== 'plex') ? extractYoutubeId(currentSrc?.url || '') : null;
+  const embedUrl = (isStreamer || isHtml || currentSrc?.type === 'plex' || youtubeId) ? null : currentSrc ? youtubeToEmbed(currentSrc.url) : null;
 
   return (
     <div className="flex h-full bg-zinc-950">
@@ -220,6 +355,17 @@ export default function WatchPartyPage() {
                 streamVideoId={activeStreamVideoId}
                 drmEnhanced={currentItem.drm_enhanced}
                 title={currentItem.title}
+                controlRef={playerControlRef}
+                onPlay={canControl ? (pos) => send({ type: 'play', position: pos }) : undefined}
+                onPause={canControl ? (pos) => send({ type: 'pause', position: pos }) : undefined}
+                onSeek={canControl ? (pos) => send({ type: 'seek', position: pos }) : undefined}
+              />
+            </div>
+          ) : youtubeId ? (
+            <div className="w-full h-full">
+              <WatchPartyYouTubePlayer
+                key={`${currentItem.videoId}-${currentSourceKey}`}
+                videoId={youtubeId}
                 controlRef={playerControlRef}
                 onPlay={canControl ? (pos) => send({ type: 'play', position: pos }) : undefined}
                 onPause={canControl ? (pos) => send({ type: 'pause', position: pos }) : undefined}
