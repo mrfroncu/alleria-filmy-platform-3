@@ -17,7 +17,7 @@ import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Setting
 
 const HLS_CDN = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';
 
-export default function SecurePlayer({ streamVideoId, drmEnhanced, title, controlRef, onTimeUpdate }) {
+export default function SecurePlayer({ streamVideoId, drmEnhanced, title, controlRef, onTimeUpdate, onPlay, onPause, onSeek }) {
   const { user } = useAuth();
   const videoRef = useRef(null);
   const containerRef = useRef(null);
@@ -244,8 +244,13 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
   const togglePlay = () => {
     const v = videoRef.current;
     if (!v) return;
-    if (v.paused) v.play().catch(() => {});
-    else v.pause();
+    if (v.paused) {
+      v.play().catch(() => {});
+      if (onPlay) onPlay(v.currentTime);
+    } else {
+      v.pause();
+      if (onPause) onPause(v.currentTime);
+    }
   };
 
   const changeVolume = (e) => {
@@ -263,7 +268,9 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
     if (!v || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
-    v.currentTime = pct * duration;
+    const newTime = pct * duration;
+    v.currentTime = newTime;
+    if (onSeek) onSeek(newTime);
   };
 
   const changeQuality = (idx) => {

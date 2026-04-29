@@ -176,7 +176,7 @@ function setupWatchPartyWS(server) {
           party.playing = true;
           if (msg.position !== undefined) party.position = msg.position;
           party.positionUpdatedAt = Date.now();
-          broadcast(party, { type: 'play', position: party.position });
+          broadcast(party, { type: 'play', position: party.position }, userId);
           break;
 
         case 'pause':
@@ -186,14 +186,14 @@ function setupWatchPartyWS(server) {
             ? msg.position
             : party.position + (Date.now() - party.positionUpdatedAt) / 1000;
           party.positionUpdatedAt = Date.now();
-          broadcast(party, { type: 'pause', position: party.position });
+          broadcast(party, { type: 'pause', position: party.position }, userId);
           break;
 
         case 'seek':
           if (!canControl) return;
           party.position = msg.position;
           party.positionUpdatedAt = Date.now();
-          broadcast(party, { type: 'seek', position: party.position, playing: party.playing });
+          broadcast(party, { type: 'seek', position: party.position, playing: party.playing }, userId);
           break;
 
         case 'source_change':
@@ -203,7 +203,7 @@ function setupWatchPartyWS(server) {
           }
           party.position = 0;
           party.positionUpdatedAt = Date.now();
-          broadcast(party, { type: 'source_change', sourceKey: msg.sourceKey, position: 0 });
+          broadcast(party, { type: 'source_change', sourceKey: msg.sourceKey, position: 0 }, userId);
           break;
 
         case 'queue_add':
