@@ -1,8 +1,8 @@
 # ALLERIA FILMY
 
-Prywatna platforma wideo dla społeczności [Alleria.pl](https://alleria.pl) z uwierzytelnianiem Discord/TeamSpeak 6, zarządzaniem filmami, self-hosted streamingiem HLS z szyfrowaniem AES-128, kategoriami z podkategoriami, oraz kontrolą dostępu opartą na rolach.
+Prywatna platforma wideo dla społeczności [Alleria.pl](https://alleria.pl) z uwierzytelnianiem Discord/TeamSpeak 6, zarządzaniem filmami, self-hosted streamingiem HLS z szyfrowaniem AES-128, kategoriami z podkategoriami, kontrolą dostępu opartą na rolach, komentarzami oraz Watch Party — synchronicznym wspólnym oglądaniem w czasie rzeczywistym.
 
-![Panel v3.11.0](https://img.shields.io/badge/Panel-v3.11.0-f43f5e) ![Streaming v1.7.1](https://img.shields.io/badge/Streaming-v1.6.0-10b981)
+![Panel & API v3.11.0](https://img.shields.io/badge/Panel%20%26%20API-v3.11.0-f43f5e) ![Streaming v1.7.1](https://img.shields.io/badge/Streaming-v1.7.1-10b981)
 
 ## Funkcjonalności
 
@@ -15,10 +15,22 @@ Prywatna platforma wideo dla społeczności [Alleria.pl](https://alleria.pl) z u
 - **YouTube/Embed** — wklejanie linków YouTube z auto-konwersją na embed i smart thumbnailami
 - **Self-hosted streaming** — upload plików wideo (do 6GB), chunked upload (50MB kawałki dla Cloudflare Tunnel), transkodowanie HLS multi-quality (1080p/720p/480p/360p)
 - **Szyfrowanie AES-128** — pliki HLS szyfrowane, klucze dostarczane z tokenem sesji
-- **Mirrory** — do 2 alternatywnych źródeł z opcją embed/iframe
+- **Mirrory** — do 5 alternatywnych źródeł z opcją embed/iframe
 - **Tagi** — system tagów z autocompletem, chip-based input
 - **Progres uploadu** — podwójny progress bar: całość + bieżący chunk
 - **Auto-transkodowanie** — backend co 30s sprawdza status, admin widzi % postępu i aktualną jakość
+
+### Watch Party *(BETA)*
+- **Wspólne oglądanie** — synchronizacja odtwarzania w czasie rzeczywistym przez WebSocket
+- **Tworzenie/dołączanie** — 6-znakowy kod zaproszenia lub link; slide-out panel dostępny z każdej strony
+- **Kolejka filmów** — dodawanie filmów z biblioteki do wspólnej kolejki z wyborem źródła; host może zarządzać kolejką
+- **Synchronizacja** — play/pause/seek rozgłaszane natychmiastowo do wszystkich uczestników; korekcja dryfu co 15s
+- **Kontrola per-użytkownik** — host może nadać prawo sterowania odtwarzaczem i kolejką dowolnemu uczestnikowi
+- **Host controls** — wyrzucanie uczestników, zakończenie party
+- **YouTube IFrame API** — pełna synchronizacja YouTube (seek, play, pause) przez oficjalne IFrame API; detekcja seeków przez polling
+- **HLS Player sync** — synchronizacja SecurePlayera przez bezpośrednie wywołania kontrolera (bez cyklu React)
+- **Auto-dołączanie** — wejście na `/watch-party?join=KOD` automatycznie dołącza do party
+- **Informacje o rozłączeniu** — osobne ekrany dla wyrzucenia i zakończenia party
 
 ### Ochrona DRM
 - Szyfrowanie AES-128 HLS
@@ -26,6 +38,13 @@ Prywatna platforma wideo dla społeczności [Alleria.pl](https://alleria.pl) z u
 - Watermark z nazwą użytkownika
 - Blokada: devtools, right-click, PrintScreen, PiP, keyboard shortcuts
 - Pauza przy utracie focusu okna
+
+### Komentarze
+- Komentarze pod każdym filmem z obsługą wątków (odpowiedzi)
+- Edycja własnych komentarzy z historią edycji
+- Soft-delete (usunięty komentarz zachowany dla integralności wątku)
+- Hard-delete i ciche edycje dla deweloperów (bez śladu)
+- Komentarze admina wstawiane przez panel Debug Tools
 
 ### Kategorie & Podkategorie
 - Drzewo kategorii z podkategoriami (parent_id) w sidebarze
@@ -55,6 +74,7 @@ Prywatna platforma wideo dla społeczności [Alleria.pl](https://alleria.pl) z u
 
 ### Debug Tools (Dev only)
 - Konsola SQL — bezpośrednie zapytania na SQLite z wynikami w tabeli
+- Audit logi — historia akcji (tworzenie/edycja/usuwanie filmów, komentarzy, kategorii)
 - Zarządzanie kategoriami — tworzenie z parent_id, ustawianie ról Discord
 - Tworzenie użytkowników ręcznie
 - Import/export bazy JSON
@@ -66,9 +86,8 @@ Prywatna platforma wideo dla społeczności [Alleria.pl](https://alleria.pl) z u
 - **Historia** — nieograniczona historia obejrzanych filmów, grupowana po dacie
 - **Statystyki** — KPI, najczęściej oglądane, top widzowie, top autorzy, chmura tagów
 - **Profil** — edycja display name, bio, podgląd statystyk
-- **Dark/light mode** — przełącznik w sidebarze
 - **Paginacja** — konfigurowalna ilość filmów na stronę i kolumn (`.env`)
-- **Wersjonowanie** — numer wersji panelu i streamingu widoczny w sidebarze
+- **Wersjonowanie** — numer wersji panelu i playera widoczny w sidebarze (`Panel & API: vX.X.X | Player: vX.X.X`)
 - **Kalendarz** — DateTimePicker z polskim kalendarzem, DD/MM/YYYY, 24h, przycisk "Teraz"
 
 ## Architektura
@@ -79,7 +98,8 @@ Prywatna platforma wideo dla społeczności [Alleria.pl](https://alleria.pl) z u
 │  SPA — sidebar layout, responsive                   │
 ├─────────────────────────────────────────────────────┤
 │  Backend (Express.js + SQLite)                      │
-│  REST API, session auth, reverse proxy to streaming │
+│  REST API, session auth, WebSocket Watch Party,     │
+│  reverse proxy to streaming                         │
 ├─────────────────────────────────────────────────────┤
 │  Streaming Service (Express + FFmpeg)               │
 │  Chunked upload, HLS transcoding, AES-128 encryption│
@@ -207,31 +227,41 @@ Szczegóły: [streaming-standalone/README.md](streaming-standalone/README.md)
 ```
 alleria-filmy/
 ├── backend/
-│   ├── server.js          # API, auth, proxy streaming
+│   ├── server.js           # API, auth, proxy streaming, Watch Party REST
+│   ├── watchParty.js       # WebSocket Watch Party — in-memory parties, sync
 │   ├── database.js         # SQLite schema + migracje
+│   ├── versions.js         # Wersja panelu i minimum streamingu
 │   └── package.json
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── Layout.jsx          # Sidebar z kategoriami, wersja
+│   │   │   ├── Layout.jsx          # Sidebar z kategoriami, wersja, Watch Party tab
+│   │   │   ├── WatchPartyTab.jsx   # Floating tab + slide-out panel Watch Party
 │   │   │   ├── VideoModal.jsx      # Dodawanie/edycja filmów
-│   │   │   ├── SecurePlayer.jsx    # HLS player z DRM
+│   │   │   ├── SecurePlayer.jsx    # HLS player z DRM + controlRef dla Watch Party
 │   │   │   └── DateTimePicker.jsx  # Polski kalendarz
 │   │   ├── pages/
 │   │   │   ├── VideosPage.jsx      # Siatka filmów z paginacją
-│   │   │   ├── VideoPage.jsx       # Odtwarzacz z prev/next
+│   │   │   ├── VideoPage.jsx       # Odtwarzacz z prev/next, komentarze
+│   │   │   ├── WatchPartyPage.jsx  # Dedykowana strona Watch Party
 │   │   │   ├── AdminPage.jsx       # Panel redaktora
-│   │   │   ├── DebugPage.jsx       # Narzędzia deweloperskie
+│   │   │   ├── DebugPage.jsx       # Narzędzia deweloperskie + audit logi
 │   │   │   └── ...
-│   │   ├── contexts/AuthContext.jsx
+│   │   ├── contexts/
+│   │   │   ├── AuthContext.jsx
+│   │   │   └── WatchPartyContext.jsx  # WebSocket + stan party + syncCallbackRef
 │   │   ├── utils/api.js
 │   │   └── App.jsx
 │   └── package.json
 ├── streaming/
 │   ├── server.js           # FFmpeg transcoding service
+│   ├── versions.js         # Wersja streaming service
 │   ├── Dockerfile
 │   └── package.json
 ├── streaming-standalone/    # Do deployu na osobnym serwerze
+├── .github/workflows/
+│   ├── deploy.yml           # Auto-deploy na push do main
+│   └── deploy-watch-party.yml  # Ręczny deploy brancha watch-party
 ├── docker-compose.yml
 ├── Dockerfile
 ├── .env.example
@@ -243,14 +273,16 @@ alleria-filmy/
 | Tabela | Opis |
 |--------|------|
 | `users` | Użytkownicy (Discord/TS/manual), role, discord_roles JSON |
-| `videos` | Filmy, źródła, mirrory, category_id, access_mode, stream_status |
+| `videos` | Filmy, źródła, mirrory (do 5), category_id, access_mode, stream_status |
 | `categories` | Kategorie z parent_id (podkategorie), slug, sort_order |
 | `category_access` | Role Discord → kategoria (viewer/editor) |
 | `video_access` | Per-video custom access (video_id → user_id) |
 | `tags`, `video_tags` | System tagów |
 | `favorites` | Ulubione per user |
+| `comments` | Komentarze z wątkami (parent_id), historia edycji, soft-delete |
 | `watch_logs` | Historia wyświetleń |
 | `login_logs` | Logi logowania |
+| `audit_logs` | Audit trail akcji adminów i deweloperów |
 | `sessions` | Sesje express-session |
 
 ## API Endpoints
@@ -279,6 +311,21 @@ alleria-filmy/
 - `DELETE /api/categories/:id` — Usuń
 - `POST /api/categories/:id/access` — Set viewer/editor roles
 
+### Komentarze
+- `GET /api/videos/:id/comments` — Komentarze do filmu
+- `POST /api/videos/:id/comments` — Dodaj komentarz (z opcjonalnym parent_id)
+- `PUT /api/comments/:id` — Edytuj komentarz (własny lub dev z `silent=true`)
+- `DELETE /api/comments/:id` — Soft-delete komentarza
+- `DELETE /api/comments/:id/hard` — Hard-delete (dev only)
+- `POST /api/comments/admin` — Wstaw komentarz jako admin (dev only)
+
+### Watch Party
+- `GET /api/watch-party/token` — Jednorazowy token do autoryzacji WebSocket
+- `POST /api/watch-party` — Utwórz party
+- `GET /api/watch-party/:code` — Pobierz dane party (walidacja przed dołączeniem)
+- `DELETE /api/watch-party/:code` — Zakończ party (host only)
+- `WS /ws/watch-party` — WebSocket: auth → play/pause/seek/source_change/queue_add/queue_play/queue_remove/set_control/kick/sync_request
+
 ### Streaming
 - `POST /api/stream/upload/init` — Inicjalizuj chunked upload
 - `POST /api/stream/upload/chunk` — Upload chunk (50MB)
@@ -291,15 +338,16 @@ alleria-filmy/
 
 ### Other
 - `GET /api/config` — Display settings (videosPerPage, gridColumns)
+- `GET /api/audit-logs` — Audit trail (dev only, filtry: action, entity_type, user_id)
 - `GET /api/version` — App version
 - `GET /api/version/streaming` — Streaming version
 
 ## Technologie
 
-- **Frontend**: React 18, Tailwind CSS, Vite, hls.js, Lucide icons
-- **Backend**: Express.js, better-sqlite3, express-session, multer
+- **Frontend**: React 18, Tailwind CSS, Vite, hls.js, YouTube IFrame API, Lucide icons
+- **Backend**: Express.js, better-sqlite3, express-session, multer, ws (WebSocket)
 - **Streaming**: FFmpeg (Alpine), AES-128 HLS encryption
-- **Deploy**: Docker, Docker Compose, Cloudflare Tunnel
+- **Deploy**: Docker, Docker Compose, Cloudflare Tunnel, GitHub Actions
 
 ## Licencja
 
