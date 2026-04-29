@@ -17,7 +17,7 @@ import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Setting
 
 const HLS_CDN = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';
 
-export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
+export default function SecurePlayer({ streamVideoId, drmEnhanced, title, controlRef, onTimeUpdate }) {
   const { user } = useAuth();
   const videoRef = useRef(null);
   const containerRef = useRef(null);
@@ -203,7 +203,10 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
 
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
-    const onTime = () => setCurrentTime(video.currentTime);
+    const onTime = () => {
+      setCurrentTime(video.currentTime);
+      if (onTimeUpdate) onTimeUpdate(video.currentTime);
+    };
     const onDur = () => setDuration(video.duration);
     const onProgress = () => {
       if (video.buffered.length > 0 && video.duration > 0) {
@@ -226,6 +229,17 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title }) {
       video.removeEventListener('progress', onProgress);
     };
   }, []);
+
+  // Expose external control methods for Watch Party sync
+  useEffect(() => {
+    if (!controlRef) return;
+    controlRef.current = {
+      seek: (pos) => { if (videoRef.current) videoRef.current.currentTime = pos; },
+      play: () => { if (videoRef.current) videoRef.current.play().catch(() => {}); },
+      pause: () => { if (videoRef.current) videoRef.current.pause(); },
+      getCurrentTime: () => videoRef.current?.currentTime ?? 0,
+    };
+  });
 
   const togglePlay = () => {
     const v = videoRef.current;

@@ -152,6 +152,12 @@ export const api = {
     body: JSON.stringify(data),
   }),
 
+  // Watch Party
+  getWatchPartyToken: () => request('/watch-party/token'),
+  createWatchParty: () => request('/watch-party', { method: 'POST' }),
+  getWatchParty: (code) => request(`/watch-party/${code}`),
+  deleteWatchParty: (code) => request(`/watch-party/${code}`, { method: 'DELETE' }),
+
   // Comments
   getComments: (videoId) => request(`/videos/${videoId}/comments`),
   addComment: (videoId, content, parentId) => request(`/videos/${videoId}/comments`, {

@@ -7,6 +7,7 @@ import {
   Heart, Clock, BarChart3, User, FolderOpen, FileText, MessageSquarePlus
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
+import WatchPartyTab from './WatchPartyTab';
 
 const LOGO_URL = 'https://alleria.pl/image/favicon.png';
 
@@ -250,6 +251,8 @@ export default function Layout({ children }) {
           </p>
         </footer>
       </main>
+
+      <WatchPartyTab />
     </div>
   );
 }
