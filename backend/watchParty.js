@@ -203,7 +203,7 @@ function setupWatchPartyWS(server) {
           }
           party.position = 0;
           party.positionUpdatedAt = Date.now();
-          broadcast(party, { type: 'source_change', sourceKey: msg.sourceKey, position: 0 }, userId);
+          broadcast(party, { type: 'source_change', sourceKey: msg.sourceKey, position: 0 });
           break;
 
         case 'queue_add':

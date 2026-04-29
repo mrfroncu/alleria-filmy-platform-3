@@ -39,13 +39,12 @@ function buildSources(video) {
 
 export default function WatchPartyPage() {
   const { user } = useAuth();
-  const { party, inParty, send, joinParty, leaveParty, endParty } = useWatchParty();
+  const { party, inParty, send, joinParty, leaveParty, endParty, registerSyncCallback } = useWatchParty();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
   // Player sync
   const playerControlRef = useRef(null);
-  const lastSyncRef = useRef({ position: 0, syncedAt: 0, playing: false });
   const canControl = party?.members?.find(m => m.id === user?.id)?.canControl ?? false;
   const isHost = party?.hostId === user?.id;
 
@@ -70,58 +69,31 @@ export default function WatchPartyPage() {
     }
   }, []);
 
-  // Periodic sync request (every 10s)
+  // Register direct sync callback — bypasses React render cycle for immediate video control
+  useEffect(() => {
+    registerSyncCallback((action) => {
+      const ctrl = playerControlRef.current;
+      if (!ctrl) return;
+      if (action.type === 'play') {
+        ctrl.seek(action.position);
+        ctrl.play();
+      } else if (action.type === 'pause') {
+        ctrl.seek(action.position);
+        ctrl.pause();
+      } else if (action.type === 'seek') {
+        ctrl.seek(action.position);
+        if (action.playing) ctrl.play(); else ctrl.pause();
+      }
+    });
+    return () => registerSyncCallback(null);
+  }, [registerSyncCallback]);
+
+  // Periodic drift correction (every 15s)
   useEffect(() => {
     if (!inParty) return;
-    const interval = setInterval(() => send({ type: 'sync_request' }), 10000);
+    const interval = setInterval(() => send({ type: 'sync_request' }), 15000);
     return () => clearInterval(interval);
   }, [inParty, send]);
-
-  // Apply party state to player when sync events arrive
-  const partyRef = useRef(party);
-  partyRef.current = party;
-
-  useEffect(() => {
-    if (!party || !playerControlRef.current) return;
-    const ctrl = playerControlRef.current;
-    const currentItem = party.queue[party.currentIndex];
-    if (!currentItem) return;
-
-    // Only apply if this is a fresh sync event (tracked by _syncedAt)
-    if (!party._syncedAt) return;
-    if (party._syncedAt === lastSyncRef.current.syncedAt) return;
-    lastSyncRef.current.syncedAt = party._syncedAt;
-
-    // Apply position if drift > 1s
-    const localTime = ctrl.getCurrentTime();
-    const drift = Math.abs(localTime - party.position);
-    if (drift > 1) {
-      ctrl.seek(party.position);
-    }
-
-    if (party.playing) {
-      ctrl.play();
-    } else {
-      ctrl.pause();
-    }
-    lastSyncRef.current = { position: party.position, syncedAt: party._syncedAt, playing: party.playing };
-  }, [party?._syncedAt]);
-
-  // Player callbacks (for canControl users)
-  const handlePlay = useCallback((position) => {
-    if (!canControl) return;
-    send({ type: 'play', position });
-  }, [canControl, send]);
-
-  const handlePause = useCallback((position) => {
-    if (!canControl) return;
-    send({ type: 'pause', position });
-  }, [canControl, send]);
-
-  const handleSeek = useCallback((position) => {
-    if (!canControl) return;
-    send({ type: 'seek', position });
-  }, [canControl, send]);
 
   const handleSourceChange = useCallback((sourceKey) => {
     if (!canControl) return;
@@ -205,10 +177,6 @@ export default function WatchPartyPage() {
     <div className="flex h-full bg-zinc-950">
       {/* Main content: player + queue browser */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Beta banner */}
-        <div className="bg-red-600 text-white text-[10px] font-bold tracking-[0.2em] uppercase text-center py-1 shrink-0">
-          ⚠ BETA — funkcja w fazie testów, mogą wystąpić błędy
-        </div>
         {/* Header bar */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
           <Users className="w-4 h-4 text-violet-400" />
@@ -253,7 +221,6 @@ export default function WatchPartyPage() {
                 drmEnhanced={currentItem.drm_enhanced}
                 title={currentItem.title}
                 controlRef={playerControlRef}
-                onTimeUpdate={(t) => { lastSyncRef.current.position = t; }}
                 onPlay={canControl ? (pos) => send({ type: 'play', position: pos }) : undefined}
                 onPause={canControl ? (pos) => send({ type: 'pause', position: pos }) : undefined}
                 onSeek={canControl ? (pos) => send({ type: 'seek', position: pos }) : undefined}
@@ -287,13 +254,15 @@ export default function WatchPartyPage() {
                   {currentItem.sources.map(s => (
                     <button
                       key={s.key}
-                      onClick={() => canControl ? handleSourceChange(s.key) : null}
+                      onClick={() => handleSourceChange(s.key)}
+                      disabled={!canControl}
+                      title={canControl ? s.label : 'Tylko host lub osoby z uprawnieniami mogą zmieniać źródło'}
                       className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                         s.key === currentSourceKey
                           ? 'bg-violet-600 text-white'
                           : canControl
-                          ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white'
-                          : 'bg-zinc-800 text-zinc-600 cursor-default'
+                          ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white cursor-pointer'
+                          : 'bg-zinc-800 text-zinc-600 cursor-not-allowed opacity-50'
                       }`}
                     >
                       {s.label}
