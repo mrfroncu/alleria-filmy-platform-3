@@ -69,9 +69,13 @@ export default function WatchPartyTab() {
         <span className="text-[10px] font-bold tracking-widest" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)' }}>
           WATCH PARTY
         </span>
-        {inParty && (
+        {inParty ? (
           <span className="text-[10px] bg-white/25 rounded-full w-5 h-5 flex items-center justify-center font-bold shrink-0">
             {party.members.length}
+          </span>
+        ) : (
+          <span className="text-[9px] font-bold bg-red-600 text-white px-1 py-0.5 rounded shrink-0 leading-none">
+            BETA
           </span>
         )}
       </button>
