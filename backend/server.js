@@ -5,6 +5,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 require('dotenv').config(); // cwd fallback
 
+const http = require('http');
 const express = require('express');
 const session = require('express-session');
 const cors = require('cors');
@@ -13,6 +14,7 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const { initDB } = require('./database');
+const { createParty, getParty, deleteParty, createWsToken, setupWatchPartyWS } = require('./watchParty');
 
 const app = express();
 const db = initDB();
@@ -130,6 +132,31 @@ app.get('/api/config', (req, res) => {
 const { VERSION, STREAM_MIN_VERSION } = require('./versions');
 app.get('/api/version', (req, res) => {
   res.json({ version: VERSION, streamMinVersion: STREAM_MIN_VERSION, component: 'alleria-filmy' });
+});
+
+// === Watch Party ===
+app.get('/api/watch-party/token', requireAuth, (req, res) => {
+  const token = createWsToken(req.session.user);
+  res.json({ token });
+});
+
+app.post('/api/watch-party', requireAuth, (req, res) => {
+  const party = createParty(req.session.user);
+  res.json({ code: party.code, id: party.id });
+});
+
+app.get('/api/watch-party/:code', requireAuth, (req, res) => {
+  const party = getParty(req.params.code.toUpperCase());
+  if (!party) return res.status(404).json({ error: 'Party not found' });
+  res.json({ id: party.id, code: party.code, hostId: party.hostId, memberCount: party.members.size });
+});
+
+app.delete('/api/watch-party/:code', requireAuth, (req, res) => {
+  const party = getParty(req.params.code.toUpperCase());
+  if (!party) return res.status(404).json({ error: 'Party not found' });
+  if (party.hostId !== req.session.user.id) return res.status(403).json({ error: 'Not the host' });
+  deleteParty(req.params.code.toUpperCase());
+  res.json({ ok: true });
 });
 
 // Proxy streaming version with compatibility check
@@ -1834,7 +1861,10 @@ app.get('*', (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+const httpServer = http.createServer(app);
+setupWatchPartyWS(httpServer);
+
+httpServer.listen(PORT, '0.0.0.0', () => {
   const rUri = process.env.DISCORD_REDIRECT_URI || '';
   const rUriOk = rUri.includes('/auth/discord/callback');
   console.log('\n========================================');
