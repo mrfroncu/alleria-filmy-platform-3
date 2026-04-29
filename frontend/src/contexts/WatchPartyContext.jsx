@@ -10,6 +10,7 @@ export function useWatchParty() {
 export function WatchPartyProvider({ children }) {
   const [party, setParty] = useState(null);
   const [connected, setConnected] = useState(false);
+  const [disconnectReason, setDisconnectReason] = useState(null); // 'kicked' | 'party_deleted' | null
   const wsRef = useRef(null);
   // Direct callback for immediate player control (bypasses React render cycle)
   const syncCallbackRef = useRef(null);
@@ -18,7 +19,7 @@ export function WatchPartyProvider({ children }) {
     syncCallbackRef.current = cb;
   }, []);
 
-  const disconnect = useCallback(() => {
+  const disconnect = useCallback((reason = null) => {
     if (wsRef.current) {
       try { wsRef.current.close(); } catch (_) {}
       wsRef.current = null;
@@ -26,6 +27,7 @@ export function WatchPartyProvider({ children }) {
     syncCallbackRef.current = null;
     setParty(null);
     setConnected(false);
+    if (reason) setDisconnectReason(reason);
   }, []);
 
   const handleMessage = useCallback((msg) => {
@@ -87,8 +89,11 @@ export function WatchPartyProvider({ children }) {
         break;
 
       case 'kicked':
+        disconnect('kicked');
+        break;
+
       case 'party_deleted':
-        disconnect();
+        disconnect('party_deleted');
         break;
 
       case 'error':
@@ -98,6 +103,7 @@ export function WatchPartyProvider({ children }) {
   }, [disconnect]);
 
   const connect = useCallback(async (code) => {
+    setDisconnectReason(null);
     if (wsRef.current) { try { wsRef.current.close(); } catch (_) {} }
 
     const { token } = await api.getWatchPartyToken();
@@ -144,7 +150,7 @@ export function WatchPartyProvider({ children }) {
   useEffect(() => () => disconnect(), [disconnect]);
 
   return (
-    <WatchPartyContext.Provider value={{ party, connected, inParty: !!party, send, createParty, joinParty, leaveParty, endParty, registerSyncCallback }}>
+    <WatchPartyContext.Provider value={{ party, connected, inParty: !!party, disconnectReason, clearDisconnectReason: () => setDisconnectReason(null), send, createParty, joinParty, leaveParty, endParty, registerSyncCallback }}>
       {children}
     </WatchPartyContext.Provider>
   );

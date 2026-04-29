@@ -173,7 +173,7 @@ function buildSources(video) {
 
 export default function WatchPartyPage() {
   const { user } = useAuth();
-  const { party, inParty, send, joinParty, leaveParty, endParty, registerSyncCallback } = useWatchParty();
+  const { party, inParty, disconnectReason, clearDisconnectReason, send, joinParty, leaveParty, endParty, registerSyncCallback } = useWatchParty();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -277,6 +277,33 @@ export default function WatchPartyPage() {
     setAddingVideo(null);
     setShowBrowser(false);
   };
+
+  if (disconnectReason) {
+    const isKicked = disconnectReason === 'kicked';
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center space-y-4 max-w-sm px-6">
+          <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${isKicked ? 'bg-red-500/15' : 'bg-zinc-800'}`}>
+            <Users className={`w-7 h-7 ${isKicked ? 'text-red-400' : 'text-zinc-500'}`} />
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-white font-bold text-lg">
+              {isKicked ? 'Zostałeś wyrzucony z party' : 'Party zostało zakończone'}
+            </p>
+            <p className="text-zinc-500 text-sm">
+              {isKicked ? 'Host usunął Cię z tego Watch Party.' : 'Host zakończył to Watch Party.'}
+            </p>
+          </div>
+          <button
+            onClick={() => { clearDisconnectReason(); navigate('/'); }}
+            className="px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl transition-all text-sm"
+          >
+            Wróć do strony głównej
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!inParty || !party) {
     return (
@@ -433,18 +460,23 @@ export default function WatchPartyPage() {
                 <span className="text-xs text-white flex-1 truncate">{m.display_name}</span>
                 {m.id === party.hostId && <Crown className="w-3 h-3 text-amber-400 shrink-0" title="Host" />}
                 {isHost && m.id !== user?.id && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <input
-                      type="checkbox"
-                      checked={m.canControl}
-                      onChange={e => send({ type: 'set_control', userId: m.id, canControl: e.target.checked })}
-                      className="w-3 h-3 accent-violet-500 cursor-pointer"
-                      title="Zezwól na sterowanie"
-                    />
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <label
+                      className="flex items-center gap-1 cursor-pointer group/ctrl"
+                      title="Zezwól temu użytkownikowi na sterowanie odtwarzaczem i kolejką"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={m.canControl}
+                        onChange={e => send({ type: 'set_control', userId: m.id, canControl: e.target.checked })}
+                        className="w-3 h-3 accent-violet-500 cursor-pointer"
+                      />
+                      <span className="text-[9px] text-zinc-500 group-hover/ctrl:text-zinc-300 transition-colors select-none">Sterowanie</span>
+                    </label>
                     <button
                       onClick={() => send({ type: 'kick', userId: m.id })}
                       className="p-0.5 text-zinc-600 hover:text-red-400 transition-colors"
-                      title="Wyrzuć"
+                      title="Wyrzuć z party"
                     >
                       <X className="w-3 h-3" />
                     </button>
