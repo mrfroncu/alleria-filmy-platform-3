@@ -54,15 +54,17 @@ function YouTubeTrackingPlayer({ videoId, onTimeUpdate, controlRef }) {
     if (!wrapper || !videoId) return;
     let destroyed = false, player = null, pollId = null;
 
+    const reportTime = () => {
+      if (!player) return;
+      const ct = player.getCurrentTime?.() ?? 0;
+      const dur = player.getDuration?.() ?? 0;
+      if (dur > 0 && onTimeUpdateRef.current) onTimeUpdateRef.current(ct, dur);
+    };
     const stopPoll = () => { if (pollId) { clearInterval(pollId); pollId = null; } };
     const startPoll = () => {
       stopPoll();
-      pollId = setInterval(() => {
-        if (!player) return;
-        const ct = player.getCurrentTime?.() ?? 0;
-        const dur = player.getDuration?.() ?? 0;
-        if (dur > 0 && onTimeUpdateRef.current) onTimeUpdateRef.current(ct, dur);
-      }, 5000);
+      reportTime(); // report immediately so we don't miss a 2s window
+      pollId = setInterval(reportTime, 2000);
     };
 
     const playerDiv = document.createElement('div');
@@ -181,7 +183,7 @@ export default function VideoPage() {
 
   // Continue Watching
   const playerControlRef = useRef(null);
-  const lastProgressSaveRef = useRef(0);
+  const progressStateRef = useRef({ id: null, position: 0, duration: 0, completed: false, lastSaved: 0 });
   const [resumePosition, setResumePosition] = useState(null);
   const [showResumeBanner, setShowResumeBanner] = useState(false);
 
@@ -203,7 +205,6 @@ export default function VideoPage() {
     setEditingComment(null); setEditContent('');
     setComments([]); setReplyTo(null);
     setResumePosition(null); setShowResumeBanner(false);
-    lastProgressSaveRef.current = 0;
     const vid = Number(id);
     const isSwitch = !!video;
     
@@ -241,6 +242,24 @@ export default function VideoPage() {
         }
       }).catch(() => {});
     }).catch(err => setError(err.message)).finally(() => setLoading(false));
+  }, [id]);
+
+  // Save progress when navigating to a different video (id changes) or leaving the page entirely
+  useEffect(() => {
+    progressStateRef.current = { id, position: 0, duration: 0, completed: false, lastSaved: 0 };
+    return () => {
+      const s = progressStateRef.current;
+      if (!s.id || !s.duration || s.completed) return;
+      const pct = s.position / s.duration;
+      if (pct < 0.05 || pct >= 0.90) return;
+      fetch(`/api/progress/${s.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ position: s.position, duration: s.duration }),
+        credentials: 'include',
+        keepalive: true,
+      }).catch(() => {});
+    };
   }, [id]);
 
   useEffect(() => { if (user?.role === 'dev' && devOpen && !allUsers.length) api.getAllUsers().then(setAllUsers).catch(() => {}); }, [devOpen]);
@@ -282,10 +301,23 @@ export default function VideoPage() {
   const handleTimeUpdate = useCallback((currentTime, duration) => {
     if (!duration || duration <= 0) return;
     const pct = currentTime / duration;
-    if (pct < 0.05 || pct > 0.90) return;
+    const s = progressStateRef.current;
+    s.position = currentTime;
+    s.duration = duration;
+
+    if (pct >= 0.90) {
+      if (!s.completed) {
+        s.completed = true;
+        api.clearProgress(id).catch(() => {});
+      }
+      return;
+    }
+    s.completed = false;
+    if (pct < 0.05) return;
+
     const now = Date.now();
-    if (now - lastProgressSaveRef.current > 10000) {
-      lastProgressSaveRef.current = now;
+    if (now - s.lastSaved > 10000) {
+      s.lastSaved = now;
       api.saveProgress(id, currentTime, duration).catch(() => {});
     }
   }, [id]);

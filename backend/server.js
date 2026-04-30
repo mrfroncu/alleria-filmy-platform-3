@@ -1905,6 +1905,14 @@ app.delete('/api/progress', requireAuth, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.delete('/api/progress/:videoId', requireAuth, (req, res) => {
+  const user = req.session.user;
+  try {
+    db.prepare('DELETE FROM watch_progress WHERE user_id = ? AND video_id = ?').run(user.id, parseInt(req.params.videoId));
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/progress/:videoId', requireAuth, (req, res) => {
   const user = req.session.user;
   try {
