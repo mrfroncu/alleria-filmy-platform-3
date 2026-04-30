@@ -569,14 +569,13 @@ function connectTS3(host, port, connectTimeoutMs = 10000, cmdTimeoutMs = 8000) {
       buffer += chunk;
       let nl;
       while ((nl = buffer.indexOf('\n')) !== -1) {
-        const line = buffer.slice(0, nl).trimEnd(); // strip \r too
+        const line = buffer.slice(0, nl).trim(); // trim both ends — strips \r and any leading whitespace
         buffer = buffer.slice(nl + 1);
 
         if (!ready) {
-          greetingLines++;
-          console.log(`[TS3] greeting line ${greetingLines}: "${line}"`);
-          // TS3 sends exactly 2 greeting lines; resolve after the 2nd
-          if (greetingLines >= 2) {
+          console.log(`[TS3] greeting: "${line.slice(0, 80)}"`);
+          // Resolve as soon as we see the TS3 identifier — don't count lines
+          if (line === 'TS3' || line.startsWith('TS3')) {
             ready = true;
             clearTimeout(connectTimer);
             resolve(client);
@@ -584,11 +583,13 @@ function connectTS3(host, port, connectTimeoutMs = 10000, cmdTimeoutMs = 8000) {
           continue;
         }
 
-        if (line.startsWith('notify') || line === '') continue;
+        if (line === '' || line.startsWith('notify')) continue;
+
+        console.log(`[TS3] <<< "${line.slice(0, 120)}"`);
 
         if (line.startsWith('error ')) {
           const entry = queue.shift();
-          if (!entry) { console.log(`[TS3] unexpected error line (empty queue): ${line}`); continue; }
+          if (!entry) { console.log(`[TS3] unexpected error line (no pending cmd): ${line}`); continue; }
           clearTimeout(entry.timer);
           const idM = line.match(/id=(\d+)/);
           const msgM = line.match(/msg=(\S+)/);
@@ -599,7 +600,6 @@ function connectTS3(host, port, connectTimeoutMs = 10000, cmdTimeoutMs = 8000) {
             entry.reject(new Error(`TS3 error ${id}: ${ts3Unescape(msgM?.[1] ?? 'error')}`));
           }
         } else {
-          console.log(`[TS3] data line: "${line.slice(0, 120)}"`);
           if (queue[0]) queue[0].lines.push(line);
         }
       }
