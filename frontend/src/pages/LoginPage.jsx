@@ -5,6 +5,7 @@ import { getCurrentYear } from '../utils/helpers';
 
 export default function LoginPage() {
   const [tsLoading, setTsLoading] = useState(false);
+  const [ts3Loading, setTs3Loading] = useState(false);
   const [configOk, setConfigOk] = useState(true);
 
   // Get returnTo from URL — set by ProtectedRoute redirect
@@ -84,9 +85,22 @@ export default function LoginPage() {
       await api.loginTeamspeak();
       window.location.href = '/';
     } catch (err) {
-      setError(err.message || 'Logowanie przez TeamSpeak nie powiodło się.');
+      setError(err.message || 'Logowanie przez TeamSpeak 6 nie powiodło się.');
     } finally {
       setTsLoading(false);
+    }
+  };
+
+  const handleTeamspeak3Login = async () => {
+    setTs3Loading(true);
+    setError(null);
+    try {
+      await api.loginTeamspeak3();
+      window.location.href = '/';
+    } catch (err) {
+      setError(err.message || 'Logowanie przez TeamSpeak 3 nie powiodło się.');
+    } finally {
+      setTs3Loading(false);
     }
   };
 
@@ -147,16 +161,28 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <button
-            onClick={handleTeamspeakLogin}
-            disabled={tsLoading}
-            className="w-full py-4 sm:py-5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 rounded-2xl font-bold hover:bg-zinc-800 dark:hover:bg-zinc-100 transition-all active:scale-[0.98] flex items-center justify-center gap-4 shadow-xl shadow-zinc-900/10 dark:shadow-white/10 text-base sm:text-lg disabled:opacity-50"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-            </svg>
-            {tsLoading ? 'Łączenie...' : 'Zaloguj przez TeamSpeak'}
-          </button>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={handleTeamspeakLogin}
+              disabled={tsLoading || ts3Loading}
+              className="py-4 sm:py-5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 rounded-2xl font-bold hover:bg-zinc-800 dark:hover:bg-zinc-100 transition-all active:scale-[0.98] flex flex-col items-center justify-center gap-2 shadow-xl shadow-zinc-900/10 dark:shadow-white/10 text-sm disabled:opacity-50"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+              </svg>
+              <span>{tsLoading ? 'Łączenie...' : 'TEAMSPEAK 6'}</span>
+            </button>
+            <button
+              onClick={handleTeamspeak3Login}
+              disabled={tsLoading || ts3Loading}
+              className="py-4 sm:py-5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 rounded-2xl font-bold hover:bg-zinc-800 dark:hover:bg-zinc-100 transition-all active:scale-[0.98] flex flex-col items-center justify-center gap-2 shadow-xl shadow-zinc-900/10 dark:shadow-white/10 text-sm disabled:opacity-50"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+              </svg>
+              <span>{ts3Loading ? 'Łączenie...' : 'TEAMSPEAK 3'}</span>
+            </button>
+          </div>
         </div>
       </div>
 

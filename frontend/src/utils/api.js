@@ -24,6 +24,7 @@ export const api = {
   getMe: () => request('/auth/me'),
   logout: () => request('/auth/logout', { method: 'POST' }),
   loginTeamspeak: () => request('/auth/teamspeak', { method: 'POST' }),
+  loginTeamspeak3: () => request('/auth/teamspeak3', { method: 'POST' }),
 
   // Videos
   getVideos: (params = {}) => {

@@ -6,6 +6,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 require('dotenv').config(); // cwd fallback
 
 const http = require('http');
+const net = require('net');
 const express = require('express');
 const session = require('express-session');
 const cors = require('cors');
@@ -506,6 +507,199 @@ app.post('/api/auth/teamspeak', async (req, res) => {
     console.error('[TS6 AUTH] Error:', err);
     logLogin(null, 'unknown', 'teamspeak', clientIp, 0, err.message);
     res.status(500).json({ error: 'TeamSpeak auth failed: ' + err.message });
+  }
+});
+
+// ============ TEAMSPEAK 3 AUTH ============
+// Uses TS3 ServerQuery raw TCP protocol (default port 10011)
+
+function ts3Unescape(str) {
+  return String(str)
+    .replace(/\\\\/g, '\x00')
+    .replace(/\\s/g, ' ')
+    .replace(/\\p/g, '|')
+    .replace(/\\n/g, '\n')
+    .replace(/\\f/g, '\f')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t')
+    .replace(/\\v/g, '\v')
+    .replace(/\x00/g, '\\');
+}
+
+function ts3ParseLine(line) {
+  return line.split('|').map(record => {
+    const obj = {};
+    record.trim().split(' ').forEach(pair => {
+      const eq = pair.indexOf('=');
+      if (eq === -1) { obj[pair] = ''; return; }
+      obj[pair.slice(0, eq)] = ts3Unescape(pair.slice(eq + 1));
+    });
+    return obj;
+  });
+}
+
+function connectTS3(host, port, timeoutMs = 12000) {
+  return new Promise((resolve, reject) => {
+    let finished = false;
+    const socket = net.createConnection({ host, port: parseInt(port) });
+    let buffer = '';
+    let greetingLines = 0;
+    const queue = [];
+
+    const timer = setTimeout(() => {
+      if (!finished) { finished = true; socket.destroy(); reject(new Error(`TS3 connection timeout (${host}:${port})`)); }
+    }, timeoutMs);
+
+    socket.on('data', (chunk) => {
+      buffer += chunk.toString('utf8');
+      let nl;
+      while ((nl = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, nl).replace(/\r$/, '');
+        buffer = buffer.slice(nl + 1);
+
+        if (greetingLines < 2) {
+          greetingLines++;
+          if (greetingLines === 2) {
+            finished = true;
+            clearTimeout(timer);
+            resolve(client);
+          }
+          continue;
+        }
+
+        if (line.startsWith('error ')) {
+          const cur = queue.shift();
+          if (!cur) return;
+          const idM = line.match(/id=(\d+)/);
+          const msgM = line.match(/msg=(\S+)/);
+          const id = parseInt(idM?.[1] ?? '0');
+          if (id === 0) {
+            cur.resolve(cur.lines);
+          } else {
+            cur.reject(new Error(`TS3 error ${id}: ${ts3Unescape(msgM?.[1] ?? 'error')}`));
+          }
+        } else if (line.length > 0) {
+          if (queue[0]) queue[0].lines.push(line);
+        }
+      }
+    });
+
+    socket.on('error', (err) => { clearTimeout(timer); if (!finished) { finished = true; reject(err); } });
+    socket.on('close', () => { clearTimeout(timer); });
+
+    const client = {
+      send(cmd) {
+        return new Promise((res, rej) => {
+          queue.push({ resolve: res, reject: rej, lines: [] });
+          socket.write(cmd + '\n');
+        });
+      },
+      close() {
+        clearTimeout(timer);
+        try { socket.write('quit\n'); } catch (_) {}
+        setTimeout(() => { try { socket.destroy(); } catch (_) {} }, 200);
+      },
+    };
+  });
+}
+
+app.post('/api/auth/teamspeak3', async (req, res) => {
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+  const cleanIp = clientIp.replace('::ffff:', '');
+
+  const tsHost = process.env.TS3_HOST;
+  const tsPort = process.env.TS3_PORT || '10011';
+  const tsUsername = process.env.TS3_USERNAME || 'serveradmin';
+  const tsPassword = process.env.TS3_PASSWORD || '';
+  const tsServerId = process.env.TS3_SERVER_ID || '1';
+
+  if (!tsHost) {
+    logLogin(null, 'unknown', 'teamspeak3', clientIp, 0, 'TS3 not configured');
+    return res.status(500).json({ error: 'TeamSpeak 3 nie jest skonfigurowany.' });
+  }
+
+  let ts3 = null;
+  try {
+    console.log(`[TS3] Attempting auth for IP: ${cleanIp} via ${tsHost}:${tsPort}`);
+
+    ts3 = await connectTS3(tsHost, tsPort);
+    await ts3.send(`login ${tsUsername} ${tsPassword}`);
+    await ts3.send(`use sid=${tsServerId}`);
+
+    const clLines = await ts3.send('clientlist -uid -ip');
+    const clients = clLines.length > 0 ? ts3ParseLine(clLines[0]) : [];
+
+    console.log(`[TS3] Got ${clients.length} clients, looking for IP ${cleanIp}`);
+
+    const matched = clients.find(c =>
+      c.client_type !== '1' &&
+      (c.connection_client_ip === cleanIp || c.connection_client_ip === clientIp)
+    );
+
+    if (!matched) {
+      ts3.close(); ts3 = null;
+      logLogin(null, 'unknown', 'teamspeak3', clientIp, 0, `No TS3 client with IP ${cleanIp}`);
+      return res.status(401).json({ error: 'Nie znaleziono klienta TeamSpeak 3 z Twoim IP. Upewnij się, że jesteś połączony z serwerem TS3.' });
+    }
+
+    const tsNickname = matched.client_nickname;
+    const tsUid = matched.client_unique_identifier;
+    const tsDbId = matched.client_database_id;
+    console.log(`[TS3] Matched client: "${tsNickname}" (uid: ${tsUid}, dbid: ${tsDbId})`);
+
+    let groups = [];
+    try {
+      const sgLines = await ts3.send(`servergroupsbyclientid cldbid=${tsDbId}`);
+      if (sgLines.length > 0) groups = ts3ParseLine(sgLines[0]).map(g => String(g.sgid)).filter(Boolean);
+    } catch (e) {
+      console.log(`[TS3] Error getting groups: ${e.message}`);
+    }
+
+    ts3.close(); ts3 = null;
+    console.log(`[TS3] User "${tsNickname}" groups: [${groups.join(', ')}]`);
+
+    const memberGroupId = process.env.TS3_MEMBER_GROUP_ID;
+    const adminGroupId = process.env.TS3_ADMIN_GROUP_ID;
+
+    const hasMemberGroup = memberGroupId ? groups.includes(String(memberGroupId)) : true;
+    const hasAdminGroup = adminGroupId ? groups.includes(String(adminGroupId)) : false;
+
+    if (!hasMemberGroup && !hasAdminGroup) {
+      logLogin(null, tsNickname, 'teamspeak3', clientIp, 0, `Missing group (has: ${groups.join(',')})`);
+      return res.status(401).json({ error: 'Nie posiadasz wymaganej grupy na serwerze TeamSpeak 3.' });
+    }
+
+    const role = hasAdminGroup ? 'admin' : 'member';
+
+    let existing = db.prepare('SELECT * FROM users WHERE ts_uid = ?').get(tsUid);
+    if (!existing) existing = db.prepare("SELECT * FROM users WHERE ts_ip = ? AND auth_method IN ('teamspeak3', 'teamspeak')").get(cleanIp);
+
+    let userId;
+    if (existing) {
+      db.prepare(`UPDATE users SET username=?, display_name=?, role=?, ts_ip=?, ts_uid=?, last_login=datetime('now') WHERE id=?`)
+        .run(tsNickname, tsNickname, role, cleanIp, tsUid, existing.id);
+      userId = existing.id;
+    } else {
+      const result = db.prepare('INSERT INTO users (username, display_name, role, auth_method, ts_ip, ts_uid) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(tsNickname, tsNickname, role, 'teamspeak3', cleanIp, tsUid);
+      userId = result.lastInsertRowid;
+    }
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    req.session.user = {
+      id: user.id, username: user.username, display_name: user.display_name,
+      avatar: user.avatar, role: user.role, auth_method: 'teamspeak3', discord_roles: []
+    };
+
+    logLogin(userId, tsNickname, 'teamspeak3', clientIp, 1, null);
+    console.log(`[TS3] ✅ Login: "${tsNickname}" (role: ${role})`);
+    req.session.save(() => res.json({ success: true, user: req.session.user }));
+
+  } catch (err) {
+    if (ts3) { try { ts3.close(); } catch (_) {} }
+    console.error('[TS3 AUTH] Error:', err);
+    logLogin(null, 'unknown', 'teamspeak3', clientIp, 0, err.message);
+    res.status(500).json({ error: 'TeamSpeak 3 auth failed: ' + err.message });
   }
 });
 
