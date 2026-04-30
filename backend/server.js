@@ -538,78 +538,103 @@ function ts3ParseLine(line) {
   });
 }
 
-function connectTS3(host, port, timeoutMs = 12000) {
+function connectTS3(host, port, connectTimeoutMs = 10000, cmdTimeoutMs = 8000) {
   return new Promise((resolve, reject) => {
-    let connected = false;
     const socket = net.createConnection({ host, port: parseInt(port) });
-    let buffer = '';
-    let greetingLines = 0;
-    const queue = [];
+    socket.setEncoding('utf8');
 
-    const flushQueue = (err) => {
-      while (queue.length > 0) queue.shift().reject(err);
+    let buffer = '';
+    let ready = false;
+    let greetingLines = 0;
+    const queue = []; // { resolve, reject, lines, timer }
+
+    const destroy = (err) => {
+      while (queue.length > 0) {
+        const e = queue.shift();
+        clearTimeout(e.timer);
+        e.reject(err);
+      }
+      try { socket.destroy(); } catch (_) {}
     };
 
-    const timer = setTimeout(() => {
-      if (!connected) { socket.destroy(); reject(new Error(`TS3 connection timeout (${host}:${port})`)); }
-    }, timeoutMs);
+    // Connect / greeting timeout
+    const connectTimer = setTimeout(() => {
+      if (!ready) {
+        socket.destroy();
+        reject(new Error(`TS3 connect timeout to ${host}:${port}`));
+      }
+    }, connectTimeoutMs);
 
     socket.on('data', (chunk) => {
-      buffer += chunk.toString('utf8');
+      buffer += chunk;
       let nl;
       while ((nl = buffer.indexOf('\n')) !== -1) {
-        const line = buffer.slice(0, nl).replace(/\r$/, '');
+        const line = buffer.slice(0, nl).trimEnd(); // strip \r too
         buffer = buffer.slice(nl + 1);
 
-        if (greetingLines < 2) {
+        if (!ready) {
           greetingLines++;
-          if (greetingLines === 2) {
-            connected = true;
-            clearTimeout(timer);
+          console.log(`[TS3] greeting line ${greetingLines}: "${line}"`);
+          // TS3 sends exactly 2 greeting lines; resolve after the 2nd
+          if (greetingLines >= 2) {
+            ready = true;
+            clearTimeout(connectTimer);
             resolve(client);
           }
           continue;
         }
 
-        if (line.startsWith('notify')) continue;
+        if (line.startsWith('notify') || line === '') continue;
 
         if (line.startsWith('error ')) {
-          const cur = queue.shift();
-          if (!cur) return;
+          const entry = queue.shift();
+          if (!entry) { console.log(`[TS3] unexpected error line (empty queue): ${line}`); continue; }
+          clearTimeout(entry.timer);
           const idM = line.match(/id=(\d+)/);
           const msgM = line.match(/msg=(\S+)/);
-          const id = parseInt(idM?.[1] ?? '0');
+          const id = parseInt(idM?.[1] ?? '1');
           if (id === 0) {
-            cur.resolve(cur.lines);
+            entry.resolve(entry.lines);
           } else {
-            cur.reject(new Error(`TS3 error ${id}: ${ts3Unescape(msgM?.[1] ?? 'error')}`));
+            entry.reject(new Error(`TS3 error ${id}: ${ts3Unescape(msgM?.[1] ?? 'error')}`));
           }
-        } else if (line.length > 0) {
+        } else {
+          console.log(`[TS3] data line: "${line.slice(0, 120)}"`);
           if (queue[0]) queue[0].lines.push(line);
         }
       }
     });
 
     socket.on('error', (err) => {
-      clearTimeout(timer);
-      if (!connected) { reject(err); return; }
-      flushQueue(err);
+      clearTimeout(connectTimer);
+      console.log(`[TS3] socket error: ${err.message}`);
+      if (!ready) { reject(err); return; }
+      destroy(err);
     });
+
     socket.on('close', () => {
-      clearTimeout(timer);
-      flushQueue(new Error('TS3 connection closed unexpectedly'));
+      clearTimeout(connectTimer);
+      if (queue.length > 0) destroy(new Error('TS3 socket closed while waiting for response'));
     });
 
     const client = {
       send(cmd) {
         return new Promise((res, rej) => {
-          queue.push({ resolve: res, reject: rej, lines: [] });
-          socket.write(cmd + '\n');
+          const entry = { resolve: res, reject: rej, lines: [] };
+          entry.timer = setTimeout(() => {
+            const idx = queue.indexOf(entry);
+            if (idx !== -1) queue.splice(idx, 1);
+            rej(new Error(`TS3 command timed out: ${cmd.split(' ')[0]}`));
+            destroy(new Error('TS3 command timeout — closing socket'));
+          }, cmdTimeoutMs);
+          queue.push(entry);
+          console.log(`[TS3] >>> ${cmd.startsWith('login') ? 'login ***' : cmd}`);
+          socket.write(cmd + '\r\n');
         });
       },
       close() {
-        try { socket.write('quit\n'); } catch (_) {}
-        setTimeout(() => { try { socket.destroy(); } catch (_) {} }, 200);
+        try { socket.write('quit\r\n'); } catch (_) {}
+        setTimeout(() => { try { socket.destroy(); } catch (_) {} }, 300);
       },
     };
   });
