@@ -133,6 +133,10 @@ export const api = {
     body: JSON.stringify(data),
   }),
 
+  // Debug — Watch Party management
+  getActiveWatchParties: () => request('/debug/watch-parties'),
+  forceDeleteWatchParty: (code) => request(`/debug/watch-parties/${code}`, { method: 'DELETE' }),
+
   // Debug
   exportDB: () => request('/debug/export'),
   importDB: (data) => request('/debug/import', {

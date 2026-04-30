@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, Upload, Trash2, AlertTriangle, Database, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2 } from 'lucide-react';
+import { Download, Upload, Trash2, AlertTriangle, Database, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw } from 'lucide-react';
 import { api } from '../utils/api';
 
 export default function DebugPage() {
@@ -21,12 +21,22 @@ export default function DebugPage() {
 
   const [cleanupLog, setCleanupLog] = useState([]);
 
+  // Watch Party management
+  const [watchParties, setWatchParties] = useState([]);
+  const [wpLoading, setWpLoading] = useState(false);
+
+  const loadWatchParties = () => {
+    setWpLoading(true);
+    api.getActiveWatchParties().then(setWatchParties).catch(() => {}).finally(() => setWpLoading(false));
+  };
+
   // Admin stats
   const [streamStats, setStreamStats] = useState(null);
   const [dbStats, setDbStats] = useState(null);
   const [transcodingVideos, setTranscodingVideos] = useState([]);
 
   useEffect(() => {
+    loadWatchParties();
     // Load stats
     fetch('/api/stream/stats').then(r => r.json()).then(setStreamStats).catch(() => {});
     api.execSQL('SELECT COUNT(*) AS videos FROM videos').then(r => {
@@ -227,6 +237,98 @@ export default function DebugPage() {
           </div>
         </div>
       )}
+
+      {/* Watch Party manager */}
+      <div className="card p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center">
+              <Users className="w-5 h-5 text-violet-500" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">
+                Aktywne Watch Parties ({watchParties.length})
+              </h3>
+              <p className="text-xs text-zinc-500">Party w pamięci serwera — usuwane automatycznie 30 min po opustoszeniu</p>
+            </div>
+          </div>
+          <button
+            onClick={loadWatchParties}
+            disabled={wpLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl transition-all font-semibold"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${wpLoading ? 'animate-spin' : ''}`} />
+            Odśwież
+          </button>
+        </div>
+
+        {watchParties.length === 0 ? (
+          <p className="text-zinc-400 text-sm text-center py-4">Brak aktywnych party</p>
+        ) : (
+          <div className="space-y-2">
+            {watchParties.map(p => {
+              const isEmpty = p.memberCount === 0;
+              const emptyMins = p.emptyAt ? Math.floor((Date.now() - p.emptyAt) / 60000) : null;
+              return (
+                <div key={p.code} className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${isEmpty ? 'border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/5' : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50'}`}>
+                  {/* Code + status */}
+                  <div className="shrink-0 text-center min-w-[72px]">
+                    <span className="font-mono text-base font-bold text-violet-600 dark:text-violet-400 tracking-widest">{p.code}</span>
+                    <div className="mt-0.5">
+                      {isEmpty ? (
+                        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                          puste {emptyMins != null ? `${emptyMins}m` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">aktywne</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Details */}
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-zinc-600 dark:text-zinc-400">
+                      <span><span className="font-semibold text-zinc-800 dark:text-zinc-200">{p.memberCount}</span> uczestników</span>
+                      <span><span className="font-semibold text-zinc-800 dark:text-zinc-200">{p.queueLength}</span> w kolejce</span>
+                      {p.currentTitle && (
+                        <span className="truncate max-w-[200px]">▶ <span className="font-semibold text-zinc-800 dark:text-zinc-200">{p.currentTitle}</span></span>
+                      )}
+                      {!isEmpty && (
+                        <span>{p.playing ? '▶ gra' : '⏸ pauza'} @ {Math.floor(p.position / 60)}:{String(p.position % 60).padStart(2, '0')}</span>
+                      )}
+                    </div>
+                    {p.members.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {p.members.map(m => (
+                          <span key={m.id} className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${m.canControl ? 'bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400'}`}>
+                            {m.name}{m.canControl ? ' ★' : ''}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[10px] text-zinc-400">
+                      ID: <span className="font-mono">{p.id}</span> · utworzono: {new Date(p.createdAt).toLocaleString('pl')}
+                    </p>
+                  </div>
+
+                  {/* Delete button */}
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Usunąć party ${p.code}? Wszyscy uczestnicy zostaną rozłączeni.`)) return;
+                      await api.forceDeleteWatchParty(p.code).catch(() => {});
+                      loadWatchParties();
+                    }}
+                    className="shrink-0 p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all"
+                    title="Usuń party"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* 2-column grid for tools */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">

@@ -14,7 +14,7 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const { initDB } = require('./database');
-const { createParty, getParty, deleteParty, createWsToken, setupWatchPartyWS } = require('./watchParty');
+const { createParty, getParty, deleteParty, listParties, createWsToken, setupWatchPartyWS } = require('./watchParty');
 
 const app = express();
 const db = initDB();
@@ -1404,6 +1404,19 @@ app.post('/api/debug/sql', requireDev, (req, res) => {
   } catch (err) {
     res.json({ success: false, error: err.message });
   }
+});
+
+// ============ DEBUG: WATCH PARTY MANAGEMENT ============
+app.get('/api/debug/watch-parties', requireDev, (req, res) => {
+  res.json(listParties());
+});
+
+app.delete('/api/debug/watch-parties/:code', requireDev, (req, res) => {
+  const code = req.params.code.toUpperCase();
+  const u = req.session.user;
+  if (!getParty(code)) return res.status(404).json({ error: 'Party not found' });
+  deleteParty(code, u.id, u.display_name || u.username);
+  res.json({ ok: true });
 });
 
 // ============ LOG CLEARING API ============

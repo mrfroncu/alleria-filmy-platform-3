@@ -46,9 +46,8 @@ function loadYtApi() {
 }
 
 function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek }) {
-  const divIdRef = useRef(null);
-  if (!divIdRef.current) divIdRef.current = `yt-${Math.random().toString(36).slice(2)}`;
-  const divId = divIdRef.current;
+  // React owns only this wrapper — YT owns the inner div it creates
+  const wrapperRef = useRef(null);
 
   const playerRef = useRef(null);
   const syncingRef = useRef(false);
@@ -64,9 +63,19 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek 
   useEffect(() => { onSeekRef.current = onSeek; }, [onSeek]);
 
   useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+
     let destroyed = false;
     let player = null;
     let pollId = null;
+
+    // Create the player target div imperatively — React never tracks it,
+    // so YT replacing it with an <iframe> won't confuse React's reconciler.
+    const playerDiv = document.createElement('div');
+    playerDiv.style.width = '100%';
+    playerDiv.style.height = '100%';
+    wrapper.appendChild(playerDiv);
 
     const stopPoll = () => { clearInterval(pollId); pollId = null; };
     const startPoll = () => {
@@ -78,7 +87,6 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek 
         const expected = expectedTimeRef.current + elapsed;
         const actual = playerRef.current.getCurrentTime();
         if (Math.abs(actual - expected) > 2.5) {
-          // User seeked
           expectedTimeRef.current = actual;
           lastCheckRef.current = now;
           onSeekRef.current?.(actual);
@@ -91,8 +99,10 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek 
 
     loadYtApi().then(() => {
       if (destroyed) return;
-      player = new window.YT.Player(divId, {
+      player = new window.YT.Player(playerDiv, {
         videoId,
+        width: '100%',
+        height: '100%',
         playerVars: { rel: 0, modestbranding: 1, enablejsapi: 1 },
         events: {
           onReady: () => { if (!destroyed) playerRef.current = player; },
@@ -123,10 +133,12 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek 
     return () => {
       destroyed = true;
       stopPoll();
-      try { player?.destroy(); } catch (_) {}
       playerRef.current = null;
+      try { player?.destroy(); } catch (_) {}
+      // Remove the YT-owned element from wrapper so React can remove wrapper cleanly
+      try { if (wrapper.firstChild) wrapper.innerHTML = ''; } catch (_) {}
     };
-  }, [videoId, divId]);
+  }, [videoId]);
 
   // Expose control interface via controlRef
   useEffect(() => {
@@ -156,7 +168,8 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek 
     };
   });
 
-  return <div id={divId} className="w-full h-full" />;
+  // React manages only this wrapper div — never the YT iframe inside
+  return <div ref={wrapperRef} className="w-full h-full" />;
 }
 
 // Build source list from a video object (same logic as VideoPage)

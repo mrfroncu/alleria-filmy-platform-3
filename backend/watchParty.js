@@ -96,10 +96,39 @@ function createParty(host) {
     positionUpdatedAt: Date.now(),
     members: new Map(),
     createdAt: Date.now(),
+    emptyAt: null, // set when last member leaves, cleared when someone joins
   };
   parties.set(code, party);
   wpLog(code, 'party_created', host.id, uname(host), null, null, '');
   return party;
+}
+
+function listParties() {
+  const now = Date.now();
+  return Array.from(parties.values()).map(p => {
+    const position = p.playing
+      ? p.position + (now - p.positionUpdatedAt) / 1000
+      : p.position;
+    const currentItem = p.currentIndex >= 0 ? p.queue[p.currentIndex] : null;
+    return {
+      code: p.code,
+      id: p.id,
+      hostId: p.hostId,
+      memberCount: p.members.size,
+      members: Array.from(p.members.values()).map(m => ({
+        id: m.user.id,
+        name: uname(m.user),
+        canControl: m.canControl,
+      })),
+      queueLength: p.queue.length,
+      currentIndex: p.currentIndex,
+      currentTitle: currentItem?.title || null,
+      playing: p.playing,
+      position: Math.round(position),
+      createdAt: p.createdAt,
+      emptyAt: p.emptyAt,
+    };
+  }).sort((a, b) => b.createdAt - a.createdAt);
 }
 
 function getParty(code) {
@@ -117,11 +146,12 @@ function deleteParty(code, byUserId, byUserName) {
   parties.delete(code);
 }
 
-// Cleanup empty parties older than 30min
+// Cleanup parties empty for 30+ min
 setInterval(() => {
   const cutoff = Date.now() - 30 * 60 * 1000;
   for (const [code, party] of parties) {
-    if (party.members.size === 0 && party.createdAt < cutoff) {
+    if (party.members.size === 0 && party.emptyAt !== null && party.emptyAt < cutoff) {
+      wpLog(code, 'party_ended', null, null, null, null, 'automatyczne usunięcie — puste party po 30 min');
       parties.delete(code);
     }
   }
@@ -174,6 +204,7 @@ function setupWatchPartyWS(server, db) {
         }
 
         party.members.set(userId, { user, ws, canControl: isHost || existingCanControl });
+        party.emptyAt = null; // party is no longer empty
 
         wpLog(partyCode, 'user_joined', userId, userName, null, null,
           isHost ? 'host' : '');
@@ -325,6 +356,7 @@ function setupWatchPartyWS(server, db) {
       const leavingMember = party.members.get(userId);
       const leavingName = leavingMember ? uname(leavingMember.user) : userName;
       party.members.delete(userId);
+      if (party.members.size === 0) party.emptyAt = Date.now();
       wpLog(partyCode, 'user_left', userId, leavingName, null, null, '');
       broadcast(party, { type: 'member_left', userId });
 
@@ -343,4 +375,4 @@ function setupWatchPartyWS(server, db) {
   return wss;
 }
 
-module.exports = { createParty, getParty, deleteParty, createWsToken, setupWatchPartyWS };
+module.exports = { createParty, getParty, deleteParty, listParties, createWsToken, setupWatchPartyWS };
