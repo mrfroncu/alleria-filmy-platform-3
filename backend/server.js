@@ -540,14 +540,18 @@ function ts3ParseLine(line) {
 
 function connectTS3(host, port, timeoutMs = 12000) {
   return new Promise((resolve, reject) => {
-    let finished = false;
+    let connected = false;
     const socket = net.createConnection({ host, port: parseInt(port) });
     let buffer = '';
     let greetingLines = 0;
     const queue = [];
 
+    const flushQueue = (err) => {
+      while (queue.length > 0) queue.shift().reject(err);
+    };
+
     const timer = setTimeout(() => {
-      if (!finished) { finished = true; socket.destroy(); reject(new Error(`TS3 connection timeout (${host}:${port})`)); }
+      if (!connected) { socket.destroy(); reject(new Error(`TS3 connection timeout (${host}:${port})`)); }
     }, timeoutMs);
 
     socket.on('data', (chunk) => {
@@ -560,12 +564,14 @@ function connectTS3(host, port, timeoutMs = 12000) {
         if (greetingLines < 2) {
           greetingLines++;
           if (greetingLines === 2) {
-            finished = true;
+            connected = true;
             clearTimeout(timer);
             resolve(client);
           }
           continue;
         }
+
+        if (line.startsWith('notify')) continue;
 
         if (line.startsWith('error ')) {
           const cur = queue.shift();
@@ -584,8 +590,15 @@ function connectTS3(host, port, timeoutMs = 12000) {
       }
     });
 
-    socket.on('error', (err) => { clearTimeout(timer); if (!finished) { finished = true; reject(err); } });
-    socket.on('close', () => { clearTimeout(timer); });
+    socket.on('error', (err) => {
+      clearTimeout(timer);
+      if (!connected) { reject(err); return; }
+      flushQueue(err);
+    });
+    socket.on('close', () => {
+      clearTimeout(timer);
+      flushQueue(new Error('TS3 connection closed unexpectedly'));
+    });
 
     const client = {
       send(cmd) {
@@ -595,7 +608,6 @@ function connectTS3(host, port, timeoutMs = 12000) {
         });
       },
       close() {
-        clearTimeout(timer);
         try { socket.write('quit\n'); } catch (_) {}
         setTimeout(() => { try { socket.destroy(); } catch (_) {} }, 200);
       },
