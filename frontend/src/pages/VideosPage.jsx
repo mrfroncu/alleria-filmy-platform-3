@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, X, ChevronDown, Film, Clock } from 'lucide-react';
+import { Search, SlidersHorizontal, X, ChevronDown, Film } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
 
@@ -70,6 +70,11 @@ export default function VideosPage() {
 
   const hasActiveFilters = search || selectedTags.length > 0 || selectedAuthor;
 
+  const progressMap = useMemo(() =>
+    Object.fromEntries(continueWatching.map(p => [p.video_id, p])),
+    [continueWatching]
+  );
+
   return (
     <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
       {/* Header */}
@@ -85,47 +90,6 @@ export default function VideosPage() {
             : 'Przeglądaj materiały wideo społeczności.'}
         </p>
       </div>
-
-      {/* Continue Watching */}
-      {continueWatching.length > 0 && (
-        <div className="mb-10">
-          <div className="flex items-center gap-2 mb-4">
-            <Clock className="w-5 h-5 text-violet-500" />
-            <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Kontynuuj oglądanie</h2>
-          </div>
-          <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-thin">
-            {continueWatching.map(item => {
-              const pct = item.duration > 0 ? Math.min(100, (item.position / item.duration) * 100) : 0;
-              const mins = Math.floor(item.position / 60);
-              const secs = String(Math.floor(item.position % 60)).padStart(2, '0');
-              return (
-                <Link
-                  key={item.video_id}
-                  to={`/video/${item.video_id}${item.category_slug ? `?from=${item.category_slug}` : ''}`}
-                  className="shrink-0 w-56 group rounded-2xl overflow-hidden bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-violet-300 dark:hover:border-violet-500/50 hover:shadow-lg transition-all"
-                >
-                  <div className="relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
-                    {item.thumbnail ? (
-                      <img src={item.thumbnail} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center"><Film className="w-8 h-8 text-zinc-300 dark:text-zinc-700" /></div>
-                    )}
-                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/30">
-                      <div className="h-full bg-violet-500 transition-all" style={{ width: `${pct}%` }} />
-                    </div>
-                    <div className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/70 text-white text-[10px] font-mono rounded">
-                      {mins}:{secs}
-                    </div>
-                  </div>
-                  <div className="p-3">
-                    <p className="text-sm font-bold text-zinc-900 dark:text-white line-clamp-2 group-hover:text-violet-500 transition-colors">{item.title}</p>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Search & Filters Bar */}
       <div className="mb-8 space-y-4">
@@ -287,6 +251,20 @@ export default function VideosPage() {
                   </div>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                {progressMap[video.id] && (() => {
+                  const p = progressMap[video.id];
+                  const pct = p.duration > 0 ? Math.min(100, (p.position / p.duration) * 100) : 0;
+                  return (
+                    <>
+                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
+                        <div className="h-full bg-violet-500" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded backdrop-blur-sm">
+                        Kontynuuj oglądanie
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
               <div className="p-6">
                 <h3 className="font-bold text-zinc-900 dark:text-white mb-2 line-clamp-2 group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors">

@@ -173,6 +173,7 @@ export const api = {
   }),
   getProgress: (videoId) => request(`/progress/${videoId}`),
   getAllProgress: () => request('/progress'),
+  resetProgress: () => request('/progress', { method: 'DELETE' }),
 
   // Comments
   getComments: (videoId) => request(`/videos/${videoId}/comments`),

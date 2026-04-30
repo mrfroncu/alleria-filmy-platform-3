@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle } from 'lucide-react';
 import { api } from '../utils/api';
-import { formatDate, youtubeToEmbed } from '../utils/helpers';
+import { formatDate, youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
 import SecurePlayer from '../components/SecurePlayer';
 import VideoModal from '../components/VideoModal';
@@ -25,6 +25,76 @@ function HtmlEmbed({ html }) {
   }, [html]);
   if (!blobUrl) return null;
   return <iframe src={blobUrl} className="w-full h-full border-0" allowFullScreen />;
+}
+
+// YouTube IFrame API loader — robust polling, works even if API already loaded by another module
+function loadYtApi() {
+  return new Promise(resolve => {
+    if (window.YT?.Player) return resolve();
+    if (!document.getElementById('yt-iframe-api')) {
+      const tag = document.createElement('script');
+      tag.id = 'yt-iframe-api';
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(tag);
+    }
+    const iv = setInterval(() => {
+      if (window.YT?.Player) { clearInterval(iv); resolve(); }
+    }, 50);
+  });
+}
+
+// YouTube player with progress tracking — React owns wrapper div only, YT owns inner element
+function YouTubeTrackingPlayer({ videoId, onTimeUpdate, controlRef }) {
+  const wrapperRef = useRef(null);
+  const onTimeUpdateRef = useRef(onTimeUpdate);
+  useEffect(() => { onTimeUpdateRef.current = onTimeUpdate; }, [onTimeUpdate]);
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper || !videoId) return;
+    let destroyed = false, player = null, pollId = null;
+
+    const stopPoll = () => { if (pollId) { clearInterval(pollId); pollId = null; } };
+    const startPoll = () => {
+      stopPoll();
+      pollId = setInterval(() => {
+        if (!player) return;
+        const ct = player.getCurrentTime?.() ?? 0;
+        const dur = player.getDuration?.() ?? 0;
+        if (dur > 0 && onTimeUpdateRef.current) onTimeUpdateRef.current(ct, dur);
+      }, 5000);
+    };
+
+    const playerDiv = document.createElement('div');
+    playerDiv.style.width = '100%';
+    playerDiv.style.height = '100%';
+    wrapper.appendChild(playerDiv);
+
+    loadYtApi().then(() => {
+      if (destroyed) return;
+      player = new window.YT.Player(playerDiv, {
+        videoId,
+        playerVars: { autoplay: 0, controls: 1, rel: 0 },
+        events: {
+          onReady: () => {
+            if (controlRef) controlRef.current = { seek: (pos) => player.seekTo(pos, true) };
+          },
+          onStateChange: ({ data }) => {
+            if (data === window.YT.PlayerState.PLAYING) startPoll();
+            else stopPoll();
+          },
+        },
+      });
+    });
+
+    return () => {
+      destroyed = true; stopPoll();
+      try { player?.destroy(); } catch (_) {}
+      try { if (wrapper.firstChild) wrapper.innerHTML = ''; } catch (_) {}
+    };
+  }, [videoId]);
+
+  return <div ref={wrapperRef} className="w-full h-full" />;
 }
 
 // Comment — stable component outside render
@@ -165,7 +235,7 @@ export default function VideoPage() {
       }).catch(() => {});
       api.getComments(vid).then(setComments).catch(() => setComments([]));
       api.getProgress(vid).then(p => {
-        if (p && p.position > 30 && (!p.duration || p.position < p.duration * 0.95)) {
+        if (p && p.duration > 0 && p.position > p.duration * 0.05 && p.position < p.duration * 0.90) {
           setResumePosition(p.position);
           setShowResumeBanner(true);
         }
@@ -210,10 +280,13 @@ export default function VideoPage() {
   const hardDel = async () => { if (!hardDeleteConfirm) return; try { await api.hardDeleteComment(hardDeleteConfirm); const rm = new Set([hardDeleteConfirm]); const walk = pid => comments.filter(c => c.parent_id === pid).forEach(c => { rm.add(c.id); walk(c.id); }); walk(hardDeleteConfirm); setComments(p => p.filter(c => !rm.has(c.id))); } catch (e) {} setHardDeleteConfirm(null); };
 
   const handleTimeUpdate = useCallback((currentTime, duration) => {
+    if (!duration || duration <= 0) return;
+    const pct = currentTime / duration;
+    if (pct < 0.05 || pct > 0.90) return;
     const now = Date.now();
-    if (currentTime > 5 && now - lastProgressSaveRef.current > 10000) {
+    if (now - lastProgressSaveRef.current > 10000) {
       lastProgressSaveRef.current = now;
-      api.saveProgress(id, currentTime, duration || 0).catch(() => {});
+      api.saveProgress(id, currentTime, duration).catch(() => {});
     }
   }, [id]);
 
@@ -285,18 +358,9 @@ export default function VideoPage() {
           </div>
         </div>
 
-        <div className="mb-8 anim-stagger-2" key={`player-${activeSource}`}>
+        <div className="mb-2 anim-stagger-2" key={`player-${activeSource}`}>
           {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
-            <>
-              <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} />
-              {showResumeBanner && resumePosition !== null && (
-                <div className="mt-3 flex items-center gap-3 px-4 py-3 bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 rounded-2xl animate-scale-in">
-                  <span className="text-sm text-violet-700 dark:text-violet-300 font-medium flex-1">Kontynuuj od {Math.floor(resumePosition / 60)}:{String(Math.floor(resumePosition % 60)).padStart(2, '0')}?</span>
-                  <button onClick={() => { playerControlRef.current?.seek(resumePosition); setShowResumeBanner(false); }} className="px-4 py-1.5 bg-violet-500 text-white text-sm font-bold rounded-xl hover:bg-violet-600 transition-colors">Kontynuuj</button>
-                  <button onClick={() => setShowResumeBanner(false)} className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-sm font-bold rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">Od początku</button>
-                </div>
-              )}
-            </>
+            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} />
           ) : isStreamer && streamerVideoId ? (
             <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} />
           ) : isPlex && src.url ? (
@@ -332,11 +396,19 @@ export default function VideoPage() {
               </div>
             </div>
           ) : embedUrl ? (
-            <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in"><iframe src={embedUrl} className="w-full h-full" allowFullScreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" /></div>
+            <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in"><YouTubeTrackingPlayer videoId={extractYoutubeId(src.url)} onTimeUpdate={handleTimeUpdate} controlRef={playerControlRef} /></div>
           ) : isHtml && src.url ? (
             <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in"><HtmlEmbed html={src.url} /></div>
           ) : <div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[32px] flex items-center justify-center"><p className="text-zinc-400 text-sm">Brak źródła.</p></div>}
         </div>
+
+        {showResumeBanner && resumePosition !== null && (
+          <div className="mb-6 flex items-center gap-3 px-4 py-3 bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 rounded-2xl animate-scale-in">
+            <span className="text-sm text-violet-700 dark:text-violet-300 font-medium flex-1">Kontynuuj od {Math.floor(resumePosition / 60)}:{String(Math.floor(resumePosition % 60)).padStart(2, '0')}?</span>
+            <button onClick={() => { playerControlRef.current?.seek(resumePosition); setShowResumeBanner(false); }} className="px-4 py-1.5 bg-violet-500 text-white text-sm font-bold rounded-xl hover:bg-violet-600 transition-colors">Kontynuuj</button>
+            <button onClick={() => setShowResumeBanner(false)} className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-sm font-bold rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">Od początku</button>
+          </div>
+        )}
 
         {sources.length > 1 && (
           <div className="flex gap-2 mb-6 anim-stagger-3">

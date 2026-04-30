@@ -1887,12 +1887,21 @@ app.get('/api/progress', requireAuth, (req, res) => {
       FROM watch_progress wp
       JOIN videos v ON wp.video_id = v.id
       LEFT JOIN categories c ON v.category_id = c.id
-      WHERE wp.user_id = ? AND wp.position > 30
-        AND (wp.duration = 0 OR wp.position < wp.duration * 0.95)
+      WHERE wp.user_id = ? AND wp.duration > 0
+        AND wp.position > wp.duration * 0.05
+        AND wp.position < wp.duration * 0.90
       ORDER BY wp.updated_at DESC
       LIMIT 20
     `).all(user.id);
     res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/progress', requireAuth, (req, res) => {
+  const user = req.session.user;
+  try {
+    const info = db.prepare('DELETE FROM watch_progress WHERE user_id = ?').run(user.id);
+    res.json({ success: true, deleted: info.changes });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
