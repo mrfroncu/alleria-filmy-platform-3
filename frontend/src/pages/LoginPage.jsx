@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Info, X, Shield, Wifi, Users, Lock } from 'lucide-react';
 import { api } from '../utils/api';
 import { getCurrentYear } from '../utils/helpers';
 
@@ -7,6 +7,7 @@ export default function LoginPage() {
   const [tsLoading, setTsLoading] = useState(false);
   const [ts3Loading, setTs3Loading] = useState(false);
   const [configOk, setConfigOk] = useState(true);
+  const [regulaminOpen, setRegulaminOpen] = useState(false);
 
   // Get returnTo from URL — set by ProtectedRoute redirect
   // Only allow relative same-origin paths (starts with / but not //) to prevent open redirect attacks.
@@ -183,13 +184,114 @@ export default function LoginPage() {
               <span>{ts3Loading ? 'Łączenie...' : 'TEAMSPEAK 3'}</span>
             </button>
           </div>
+
+          {/* TeamSpeak login requirements info */}
+          <div className="mt-3 p-4 bg-zinc-100/80 dark:bg-white/5 border border-zinc-200 dark:border-white/10 rounded-2xl text-left space-y-2.5">
+            <p className="flex items-center gap-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
+              <Info className="w-3.5 h-3.5" />
+              Wymagania logowania przez TeamSpeak
+            </p>
+            <div className="flex items-start gap-2.5 text-xs text-zinc-600 dark:text-zinc-400">
+              <Wifi className="w-3.5 h-3.5 shrink-0 mt-0.5 text-violet-500" />
+              <span>Musisz być <strong>aktywnie połączony</strong> z serwerem TeamSpeak w momencie logowania.</span>
+            </div>
+            <div className="flex items-start gap-2.5 text-xs text-zinc-600 dark:text-zinc-400">
+              <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5 text-violet-500" />
+              <span>Weryfikacja odbywa się poprzez <strong>dopasowanie adresu IP</strong> — Twoje IP musi zgadzać się z IP klienta na serwerze TS.</span>
+            </div>
+            <div className="flex items-start gap-2.5 text-xs text-zinc-600 dark:text-zinc-400">
+              <Users className="w-3.5 h-3.5 shrink-0 mt-0.5 text-violet-500" />
+              <span>Musisz posiadać <strong>wymaganą grupę serwerową</strong> na TS, aby uzyskać dostęp do platformy.</span>
+            </div>
+            <div className="flex items-start gap-2.5 text-xs text-zinc-600 dark:text-zinc-400">
+              <Lock className="w-3.5 h-3.5 shrink-0 mt-0.5 text-zinc-400" />
+              <span className="text-zinc-500 dark:text-zinc-500">Jeśli masz problemy, upewnij się że nie korzystasz z VPN, który zmienia Twoje IP.</span>
+            </div>
+          </div>
         </div>
       </div>
 
       <p className="mt-8 text-xs text-zinc-400 dark:text-zinc-600 relative z-10">
         © 2025 - {getCurrentYear()} Alleria.pl | built by{' '}
         <a href="https://github.com/mrfroncu" target="_blank" rel="noopener noreferrer" className="text-violet-500 hover:text-violet-400 transition-colors">Matthew</a>
+        {' · '}
+        <button
+          onClick={() => setRegulaminOpen(true)}
+          className="text-zinc-400 dark:text-zinc-600 hover:text-violet-500 dark:hover:text-violet-400 transition-colors underline underline-offset-2"
+        >
+          Regulamin
+        </button>
       </p>
+
+      {/* Regulamin Modal */}
+      {regulaminOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setRegulaminOpen(false); }}
+        >
+          <div className="relative w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl border border-zinc-200 dark:border-white/10 max-h-[85vh] flex flex-col animate-slide-up">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-zinc-100 dark:border-white/10 shrink-0">
+              <h2 className="text-lg font-bold text-zinc-900 dark:text-white">Regulamin platformy Alleria Filmy</h2>
+              <button
+                onClick={() => setRegulaminOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-zinc-100 dark:bg-white/10 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-white/20 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-6 py-5 space-y-5 text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+              <section>
+                <h3 className="font-semibold text-zinc-900 dark:text-white mb-2">§1. Postanowienia ogólne</h3>
+                <p>Alleria Filmy to prywatna platforma wideo przeznaczona wyłącznie dla członków społeczności Alleria. Dostęp do platformy jest możliwy wyłącznie po zalogowaniu za pomocą konta Discord lub klienta TeamSpeak powiązanego z serwerem Alleria.</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-zinc-900 dark:text-white mb-2">§2. Zasady dostępu</h3>
+                <ul className="space-y-1.5 list-disc list-inside marker:text-violet-500">
+                  <li>Dostęp mają wyłącznie osoby posiadające odpowiednią rolę na serwerze Discord Alleria lub wymaganą grupę na serwerze TeamSpeak.</li>
+                  <li>Konto jest przypisane do konkretnej osoby i nie może być udostępniane innym.</li>
+                  <li>Logowanie przez TeamSpeak wymaga aktywnego połączenia z serwerem TS w momencie logowania.</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="font-semibold text-zinc-900 dark:text-white mb-2">§3. Zasady korzystania z treści</h3>
+                <ul className="space-y-1.5 list-disc list-inside marker:text-violet-500">
+                  <li>Materiały dostępne na platformie są własnością społeczności Alleria i przeznaczone wyłącznie do użytku wewnętrznego.</li>
+                  <li>Zabronione jest pobieranie, udostępnianie lub powielanie treści osobom spoza społeczności.</li>
+                  <li>Zabronione jest nagrywanie lub retransmitowanie materiałów bez zgody administratora.</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="font-semibold text-zinc-900 dark:text-white mb-2">§4. Odpowiedzialność użytkownika</h3>
+                <ul className="space-y-1.5 list-disc list-inside marker:text-violet-500">
+                  <li>Użytkownik zobowiązuje się do korzystania z platformy zgodnie z niniejszym regulaminem.</li>
+                  <li>Wszelkie naruszenia regulaminu mogą skutkować natychmiastowym usunięciem dostępu.</li>
+                  <li>Użytkownik ponosi odpowiedzialność za działania wykonywane na swoim koncie.</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="font-semibold text-zinc-900 dark:text-white mb-2">§5. Uprawnienia administratora</h3>
+                <p>Administrator zastrzega sobie prawo do:</p>
+                <ul className="space-y-1.5 list-disc list-inside marker:text-violet-500 mt-1.5">
+                  <li>Zablokowania lub usunięcia konta użytkownika w dowolnym momencie bez podania przyczyny.</li>
+                  <li>Modyfikacji treści dostępnych na platformie.</li>
+                  <li>Zmiany niniejszego regulaminu — o istotnych zmianach użytkownicy będą informowani.</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="font-semibold text-zinc-900 dark:text-white mb-2">§6. Prywatność i dane</h3>
+                <p>W celu weryfikacji tożsamości przez TeamSpeak platforma przechowuje adres IP klienta oraz unikalny identyfikator UID konta TS. Dane te są używane wyłącznie do celów uwierzytelniania i nie są udostępniane osobom trzecim. Logowanie przez Discord jest obsługiwane za pomocą protokołu OAuth2 — platforma nie przechowuje hasła do konta Discord.</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-zinc-900 dark:text-white mb-2">§7. Kontakt</h3>
+                <p>W przypadku pytań lub problemów skontaktuj się z administratorem przez serwer Discord lub TeamSpeak Alleria.</p>
+              </section>
+              <p className="text-xs text-zinc-400 dark:text-zinc-600 pt-2 border-t border-zinc-100 dark:border-white/10">
+                Regulamin obowiązuje od momentu pierwszego zalogowania na platformę. Korzystanie z platformy jest równoznaczne z akceptacją powyższych zasad.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
