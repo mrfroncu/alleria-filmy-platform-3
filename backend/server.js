@@ -1858,6 +1858,53 @@ function audit(userId, action, entityType, entityId, details) {
   } catch (e) {}
 }
 
+// ============ WATCH PROGRESS ============
+app.put('/api/progress/:videoId', requireAuth, (req, res) => {
+  const user = req.session.user;
+  const videoId = parseInt(req.params.videoId);
+  const { position, duration } = req.body;
+  if (isNaN(videoId) || position === undefined) return res.status(400).json({ error: 'Missing params' });
+  try {
+    db.prepare(`
+      INSERT INTO watch_progress (user_id, video_id, position, duration, updated_at)
+      VALUES (?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(user_id, video_id) DO UPDATE SET
+        position = excluded.position,
+        duration = excluded.duration,
+        updated_at = excluded.updated_at
+    `).run(user.id, videoId, parseFloat(position), parseFloat(duration) || 0);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/progress', requireAuth, (req, res) => {
+  const user = req.session.user;
+  try {
+    const rows = db.prepare(`
+      SELECT wp.video_id, wp.position, wp.duration, wp.updated_at,
+             v.title, v.thumbnail, v.main_source_type, v.stream_video_id, v.stream_status,
+             c.name AS category_name, c.slug AS category_slug
+      FROM watch_progress wp
+      JOIN videos v ON wp.video_id = v.id
+      LEFT JOIN categories c ON v.category_id = c.id
+      WHERE wp.user_id = ? AND wp.position > 30
+        AND (wp.duration = 0 OR wp.position < wp.duration * 0.95)
+      ORDER BY wp.updated_at DESC
+      LIMIT 20
+    `).all(user.id);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/progress/:videoId', requireAuth, (req, res) => {
+  const user = req.session.user;
+  try {
+    const row = db.prepare('SELECT * FROM watch_progress WHERE user_id = ? AND video_id = ?')
+      .get(user.id, parseInt(req.params.videoId));
+    res.json(row || null);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ============ AUDIT LOGS ============
 app.get('/api/audit-logs', requireDev, (req, res) => {
   const { page = 1, type, action } = req.query;

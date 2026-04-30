@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle } from 'lucide-react';
@@ -109,6 +109,12 @@ export default function VideoPage() {
   const [hardDeleteConfirm, setHardDeleteConfirm] = useState(null);
   const [editHistoryPopup, setEditHistoryPopup] = useState(null);
 
+  // Continue Watching
+  const playerControlRef = useRef(null);
+  const lastProgressSaveRef = useRef(0);
+  const [resumePosition, setResumePosition] = useState(null);
+  const [showResumeBanner, setShowResumeBanner] = useState(false);
+
   const [devOpen, setDevOpen] = useState(false);
   const [devUserId, setDevUserId] = useState('');
   const [devContent, setDevContent] = useState('');
@@ -126,6 +132,8 @@ export default function VideoPage() {
     setPrevVideo(null); setNextVideo(null);
     setEditingComment(null); setEditContent('');
     setComments([]); setReplyTo(null);
+    setResumePosition(null); setShowResumeBanner(false);
+    lastProgressSaveRef.current = 0;
     const vid = Number(id);
     const isSwitch = !!video;
     
@@ -156,6 +164,12 @@ export default function VideoPage() {
         if (idx >= 0 && idx < vids.length - 1) setNextVideo(vids[idx + 1]);
       }).catch(() => {});
       api.getComments(vid).then(setComments).catch(() => setComments([]));
+      api.getProgress(vid).then(p => {
+        if (p && p.position > 30 && (!p.duration || p.position < p.duration * 0.95)) {
+          setResumePosition(p.position);
+          setShowResumeBanner(true);
+        }
+      }).catch(() => {});
     }).catch(err => setError(err.message)).finally(() => setLoading(false));
   }, [id]);
 
@@ -194,6 +208,14 @@ export default function VideoPage() {
   const onHardDelete = useCallback((cid) => setHardDeleteConfirm(cid), []);
   const softDel = async () => { if (!deleteConfirm) return; try { await api.deleteComment(deleteConfirm); setComments(p => p.map(c => c.id === deleteConfirm ? { ...c, deleted: 1, content: '' } : c)); } catch (e) {} setDeleteConfirm(null); };
   const hardDel = async () => { if (!hardDeleteConfirm) return; try { await api.hardDeleteComment(hardDeleteConfirm); const rm = new Set([hardDeleteConfirm]); const walk = pid => comments.filter(c => c.parent_id === pid).forEach(c => { rm.add(c.id); walk(c.id); }); walk(hardDeleteConfirm); setComments(p => p.filter(c => !rm.has(c.id))); } catch (e) {} setHardDeleteConfirm(null); };
+
+  const handleTimeUpdate = useCallback((currentTime, duration) => {
+    const now = Date.now();
+    if (currentTime > 5 && now - lastProgressSaveRef.current > 10000) {
+      lastProgressSaveRef.current = now;
+      api.saveProgress(id, currentTime, duration || 0).catch(() => {});
+    }
+  }, [id]);
 
   const tree = useMemo(() => {
     const m = {}; comments.forEach(c => { m[c.id] = { ...c, _replies: [] }; });
@@ -265,9 +287,18 @@ export default function VideoPage() {
 
         <div className="mb-8 anim-stagger-2" key={`player-${activeSource}`}>
           {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
-            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} />
+            <>
+              <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} />
+              {showResumeBanner && resumePosition !== null && (
+                <div className="mt-3 flex items-center gap-3 px-4 py-3 bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 rounded-2xl animate-scale-in">
+                  <span className="text-sm text-violet-700 dark:text-violet-300 font-medium flex-1">Kontynuuj od {Math.floor(resumePosition / 60)}:{String(Math.floor(resumePosition % 60)).padStart(2, '0')}?</span>
+                  <button onClick={() => { playerControlRef.current?.seek(resumePosition); setShowResumeBanner(false); }} className="px-4 py-1.5 bg-violet-500 text-white text-sm font-bold rounded-xl hover:bg-violet-600 transition-colors">Kontynuuj</button>
+                  <button onClick={() => setShowResumeBanner(false)} className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-sm font-bold rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">Od początku</button>
+                </div>
+              )}
+            </>
           ) : isStreamer && streamerVideoId ? (
-            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} />
+            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} />
           ) : isPlex && src.url ? (
             <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in plex-container flex items-center justify-center">
               {/* Floating particles */}

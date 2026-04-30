@@ -167,6 +167,13 @@ export const api = {
   },
   clearWatchPartyLogs: (code) => request(`/logs/watch-party/clear${code ? `?code=${code}` : ''}`, { method: 'DELETE' }),
 
+  // Watch Progress
+  saveProgress: (videoId, position, duration) => request(`/progress/${videoId}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ position, duration }),
+  }),
+  getProgress: (videoId) => request(`/progress/${videoId}`),
+  getAllProgress: () => request('/progress'),
+
   // Comments
   getComments: (videoId) => request(`/videos/${videoId}/comments`),
   addComment: (videoId, content, parentId) => request(`/videos/${videoId}/comments`, {

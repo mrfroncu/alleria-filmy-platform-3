@@ -201,6 +201,18 @@ function initDB() {
     details TEXT DEFAULT ''
   )`);
 
+  // Watch progress (Continue Watching)
+  db.exec(`CREATE TABLE IF NOT EXISTS watch_progress (
+    user_id INTEGER NOT NULL,
+    video_id INTEGER NOT NULL,
+    position REAL NOT NULL DEFAULT 0,
+    duration REAL NOT NULL DEFAULT 0,
+    updated_at DATETIME DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, video_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
+  )`);
+
   return db;
 }
 

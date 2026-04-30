@@ -205,7 +205,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
     const onPause = () => setPlaying(false);
     const onTime = () => {
       setCurrentTime(video.currentTime);
-      if (onTimeUpdate) onTimeUpdate(video.currentTime);
+      if (onTimeUpdate) onTimeUpdate(video.currentTime, video.duration || 0);
     };
     const onDur = () => setDuration(video.duration);
     const onProgress = () => {
