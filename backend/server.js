@@ -1336,7 +1336,7 @@ app.get('/api/authors', requireAuth, (req, res) => {
 
 app.get('/api/authors/:id', requireAuth, (req, res) => {
   const author = db.prepare(`
-    SELECT u.id, u.username, u.display_name, u.avatar, u.created_at,
+    SELECT u.id, u.username, u.display_name, u.avatar, u.bio, u.created_at,
       COUNT(v.id) AS video_count
     FROM users u LEFT JOIN videos v ON v.author_id = u.id
     WHERE u.id = ?

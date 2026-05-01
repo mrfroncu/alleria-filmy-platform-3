@@ -101,21 +101,22 @@ export default function AuthorPage() {
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
 
       {/* ── Author profile card ── */}
-      <div className="card overflow-hidden">
-        {/* Top gradient stripe */}
-        <div className="h-24 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 relative">
+      {/* No overflow-hidden on outer card — lets the avatar overlap the stripe without clipping */}
+      <div className="card">
+        {/* Top gradient stripe — overflow-hidden only here for the dot pattern */}
+        <div className="h-28 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 relative overflow-hidden rounded-t-3xl">
           <div className="absolute inset-0 opacity-20"
             style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
         </div>
 
         <div className="px-8 pb-8">
-          {/* Avatar — overlapping the stripe */}
-          <div className="-mt-10 mb-4">
+          {/* Avatar — negative margin pulls it up over the stripe; z-10 keeps it on top */}
+          <div className="-mt-10 mb-5 relative z-10">
             <AuthorAvatar author={author} size="lg" />
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div className="flex-1 min-w-0">
               <h1 className="text-2xl font-bold text-zinc-900 dark:text-white font-display">
                 {displayName}
               </h1>
@@ -128,10 +129,15 @@ export default function AuthorPage() {
                   <span>Dołączył {formatDate(author.created_at)}</span>
                 </div>
               )}
+              {author.bio && (
+                <p className="mt-4 text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed max-w-xl whitespace-pre-wrap">
+                  {author.bio}
+                </p>
+              )}
             </div>
 
             {/* Stats */}
-            <div className="flex items-center gap-6">
+            <div className="shrink-0 flex items-center gap-6 sm:mt-1">
               <div className="text-center">
                 <p className="text-2xl font-black text-violet-500">{videos.length}</p>
                 <p className="text-xs text-zinc-400 font-medium">
