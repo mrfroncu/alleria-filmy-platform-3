@@ -272,11 +272,11 @@ export default function LoginPage() {
                 </button>
                 <a
                   href="ts3server://alleria.pl"
-                  title="Otwórz w kliencie TeamSpeak 3"
-                  className="flex items-center justify-center gap-1 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-500 hover:text-violet-600 dark:hover:text-violet-400 text-[10px] transition-all no-underline"
+                  title="alleria.pl"
+                  className="flex items-center justify-center gap-1.5 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-900 hover:bg-violet-50 dark:hover:bg-violet-500/10 border border-zinc-200 dark:border-zinc-800 hover:border-violet-300 dark:hover:border-violet-500/30 text-zinc-500 dark:text-zinc-500 hover:text-violet-600 dark:hover:text-violet-400 text-[10px] font-semibold transition-all no-underline group"
                 >
-                  <ExternalLink className="w-2.5 h-2.5 shrink-0" />
-                  <span className="font-medium">alleria.pl</span>
+                  <ExternalLink className="w-2.5 h-2.5 shrink-0 group-hover:scale-110 transition-transform" />
+                  <span>Połącz z TS3</span>
                 </a>
               </div>
 
@@ -294,11 +294,11 @@ export default function LoginPage() {
                 </button>
                 <a
                   href="teamspeak://ts6.alleria.pl"
-                  title="Otwórz w kliencie TeamSpeak 6"
-                  className="flex items-center justify-center gap-1 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-500 hover:text-violet-600 dark:hover:text-violet-400 text-[10px] transition-all no-underline"
+                  title="ts6.alleria.pl"
+                  className="flex items-center justify-center gap-1.5 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-900 hover:bg-violet-50 dark:hover:bg-violet-500/10 border border-zinc-200 dark:border-zinc-800 hover:border-violet-300 dark:hover:border-violet-500/30 text-zinc-500 dark:text-zinc-500 hover:text-violet-600 dark:hover:text-violet-400 text-[10px] font-semibold transition-all no-underline group"
                 >
-                  <ExternalLink className="w-2.5 h-2.5 shrink-0" />
-                  <span className="font-medium">ts6.alleria.pl</span>
+                  <ExternalLink className="w-2.5 h-2.5 shrink-0 group-hover:scale-110 transition-transform" />
+                  <span>Połącz z TS6</span>
                 </a>
               </div>
             </div>

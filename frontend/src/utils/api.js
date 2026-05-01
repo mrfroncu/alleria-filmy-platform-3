@@ -7,10 +7,11 @@ async function request(url, options = {}) {
     credentials: 'include',
   });
   if (res.status === 401) {
+    const data = await res.json().catch(() => ({}));
     if (!window.location.pathname.startsWith('/login')) {
       window.location.href = '/login';
     }
-    throw new Error('Unauthorized');
+    throw new Error(data.error || 'Unauthorized');
   }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
