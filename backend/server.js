@@ -1334,6 +1334,18 @@ app.get('/api/authors', requireAuth, (req, res) => {
   res.json(authors);
 });
 
+app.get('/api/authors/:id', requireAuth, (req, res) => {
+  const author = db.prepare(`
+    SELECT u.id, u.username, u.display_name, u.avatar, u.created_at,
+      COUNT(v.id) AS video_count
+    FROM users u LEFT JOIN videos v ON v.author_id = u.id
+    WHERE u.id = ?
+    GROUP BY u.id
+  `).get(parseInt(req.params.id));
+  if (!author) return res.status(404).json({ error: 'Autor nie znaleziony.' });
+  res.json(author);
+});
+
 // ============ USERS API ============
 app.get('/api/users', requireAdmin, (req, res) => {
   const users = db.prepare('SELECT id, username, display_name, avatar, role, auth_method, created_at, last_login, discord_roles FROM users ORDER BY created_at DESC').all();

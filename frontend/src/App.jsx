@@ -15,6 +15,7 @@ import ProfilePage from './pages/ProfilePage';
 import LogsPage from './pages/LogsPage';
 import ManagePage from './pages/ManagePage';
 import WatchPartyPage from './pages/WatchPartyPage';
+import AuthorPage from './pages/AuthorPage';
 
 function ProtectedRoute({ children, adminOnly, devOnly }) {
   const { user, loading, isAdmin, isDev } = useAuth();
@@ -64,7 +65,7 @@ export default function App() {
           <Route path="/logs" element={<P devOnly><LogsPage /></P>} />
           <Route path="/manage" element={<P devOnly><ManagePage /></P>} />
           <Route path="/debug" element={<P devOnly><DebugPage /></P>} />
-          <Route path="/author/:authorId" element={<P><VideosPage /></P>} />
+          <Route path="/author/:authorId" element={<P><AuthorPage /></P>} />
           <Route path="/tag/:tagId" element={<P><VideosPage /></P>} />
           <Route path="/watch-party" element={<P><WatchPartyPage /></P>} />
           <Route path="*" element={<Navigate to="/" />} />

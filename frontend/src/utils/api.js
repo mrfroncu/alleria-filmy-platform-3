@@ -74,6 +74,7 @@ export const api = {
 
   // Authors
   getAuthors: () => request('/authors'),
+  getAuthor: (id) => request(`/authors/${id}`),
 
   // Users
   getUsers: () => request('/users'),

@@ -380,7 +380,7 @@ export default function VideoPage() {
               </button>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <Link to={`/?author=${video.author_id}`} className="text-sm font-bold text-violet-500 hover:text-violet-600 transition-colors">{video.author_display_name || video.author_name}</Link>
+              <Link to={`/author/${video.author_id}`} className="text-sm font-bold text-violet-500 hover:text-violet-600 transition-colors">{video.author_display_name || video.author_name}</Link>
               {video.tags?.length > 0 && <div className="flex flex-wrap gap-1.5">{video.tags.map(t => <Link key={t.id} to={`/?tags=${t.id}`} className="tag-chip hover:scale-105 active:scale-95">{t.name}</Link>)}</div>}
             </div>
             <div className="flex items-center gap-3 mt-2 text-xs text-zinc-400">

@@ -271,9 +271,13 @@ export default function VideosPage() {
                   {video.title}
                 </h3>
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm text-zinc-500 font-medium">
+                  <Link
+                    to={`/author/${video.author_id}`}
+                    onClick={e => e.stopPropagation()}
+                    className="text-sm text-zinc-500 font-medium hover:text-violet-500 transition-colors no-underline"
+                  >
                     {video.author_display_name || video.author_name}
-                  </span>
+                  </Link>
                   <span className="text-xs text-zinc-400 font-mono">
                     {formatDateShort(video.publish_date)}
                   </span>
