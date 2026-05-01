@@ -3,7 +3,7 @@
 //  Edytuj ten plik aby zmienić treść regulaminu lub datę.
 // ============================================================
 
-export const REGULAMIN_LAST_MODIFIED = '1 maja 2025 r.';
+export const REGULAMIN_LAST_MODIFIED = '1 maja 2026 r.';
 
 export function RegulaminContent() {
   return (
@@ -12,7 +12,7 @@ export function RegulaminContent() {
         <h3 className="font-semibold text-zinc-900 dark:text-white mb-2">§1. Postanowienia ogólne</h3>
         <p>
           Alleria Filmy to prywatna platforma wideo dostępna wyłącznie dla członków społeczności Alleria.
-          Administratorem platformy i danych osobowych jest Alleria.pl.
+          Administratorem platformy jest Alleria.pl.
           Korzystanie z platformy jest równoznaczne z akceptacją niniejszego Regulaminu.
         </p>
       </section>
@@ -20,7 +20,7 @@ export function RegulaminContent() {
       <section>
         <h3 className="font-semibold text-zinc-900 dark:text-white mb-2">§2. Dostęp do platformy</h3>
         <ul className="space-y-1.5 list-disc list-inside marker:text-violet-500">
-          <li>Dostęp mają wyłącznie osoby posiadające wymaganą rolę na serwerze Discord Alleria lub wymaganą grupę serwerową na TeamSpeak.</li>
+          <li>Dostęp mają wyłącznie osoby posiadające wymaganą rolę na serwerze Discord Alleria lub wymaganą grupę serwerową na serwerze TeamSpeak.</li>
           <li>Konto jest ściśle osobiste i nie może być udostępniane innym osobom.</li>
           <li>Administrator zastrzega sobie prawo do odmowy lub cofnięcia dostępu bez podania przyczyny.</li>
         </ul>
@@ -39,7 +39,6 @@ export function RegulaminContent() {
         <h3 className="font-semibold text-zinc-900 dark:text-white mb-2">§4. Odpowiedzialność</h3>
         <ul className="space-y-1.5 list-disc list-inside marker:text-violet-500">
           <li>Użytkownik odpowiada za wszelkie działania wykonane na swoim koncie.</li>
-          <li>Administrator nie ponosi odpowiedzialności za przerwy w działaniu platformy, utratę danych ani szkody wynikające z korzystania z serwisu.</li>
           <li>Platforma jest udostępniana w stanie „tak jak jest" (as-is), bez gwarancji ciągłości działania.</li>
         </ul>
       </section>
@@ -50,15 +49,6 @@ export function RegulaminContent() {
           Zgodnie z Rozporządzeniem Parlamentu Europejskiego i Rady (UE) 2016/679 z dnia 27 kwietnia 2016 r. (RODO) informujemy:
         </p>
         <div className="space-y-3">
-          <div>
-            <p className="font-medium text-zinc-700 dark:text-zinc-300">Administrator danych</p>
-            <p>
-              Alleria.pl. Kontakt w sprawach danych osobowych:{' '}
-              <a href="mailto:kontakt@alleria.pl" className="text-violet-500 hover:text-violet-400 underline">
-                kontakt@alleria.pl
-              </a>
-            </p>
-          </div>
           <div>
             <p className="font-medium text-zinc-700 dark:text-zinc-300">Przetwarzane dane i cel</p>
             <ul className="list-disc list-inside space-y-1 mt-1 marker:text-violet-500">
@@ -115,20 +105,6 @@ export function RegulaminContent() {
             </p>
           </div>
           <div>
-            <p className="font-medium text-zinc-700 dark:text-zinc-300">Prawo do skargi</p>
-            <p>
-              Masz prawo wniesienia skargi do organu nadzorczego — Prezesa Urzędu Ochrony Danych Osobowych
-              (UODO), ul. Stawki 2, 00-193 Warszawa,{' '}
-              <a
-                href="https://uodo.gov.pl"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-violet-500 hover:text-violet-400 underline"
-              >
-                uodo.gov.pl
-              </a>
-              .
-            </p>
           </div>
           <div>
             <p className="font-medium text-zinc-700 dark:text-zinc-300">Zautomatyzowane podejmowanie decyzji</p>

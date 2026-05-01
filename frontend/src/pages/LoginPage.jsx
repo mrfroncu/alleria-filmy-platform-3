@@ -134,7 +134,7 @@ export default function LoginPage() {
           {/* Top: logo badge */}
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center overflow-hidden backdrop-blur-sm">
-              <img src="https://alleria.pl/image/logo-clr.png" alt="Alleria" className="w-6 h-6 object-contain" />
+              <img src="https://alleria.pl/image/favicon.png" alt="Alleria" className="w-6 h-6 object-contain" />
             </div>
             <span className="text-white/60 text-xs font-semibold tracking-[0.2em] uppercase">Alleria.pl</span>
           </div>
