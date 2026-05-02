@@ -6,3 +6,4 @@ backend/data/
 *.db-journal
 *.db-wal
 .DS_Store
+.claude/worktrees/
