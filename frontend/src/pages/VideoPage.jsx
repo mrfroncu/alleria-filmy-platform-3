@@ -24,7 +24,7 @@ function HtmlEmbed({ html }) {
     return () => URL.revokeObjectURL(url);
   }, [html]);
   if (!blobUrl) return null;
-  return <iframe src={blobUrl} className="w-full h-full border-0" allowFullScreen />;
+  return <iframe src={blobUrl} className="w-full h-full border-0" sandbox="allow-scripts allow-forms" allowFullScreen />;
 }
 
 // YouTube IFrame API loader — robust polling, works even if API already loaded by another module

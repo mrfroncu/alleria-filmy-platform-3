@@ -269,9 +269,18 @@ function setupWatchPartyWS(server, db) {
           broadcast(party, { type: 'source_change', sourceKey: msg.sourceKey, position: 0 });
           break;
 
-        case 'queue_add':
+        case 'queue_add': {
           if (!canControl) return;
-          party.queue.push(msg.item);
+          const item = msg.item;
+          if (!item || typeof item !== 'object') return;
+          // Validate required fields and types
+          const safeItem = {
+            title: typeof item.title === 'string' ? item.title.slice(0, 200) : 'Untitled',
+            sourceKey: typeof item.sourceKey === 'string' ? item.sourceKey.slice(0, 100) : '',
+            videoId: typeof item.videoId === 'number' ? item.videoId : null,
+            thumbnail: typeof item.thumbnail === 'string' ? item.thumbnail.slice(0, 500) : null,
+          };
+          party.queue.push(safeItem);
           if (party.currentIndex === -1) {
             party.currentIndex = 0;
             party.position = 0;
@@ -279,9 +288,10 @@ function setupWatchPartyWS(server, db) {
             party.positionUpdatedAt = Date.now();
           }
           wpLog(partyCode, 'queue_add', userId, userName, null, null,
-            `"${msg.item?.title || '?'}" (źródło: ${msg.item?.sourceKey || '?'})`);
+            `"${safeItem.title || '?'}" (źródło: ${safeItem.sourceKey || '?'})`);
           broadcast(party, { type: 'queue_update', queue: party.queue, currentIndex: party.currentIndex });
           break;
+        }
 
         case 'queue_play':
           if (!isHost) return;

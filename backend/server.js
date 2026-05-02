@@ -16,10 +16,39 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const { initDB } = require('./database');
 const { createParty, getParty, deleteParty, listParties, createWsToken, setupWatchPartyWS } = require('./watchParty');
+const rateLimit = require('express-rate-limit');
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Zbyt wiele prób logowania. Spróbuj ponownie za 15 minut.' },
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Zbyt wiele żądań. Zwolnij.' },
+});
 
 const app = express();
 const db = initDB();
 const PORT = process.env.PORT || 3000;
+
+// === Session & stream secrets (must be set) ===
+const SESSION_SECRET = process.env.SESSION_SECRET;
+if (!SESSION_SECRET) {
+  console.error('FATAL: SESSION_SECRET environment variable is not set');
+  process.exit(1);
+}
+
+const STREAM_SECRET = process.env.STREAM_SECRET;
+if (!STREAM_SECRET) {
+  console.warn('WARNING: STREAM_SECRET is not set — streaming token verification disabled');
+}
 
 // === Startup env validation ===
 const REQUIRED_ENV = ['DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_BOT_TOKEN', 'DISCORD_GUILD_ID', 'DISCORD_MEMBER_ROLE_ID'];
@@ -46,13 +75,24 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => cb(null, uuidv4() + path.extname(file.originalname))
 });
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Dozwolone są tylko pliki graficzne (JPG, PNG, GIF, WebP).'), false);
+    }
+  },
+});
 
 // Session store using SQLite
 const SQLiteStore = require('connect-sqlite3')(session);
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // Increase timeout for large video uploads (30 min)
 app.use('/api/stream/upload', (req, res, next) => {
@@ -91,7 +131,7 @@ const behindHttps = (process.env.DISCORD_REDIRECT_URI || '').startsWith('https:/
 
 app.use(session({
   store: new SQLiteStore({ dir: path.join(__dirname, 'data'), db: 'sessions.db' }),
-  secret: process.env.SESSION_SECRET || 'alleria-filmy-secret',
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   proxy: true,
@@ -103,6 +143,14 @@ app.use(session({
   }
 }));
 
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGIN || false,
+  credentials: true,
+}));
+
+// Global API rate limit
+app.use(apiLimiter);
+
 // Serve uploaded thumbnails
 app.use('/api/uploads', express.static(uploadsDir));
 
@@ -112,7 +160,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     discord_configured: !!(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET && process.env.DISCORD_BOT_TOKEN),
     discord_client_id_set: !!process.env.DISCORD_CLIENT_ID,
-    discord_redirect_uri: process.env.DISCORD_REDIRECT_URI || 'NOT SET',
+    discord_redirect_uri_set: !!process.env.DISCORD_REDIRECT_URI,
     guild_id_set: !!process.env.DISCORD_GUILD_ID,
     member_role_set: !!process.env.DISCORD_MEMBER_ROLE_ID,
     admin_role_set: !!process.env.DISCORD_ADMIN_ROLE_ID,
@@ -121,7 +169,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Public config for frontend display settings
-app.get('/api/config', (req, res) => {
+app.get('/api/config', requireAuth, (req, res) => {
   res.json({
     videosPerPage: parseInt(process.env.VIDEOS_PER_PAGE) || 12,
     gridColumns: parseInt(process.env.GRID_COLUMNS) || 3,
@@ -131,7 +179,7 @@ app.get('/api/config', (req, res) => {
 
 // Version info
 const { VERSION, STREAM_MIN_VERSION } = require('./versions');
-app.get('/api/version', (req, res) => {
+app.get('/api/version', requireAuth, (req, res) => {
   res.json({ version: VERSION, streamMinVersion: STREAM_MIN_VERSION, component: 'alleria-filmy' });
 });
 
@@ -206,9 +254,12 @@ function discordRedirectHandler(req, res) {
     console.error('Discord auth failed: DISCORD_CLIENT_ID or DISCORD_REDIRECT_URI not set');
     return res.redirect('/login?error=config_missing');
   }
-  // Save return URL so user gets redirected back after login
+  // Save return URL so user gets redirected back after login (validate to prevent open redirect)
   if (req.query.returnTo) {
-    req.session.returnTo = req.query.returnTo;
+    const r = String(req.query.returnTo);
+    if (r.startsWith('/') && !r.startsWith('//') && !r.includes('\n') && !r.includes('\r') && r.length < 500) {
+      req.session.returnTo = r;
+    }
   }
   // Track popup flow — used when the app is embedded in an iframe
   const isPopupFlow = req.query.popup === 'true';
@@ -230,15 +281,15 @@ function discordRedirectHandler(req, res) {
 }
 
 // Register on BOTH paths so it works with or without /api/ prefix
-app.get('/api/auth/discord', discordRedirectHandler);
-app.get('/auth/discord', discordRedirectHandler);
+app.get('/api/auth/discord', authLimiter, discordRedirectHandler);
+app.get('/auth/discord', authLimiter, discordRedirectHandler);
 
 async function discordCallbackHandler(req, res) {
   const { code } = req.query;
   console.log('[AUTH] Discord callback received, code:', code ? 'present' : 'MISSING');
   if (!code) return res.redirect('/login?error=no_code');
 
-  const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+  const clientIp = req.ip || req.socket.remoteAddress;
 
   try {
     // Exchange code for token
@@ -321,43 +372,54 @@ async function discordCallbackHandler(req, res) {
     }
 
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-    req.session.user = {
-      id: user.id,
-      discord_id: user.discord_id,
-      username: user.username,
-      display_name: user.display_name,
-      avatar: user.avatar,
-      role: user.role,
-      auth_method: 'discord',
-      discord_roles: roles
-    };
 
     logLogin(userId, discordUser.username, 'discord', clientIp, 1, null);
     console.log('[AUTH] ✅ Login successful:', user.display_name, '(role:', role, ')');
     console.log('[AUTH] Session ID:', req.sessionID);
 
-    // CRITICAL: explicitly save session before redirect to prevent race condition
-    req.session.save((err) => {
+    // Capture session values before regenerating
+    const savedPopup = req.session.popup;
+    const savedReturnTo = req.session.returnTo;
+
+    // Regenerate session to prevent session fixation
+    req.session.regenerate((err) => {
       if (err) {
-        console.error('[AUTH] Session save error:', err);
+        console.error('[AUTH] Session regenerate error:', err);
         return res.redirect('/login?error=auth_failed');
       }
-      const isPopup = req.session.popup;
-      const returnTo = req.session.returnTo || '/';
-      delete req.session.returnTo;
-      delete req.session.popup;
+      req.session.user = {
+        id: user.id,
+        discord_id: user.discord_id,
+        username: user.username,
+        display_name: user.display_name,
+        avatar: user.avatar,
+        role: user.role,
+        auth_method: 'discord',
+        discord_roles: roles
+      };
+      // CRITICAL: explicitly save session before redirect to prevent race condition
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          console.error('[AUTH] Session save error:', saveErr);
+          return res.redirect('/login?error=auth_failed');
+        }
+        const isPopup = savedPopup;
+        const rawReturnTo = savedReturnTo || '/';
+        // Validate returnTo before redirecting
+        const returnTo = (rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//') && !rawReturnTo.includes('\n') && !rawReturnTo.includes('\r') && rawReturnTo.length < 500) ? rawReturnTo : '/';
 
-      if (isPopup) {
-        // Serve a minimal page that notifies the opener and closes the popup.
-        // Using inline HTML avoids React's auth guards (GuestRoute redirects
-        // authenticated users away from /login, preventing the postMessage effect
-        // from ever running).
-        console.log('[AUTH] Session saved, closing popup and notifying opener');
-        return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>try{if(window.opener){window.opener.postMessage({type:'discord_auth_success'},window.location.origin);}window.close();}catch(e){window.close();}</script></body></html>`);
-      }
+        if (isPopup) {
+          // Serve a minimal page that notifies the opener and closes the popup.
+          // Using inline HTML avoids React's auth guards (GuestRoute redirects
+          // authenticated users away from /login, preventing the postMessage effect
+          // from ever running).
+          console.log('[AUTH] Session saved, closing popup and notifying opener');
+          return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>try{if(window.opener){window.opener.postMessage({type:'discord_auth_success'},window.location.origin);}window.close();}catch(e){window.close();}</script></body></html>`);
+        }
 
-      console.log(`[AUTH] Session saved, redirecting to ${returnTo}`);
-      res.redirect(returnTo);
+        console.log(`[AUTH] Session saved, redirecting to ${returnTo}`);
+        res.redirect(returnTo);
+      });
     });
 
   } catch (err) {
@@ -375,8 +437,8 @@ app.get('/auth/discord/callback', discordCallbackHandler);
 // Uses TS ServerQuery HTTP API (port 10080)
 // Auth: Basic Auth (username:password) + optional x-api-key
 // Endpoints: /{serverId}/clientlist, /{serverId}/clientinfo, /{serverId}/servergroupsbyclientid
-app.post('/api/auth/teamspeak', async (req, res) => {
-  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+app.post('/api/auth/teamspeak', authLimiter, async (req, res) => {
+  const clientIp = req.ip || req.socket.remoteAddress;
   const cleanIp = clientIp.replace('::ffff:', '');
 
   const tsHost = process.env.TS6_HOST || process.env.TS_SERVER_HOST;
@@ -494,14 +556,20 @@ app.post('/api/auth/teamspeak', async (req, res) => {
     }
 
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-    req.session.user = {
-      id: user.id, username: user.username, display_name: user.display_name,
-      avatar: user.avatar, role: user.role, auth_method: 'teamspeak', discord_roles: []
-    };
 
     logLogin(userId, tsNickname, 'teamspeak', clientIp, 1, null);
     console.log(`[TS6] ✅ Login: "${tsNickname}" (role: ${role})`);
-    req.session.save(() => res.json({ success: true, user: req.session.user }));
+    req.session.regenerate((err) => {
+      if (err) return res.status(500).json({ error: 'Session error' });
+      req.session.user = {
+        id: user.id, username: user.username, display_name: user.display_name,
+        avatar: user.avatar, role: user.role, auth_method: 'teamspeak', discord_roles: []
+      };
+      req.session.save((saveErr) => {
+        if (saveErr) return res.status(500).json({ error: 'Session save error' });
+        res.json({ success: true, user: req.session.user });
+      });
+    });
 
   } catch (err) {
     console.error('[TS6 AUTH] Error:', err);
@@ -640,8 +708,8 @@ function connectTS3(host, port, connectTimeoutMs = 10000, cmdTimeoutMs = 8000) {
   });
 }
 
-app.post('/api/auth/teamspeak3', async (req, res) => {
-  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
+  const clientIp = req.ip || req.socket.remoteAddress;
   const cleanIp = clientIp.replace('::ffff:', '');
 
   const tsHost = process.env.TS3_HOST;
@@ -723,14 +791,20 @@ app.post('/api/auth/teamspeak3', async (req, res) => {
     }
 
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-    req.session.user = {
-      id: user.id, username: user.username, display_name: user.display_name,
-      avatar: user.avatar, role: user.role, auth_method: 'teamspeak3', discord_roles: []
-    };
 
     logLogin(userId, tsNickname, 'teamspeak3', clientIp, 1, null);
     console.log(`[TS3] ✅ Login: "${tsNickname}" (role: ${role})`);
-    req.session.save(() => res.json({ success: true, user: req.session.user }));
+    req.session.regenerate((err) => {
+      if (err) return res.status(500).json({ error: 'Session error' });
+      req.session.user = {
+        id: user.id, username: user.username, display_name: user.display_name,
+        avatar: user.avatar, role: user.role, auth_method: 'teamspeak3', discord_roles: []
+      };
+      req.session.save((saveErr) => {
+        if (saveErr) return res.status(500).json({ error: 'Session save error' });
+        res.json({ success: true, user: req.session.user });
+      });
+    });
 
   } catch (err) {
     if (ts3) { try { ts3.close(); } catch (_) {} }
@@ -1373,7 +1447,7 @@ app.delete('/api/users/:id', requireAdmin, (req, res) => {
   }
 });
 
-app.get('/api/users/all', requireAuth, (req, res) => {
+app.get('/api/users/all', requireAdmin, (req, res) => {
   const users = db.prepare('SELECT id, username, display_name, avatar, role FROM users ORDER BY display_name').all();
   res.json(users);
 });
@@ -1526,7 +1600,8 @@ app.get('/api/stats', requireAuth, (req, res) => {
       favorites: db.prepare('SELECT COUNT(*) AS c FROM favorites WHERE user_id = ?').get(req.session.user.id).c,
     };
 
-    res.json({ totalVideos, totalUsers, totalViews, totalTags, mostWatched, topViewers, recentActivity, tagCloud, topAuthors, myStats });
+    const isAdminUser = req.session.user.role === 'admin' || req.session.user.role === 'dev';
+    res.json({ totalVideos, totalUsers, totalViews, totalTags, mostWatched, ...(isAdminUser ? { topViewers } : {}), recentActivity, tagCloud, topAuthors, myStats });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1556,6 +1631,14 @@ app.put('/api/profile', requireAuth, (req, res) => {
 });
 
 // ============ DEBUG / DEV API ============
+// Block all debug endpoints in production
+app.use('/api/debug', (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  next();
+});
+
 const EXPORT_SKIP_TABLES = new Set(['sessions']);
 
 app.get('/api/debug/export', requireDev, (req, res) => {
@@ -1574,7 +1657,7 @@ app.get('/api/debug/export', requireDev, (req, res) => {
   }
 });
 
-app.post('/api/debug/import', requireDev, (req, res) => {
+app.post('/api/debug/import', requireDev, express.json({ limit: '50mb' }), (req, res) => {
   try {
     const data = req.body;
     // Disable FK checks outside the transaction (SQLite does not allow PRAGMA inside a transaction)
@@ -1709,7 +1792,6 @@ app.delete('/api/logs/watch-party/clear', requireAdmin, (req, res) => {
 
 // ============ STREAMING PROXY ============
 const STREAM_URL = process.env.STREAM_URL || 'http://streaming:4000';
-const STREAM_SECRET = process.env.STREAM_SECRET || 'alleria-stream-key';
 
 // Chunked upload temp dir
 const chunksDir = path.join(__dirname, 'data', 'chunks');
@@ -1724,15 +1806,16 @@ const chunkUpload = multer({
 app.post('/api/stream/upload/init', requireAdmin, (req, res) => {
   const { filename, filesize, total_chunks, drm_enhanced } = req.body;
   if (!filename || !total_chunks) return res.status(400).json({ error: 'Missing params' });
+  const safeFilename = (filename || 'upload.mp4').replace(/[^a-zA-Z0-9._\-\s]/g, '_').replace(/\r|\n/g, '').slice(0, 255);
   const uploadId = uuidv4();
   const uploadDir = path.join(chunksDir, uploadId);
   fs.mkdirSync(uploadDir, { recursive: true });
   fs.writeFileSync(path.join(uploadDir, 'meta.json'), JSON.stringify({
-    filename, filesize: parseInt(filesize) || 0, total_chunks: parseInt(total_chunks),
+    filename: safeFilename, filesize: parseInt(filesize) || 0, total_chunks: parseInt(total_chunks),
     drm_enhanced: drm_enhanced === 'true' || drm_enhanced === true,
     received: [], created: Date.now()
   }));
-  console.log(`[CHUNK] Upload init: ${uploadId} — ${filename} (${total_chunks} chunks, ${(parseInt(filesize) / 1024 / 1024).toFixed(1)} MB)`);
+  console.log(`[CHUNK] Upload init: ${uploadId} — ${safeFilename} (${total_chunks} chunks, ${(parseInt(filesize) / 1024 / 1024).toFixed(1)} MB)`);
   res.json({ success: true, upload_id: uploadId });
 });
 
@@ -1743,6 +1826,17 @@ app.post('/api/stream/upload/chunk', requireAdmin, chunkUpload.single('chunk'), 
   if (!upload_id || chunk_index === undefined) {
     try { fs.unlinkSync(req.file.path); } catch (e) {}
     return res.status(400).json({ error: 'Missing upload_id or chunk_index' });
+  }
+
+  // Validate upload_id is a safe UUID to prevent path traversal
+  if (!upload_id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(upload_id)) {
+    try { fs.unlinkSync(req.file.path); } catch (e) {}
+    return res.status(400).json({ error: 'Invalid upload_id' });
+  }
+  const resolvedUploadDir = path.resolve(chunksDir, upload_id);
+  if (!resolvedUploadDir.startsWith(path.resolve(chunksDir) + path.sep)) {
+    try { fs.unlinkSync(req.file.path); } catch (e) {}
+    return res.status(400).json({ error: 'Invalid upload_id' });
   }
 
   const uploadDir = path.join(chunksDir, upload_id);
@@ -1771,6 +1865,15 @@ app.post('/api/stream/upload/chunk', requireAdmin, chunkUpload.single('chunk'), 
 app.post('/api/stream/upload/complete', requireAdmin, async (req, res) => {
   const { upload_id } = req.body;
   if (!upload_id) return res.status(400).json({ error: 'Missing upload_id' });
+
+  // Validate upload_id is a safe UUID to prevent path traversal
+  if (!upload_id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(upload_id)) {
+    return res.status(400).json({ error: 'Invalid upload_id' });
+  }
+  const resolvedUploadDir = path.resolve(chunksDir, upload_id);
+  if (!resolvedUploadDir.startsWith(path.resolve(chunksDir) + path.sep)) {
+    return res.status(400).json({ error: 'Invalid upload_id' });
+  }
 
   const uploadDir = path.join(chunksDir, upload_id);
   const metaPath = path.join(uploadDir, 'meta.json');
@@ -1805,8 +1908,9 @@ app.post('/api/stream/upload/complete', requireAdmin, async (req, res) => {
     // Forward assembled file to streaming service via stream
     const { PassThrough } = require('stream');
     const boundary = '----AlleriaBoundary' + Date.now();
+    const safeFilename = (meta.filename || 'upload.mp4').replace(/[^a-zA-Z0-9._\-\s]/g, '_').replace(/\r|\n/g, '').slice(0, 255);
     const preamble = Buffer.from(
-      `--${boundary}\r\nContent-Disposition: form-data; name="video"; filename="${meta.filename}"\r\nContent-Type: video/mp4\r\n\r\n`
+      `--${boundary}\r\nContent-Disposition: form-data; name="video"; filename="${safeFilename}"\r\nContent-Type: video/mp4\r\n\r\n`
     );
     const epilogue = Buffer.from(
       `\r\n--${boundary}\r\nContent-Disposition: form-data; name="drm_enhanced"\r\n\r\n${meta.drm_enhanced ? 'true' : 'false'}\r\n--${boundary}--\r\n`
@@ -2024,9 +2128,10 @@ app.put('/api/comments/:id', requireAuth, (req, res) => {
     if (silent && isDev) {
       db.prepare('UPDATE comments SET content = ? WHERE id = ?').run(content.trim(), req.params.id);
     } else {
-      let history = []; try { history = JSON.parse(comment.edit_history || '[]'); } catch (e) {}
-      history.push({ content: comment.content, date: new Date().toISOString() });
-      db.prepare('UPDATE comments SET content = ?, edited = 1, edit_history = ? WHERE id = ?').run(content.trim(), JSON.stringify(history), req.params.id);
+      let editHistory = []; try { editHistory = JSON.parse(comment.edit_history || '[]'); } catch (e) {}
+      editHistory.push({ content: comment.content, date: new Date().toISOString() });
+      if (editHistory.length > 20) editHistory = editHistory.slice(-20);
+      db.prepare('UPDATE comments SET content = ?, edited = 1, edit_history = ? WHERE id = ?').run(content.trim(), JSON.stringify(editHistory), req.params.id);
     }
     const updated = db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(req.params.id);
     audit(req.session.user.id, "edit", "comment", parseInt(req.params.id), `${silent?'[cicha] ':''}"${oldText.slice(0,50)}" → "${content.trim().slice(0,50)}"`);
