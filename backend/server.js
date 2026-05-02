@@ -210,7 +210,7 @@ app.delete('/api/watch-party/:code', requireAuth, (req, res) => {
 });
 
 // Proxy streaming version with compatibility check
-app.get('/api/version/streaming', async (req, res) => {
+app.get('/api/version/streaming', requireAuth, async (req, res) => {
   try {
     const r = await fetch(`${STREAM_URL || 'http://streaming:4000'}/version`);
     const data = await r.json();
@@ -1375,22 +1375,24 @@ app.post('/api/videos/bulk', requireAdmin, (req, res) => {
     if (!video_ids || !Array.isArray(video_ids) || video_ids.length === 0) {
       return res.status(400).json({ error: 'No videos selected' });
     }
-    const placeholders = video_ids.map(() => '?').join(',');
+    const safeIds = video_ids.map(id => parseInt(id, 10)).filter(id => Number.isInteger(id) && id > 0);
+    if (safeIds.length === 0) return res.status(400).json({ error: 'No valid video IDs' });
+    const placeholders = safeIds.map(() => '?').join(',');
     let changes = 0;
 
     switch (action) {
       case 'change_category':
-        changes = db.prepare(`UPDATE videos SET category_id = ? WHERE id IN (${placeholders})`).run(value || null, ...video_ids).changes;
+        changes = db.prepare(`UPDATE videos SET category_id = ? WHERE id IN (${placeholders})`).run(value || null, ...safeIds).changes;
         break;
       case 'change_author':
         if (!value) return res.status(400).json({ error: 'Author ID required' });
-        changes = db.prepare(`UPDATE videos SET author_id = ? WHERE id IN (${placeholders})`).run(parseInt(value), ...video_ids).changes;
+        changes = db.prepare(`UPDATE videos SET author_id = ? WHERE id IN (${placeholders})`).run(parseInt(value), ...safeIds).changes;
         break;
       case 'change_access':
-        changes = db.prepare(`UPDATE videos SET access_mode = ? WHERE id IN (${placeholders})`).run(value || 'category', ...video_ids).changes;
+        changes = db.prepare(`UPDATE videos SET access_mode = ? WHERE id IN (${placeholders})`).run(value || 'category', ...safeIds).changes;
         break;
       case 'delete':
-        changes = db.prepare(`DELETE FROM videos WHERE id IN (${placeholders})`).run(...video_ids).changes;
+        changes = db.prepare(`DELETE FROM videos WHERE id IN (${placeholders})`).run(...safeIds).changes;
         break;
       default:
         return res.status(400).json({ error: 'Unknown action' });

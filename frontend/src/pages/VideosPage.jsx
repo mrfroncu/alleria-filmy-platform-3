@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, X, ChevronDown, Film } from 'lucide-react';
+import { Search, SlidersHorizontal, X, ChevronDown, Film, RotateCcw } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
 
@@ -20,6 +20,7 @@ export default function VideosPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
   const [continueWatching, setContinueWatching] = useState([]);
+  const [resetting, setResetting] = useState(false);
 
   // Display config — videosPerPage should be a multiple of gridColumns (default 3)
   const [config, setConfig] = useState({ videosPerPage: 12, gridColumns: 3 });
@@ -69,6 +70,13 @@ export default function VideosPage() {
   };
 
   const hasActiveFilters = search || selectedTags.length > 0 || selectedAuthor;
+
+  const handleResetProgress = async () => {
+    if (!confirm('Zresetować postęp wszystkich filmów? Funkcja "Kontynuuj oglądanie" zostanie wyczyszczona.')) return;
+    setResetting(true);
+    try { await api.resetProgress(); setContinueWatching([]); } catch (e) {}
+    setResetting(false);
+  };
 
   const progressMap = useMemo(() =>
     Object.fromEntries(continueWatching.map(p => [p.video_id, p])),
@@ -351,6 +359,20 @@ export default function VideosPage() {
             );
           })()}
         </>
+      )}
+
+      {/* Reset progress — shown only when there's something to reset */}
+      {continueWatching.length > 0 && (
+        <div className="flex justify-center mt-12">
+          <button
+            onClick={handleResetProgress}
+            disabled={resetting}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs text-zinc-400 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 font-medium transition-all disabled:opacity-50"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Resetuj postęp oglądania
+          </button>
+        </div>
       )}
     </div>
   );

@@ -296,13 +296,15 @@ function setupWatchPartyWS(server, db) {
         case 'queue_play':
           if (!isHost) return;
           {
-            const playedItem = party.queue[msg.index];
-            party.currentIndex = msg.index;
+            const idx = parseInt(msg.index, 10);
+            if (!Number.isInteger(idx) || idx < 0 || idx >= party.queue.length) return;
+            const playedItem = party.queue[idx];
+            party.currentIndex = idx;
             party.position = 0;
             party.playing = false;
             party.positionUpdatedAt = Date.now();
             wpLog(partyCode, 'queue_play', userId, userName, null, null,
-              `[${msg.index}] "${playedItem?.title || '?'}"`);
+              `[${idx}] "${playedItem?.title || '?'}"`);
             broadcast(party, { type: 'state', party: getPartyState(party) });
           }
           break;
@@ -310,10 +312,12 @@ function setupWatchPartyWS(server, db) {
         case 'queue_remove':
           if (!isHost) return;
           {
-            const removedItem = party.queue[msg.index];
+            const idx = parseInt(msg.index, 10);
+            if (!Number.isInteger(idx) || idx < 0 || idx >= party.queue.length) return;
+            const removedItem = party.queue[idx];
             wpLog(partyCode, 'queue_remove', userId, userName, null, null,
-              `[${msg.index}] "${removedItem?.title || '?'}"`);
-            party.queue.splice(msg.index, 1);
+              `[${idx}] "${removedItem?.title || '?'}"`);
+            party.queue.splice(idx, 1);
             if (party.currentIndex >= party.queue.length) {
               party.currentIndex = Math.max(-1, party.queue.length - 1);
             }

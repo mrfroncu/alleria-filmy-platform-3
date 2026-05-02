@@ -1,24 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Clock, Film, Play, RotateCcw } from 'lucide-react';
+import { Clock, Film, Play } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 
 export default function HistoryPage() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [resetting, setResetting] = useState(false);
-
   useEffect(() => {
     api.getHistory().then(setHistory).catch(console.error).finally(() => setLoading(false));
   }, []);
-
-  const handleResetProgress = async () => {
-    if (!confirm('Zresetować postęp wszystkich filmów? Funkcja "Kontynuuj oglądanie" zostanie wyczyszczona.')) return;
-    setResetting(true);
-    try { await api.resetProgress(); } catch (e) {}
-    setResetting(false);
-  };
 
   // Group by date
   const grouped = history.reduce((acc, item) => {
@@ -31,21 +22,11 @@ export default function HistoryPage() {
   return (
     <div className="p-6 sm:p-10 max-w-5xl mx-auto page-enter">
       <div className="mb-10">
-        <div className="flex items-start justify-between gap-4 mb-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-50 dark:bg-blue-500/10 rounded-xl flex items-center justify-center">
-              <Clock className="w-5 h-5 text-blue-500" />
-            </div>
-            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Historia</h1>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 bg-blue-50 dark:bg-blue-500/10 rounded-xl flex items-center justify-center">
+            <Clock className="w-5 h-5 text-blue-500" />
           </div>
-          <button
-            onClick={handleResetProgress}
-            disabled={resetting}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 text-sm font-bold transition-all disabled:opacity-50 shrink-0"
-          >
-            <RotateCcw className="w-4 h-4" />
-            Resetuj postęp
-          </button>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Historia</h1>
         </div>
         <p className="text-zinc-500 dark:text-zinc-400">Ostatnio obejrzane filmy — Twoja osobista historia przeglądania.</p>
       </div>
