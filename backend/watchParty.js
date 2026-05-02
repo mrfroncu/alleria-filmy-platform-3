@@ -276,9 +276,20 @@ function setupWatchPartyWS(server, db) {
           // Validate required fields and types
           const safeItem = {
             title: typeof item.title === 'string' ? item.title.slice(0, 200) : 'Untitled',
-            sourceKey: typeof item.sourceKey === 'string' ? item.sourceKey.slice(0, 100) : '',
-            videoId: typeof item.videoId === 'number' ? item.videoId : null,
+            sourceKey: typeof item.sourceKey === 'string' ? item.sourceKey.slice(0, 100) : 'main',
+            videoId: typeof item.videoId === 'number' ? item.videoId : (typeof item.videoId === 'string' ? item.videoId.slice(0, 100) : null),
             thumbnail: typeof item.thumbnail === 'string' ? item.thumbnail.slice(0, 500) : null,
+            stream_video_id: typeof item.stream_video_id === 'string' ? item.stream_video_id.slice(0, 100) : null,
+            stream_status: typeof item.stream_status === 'string' ? item.stream_status.slice(0, 20) : null,
+            drm_enhanced: item.drm_enhanced === true,
+            sources: Array.isArray(item.sources)
+              ? item.sources.slice(0, 10).map(s => ({
+                  key: typeof s.key === 'string' ? s.key.slice(0, 50) : '',
+                  label: typeof s.label === 'string' ? s.label.slice(0, 100) : '',
+                  url: typeof s.url === 'string' ? s.url.slice(0, 2000) : '',
+                  type: typeof s.type === 'string' ? s.type.slice(0, 20) : 'link',
+                })).filter(s => s.key && s.url)
+              : [],
           };
           party.queue.push(safeItem);
           if (party.currentIndex === -1) {
