@@ -233,17 +233,14 @@ export default function WatchPartyPage() {
     registerSyncCallback((action) => {
       const ctrl = playerControlRef.current;
       if (!ctrl) return;
-      const TOLERANCE = 3; // seconds — don't snap on small echo-induced differences
       if (action.type === 'play') {
-        const cur = ctrl.getCurrentTime?.() ?? 0;
-        if (Math.abs(cur - action.position) > TOLERANCE) ctrl.seek(action.position);
+        // No seek on play — just resume. Seeking here causes echo-bounce stutter
+        // for the control member who pressed play (echo arrives ~100ms late).
         ctrl.play();
       } else if (action.type === 'pause') {
-        const cur = ctrl.getCurrentTime?.() ?? 0;
-        if (Math.abs(cur - action.position) > TOLERANCE) ctrl.seek(action.position);
+        ctrl.seek(action.position);
         ctrl.pause();
       } else if (action.type === 'seek') {
-        // Explicit seek — always snap immediately
         ctrl.seek(action.position);
         if (action.playing) ctrl.play(); else ctrl.pause();
       }
