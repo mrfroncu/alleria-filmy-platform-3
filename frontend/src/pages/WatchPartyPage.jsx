@@ -75,7 +75,12 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
     const snapToExpected = () => {
       if (!playerRef.current || syncingRef.current) return;
       syncingRef.current = true;
-      playerRef.current.seekTo(expectedTimeRef.current, true);
+      // Account for time elapsed since the ref was last updated — avoids snapping to stale position
+      const elapsed = (Date.now() - lastCheckRef.current) / 1000;
+      const target = expectedTimeRef.current + (desiredPlayingRef.current ? elapsed : 0);
+      playerRef.current.seekTo(target, true);
+      expectedTimeRef.current = target;
+      lastCheckRef.current = Date.now();
       if (desiredPlayingRef.current) playerRef.current.playVideo();
       else playerRef.current.pauseVideo();
       setTimeout(() => { syncingRef.current = false; }, 1500);
@@ -123,23 +128,22 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
             }
           },
           onStateChange: (e) => {
-            if (destroyed || syncingRef.current) return;
+            if (destroyed) return;
             const state = e.data;
             if (state === window.YT.PlayerState.PLAYING) {
-              const t = player.getCurrentTime();
               playingRef.current = true;
+              // When syncing: just ensure poll is running, skip user-action handling
+              if (syncingRef.current) { startPoll(); return; }
+              const t = player.getCurrentTime();
               if (canControlRef.current) {
                 expectedTimeRef.current = t;
                 lastCheckRef.current = Date.now();
                 onPlayRef.current?.(t);
                 startPoll();
               } else {
-                // Non-control pressed play locally
                 if (!desiredPlayingRef.current) {
-                  // Server says paused — snap back immediately
                   snapToExpected();
                 } else {
-                  // Server says playing — check if user seeked far from expected position
                   const serverExpected = expectedTimeRef.current + (Date.now() - lastCheckRef.current) / 1000;
                   if (Math.abs(t - serverExpected) > 3) {
                     snapToExpected();
@@ -151,15 +155,15 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
                 }
               }
             } else if (state === window.YT.PlayerState.PAUSED) {
+              // Always stop poll and mark as not playing — regardless of syncing state
               stopPoll();
               playingRef.current = false;
+              if (syncingRef.current) return;
               const t = player.getCurrentTime();
               if (canControlRef.current) {
                 onPauseRef.current?.(t);
               } else {
-                // Non-control paused locally
                 if (desiredPlayingRef.current) {
-                  // Server says playing — snap back immediately
                   snapToExpected();
                 }
               }
