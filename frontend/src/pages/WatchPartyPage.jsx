@@ -101,11 +101,16 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek 
       if (destroyed) return;
       player = new window.YT.Player(playerDiv, {
         videoId,
-        width: '100%',
-        height: '100%',
         playerVars: { rel: 0, modestbranding: 1, enablejsapi: 1 },
         events: {
-          onReady: () => { if (!destroyed) playerRef.current = player; },
+          onReady: (e) => {
+            if (!destroyed) {
+              playerRef.current = player;
+              // Apply responsive sizing to the iframe YT creates — percentage widths on YT.Player don't work reliably
+              const iframe = e.target.getIframe();
+              iframe.style.cssText = 'width:100%;height:100%;display:block;';
+            }
+          },
           onStateChange: (e) => {
             if (destroyed) return;
             const state = e.data;
@@ -209,16 +214,19 @@ export default function WatchPartyPage() {
   const [ytLoading, setYtLoading] = useState(false);
   const [ytError, setYtError] = useState('');
 
-  // Auto-join from invite link, or redirect home if not in party and not connecting
+  // Auto-join: from invite link, or restore previous session after page refresh
   const joinAttemptedRef = useRef(false);
   useEffect(() => {
     if (inParty || disconnectReason) return;
-    if (connecting) return; // WS establishing — wait for it
+    if (connecting) return;
 
-    const joinCode = searchParams.get('join');
+    const joinCode = searchParams.get('join') || sessionStorage.getItem('watchPartyCode');
     if (joinCode && !joinAttemptedRef.current) {
       joinAttemptedRef.current = true;
-      joinParty(joinCode).catch(() => navigate('/'));
+      joinParty(joinCode).catch(() => {
+        sessionStorage.removeItem('watchPartyCode');
+        navigate('/');
+      });
     } else if (!joinCode) {
       navigate('/');
     }
@@ -229,13 +237,17 @@ export default function WatchPartyPage() {
     registerSyncCallback((action) => {
       const ctrl = playerControlRef.current;
       if (!ctrl) return;
+      const TOLERANCE = 3; // seconds — don't snap on small echo-induced differences
       if (action.type === 'play') {
-        ctrl.seek(action.position);
+        const cur = ctrl.getCurrentTime?.() ?? 0;
+        if (Math.abs(cur - action.position) > TOLERANCE) ctrl.seek(action.position);
         ctrl.play();
       } else if (action.type === 'pause') {
-        ctrl.seek(action.position);
+        const cur = ctrl.getCurrentTime?.() ?? 0;
+        if (Math.abs(cur - action.position) > TOLERANCE) ctrl.seek(action.position);
         ctrl.pause();
       } else if (action.type === 'seek') {
+        // Explicit seek — always snap immediately
         ctrl.seek(action.position);
         if (action.playing) ctrl.play(); else ctrl.pause();
       }

@@ -134,19 +134,25 @@ export function WatchPartyProvider({ children }) {
 
   const createParty = useCallback(async () => {
     const { code } = await api.createWatchParty();
+    sessionStorage.setItem('watchPartyCode', code);
     await connect(code);
     return code;
   }, [connect]);
 
   const joinParty = useCallback(async (code) => {
     await api.getWatchParty(code);
+    sessionStorage.setItem('watchPartyCode', code);
     await connect(code);
   }, [connect]);
 
-  const leaveParty = useCallback(() => disconnect(), [disconnect]);
+  const leaveParty = useCallback(() => {
+    sessionStorage.removeItem('watchPartyCode');
+    disconnect();
+  }, [disconnect]);
 
   const endParty = useCallback(async () => {
     if (!party) return;
+    sessionStorage.removeItem('watchPartyCode');
     try { await api.deleteWatchParty(party.code); } catch (_) {}
     disconnect();
   }, [party, disconnect]);

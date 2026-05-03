@@ -19,16 +19,16 @@ const { createParty, getParty, deleteParty, listParties, createWsToken, setupWat
 const rateLimit = require('express-rate-limit');
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 15,
+  windowMs: 15 * 60 * 1000,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Zbyt wiele prób logowania. Spróbuj ponownie za 15 minut.' },
 });
 
 const apiLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 120,
+  windowMs: 1 * 60 * 1000,
+  max: 2400,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Zbyt wiele żądań. Zwolnij.' },
