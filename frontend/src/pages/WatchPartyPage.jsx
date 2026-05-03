@@ -139,10 +139,15 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
                   // Server says paused — snap back immediately
                   snapToExpected();
                 } else {
-                  // Server says playing but position might differ — poll will correct
-                  expectedTimeRef.current = t;
-                  lastCheckRef.current = Date.now();
-                  startPoll();
+                  // Server says playing — check if user seeked far from expected position
+                  const serverExpected = expectedTimeRef.current + (Date.now() - lastCheckRef.current) / 1000;
+                  if (Math.abs(t - serverExpected) > 3) {
+                    snapToExpected();
+                  } else {
+                    expectedTimeRef.current = t;
+                    lastCheckRef.current = Date.now();
+                    startPoll();
+                  }
                 }
               }
             } else if (state === window.YT.PlayerState.PAUSED) {
@@ -191,6 +196,8 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
         if (!playerRef.current) return;
         desiredPlayingRef.current = true;
         syncingRef.current = true;
+        expectedTimeRef.current = playerRef.current.getCurrentTime();
+        lastCheckRef.current = Date.now();
         playerRef.current.playVideo();
         setTimeout(() => { syncingRef.current = false; }, 1500);
       },
@@ -276,7 +283,14 @@ export default function WatchPartyPage() {
         ctrl.seek(action.position);
         ctrl.pause();
       } else if (action.type === 'seek' || action.type === 'sync') {
-        // Explicit seek and periodic sync both always snap to server position
+        if (action.type === 'sync') {
+          // Periodic sync: only snap if drift exceeds 3s tolerance
+          const current = ctrl.getCurrentTime?.() ?? 0;
+          if (Math.abs(current - action.position) <= 3) {
+            if (action.playing) ctrl.play(); else ctrl.pause();
+            return;
+          }
+        }
         ctrl.seek(action.position);
         if (action.playing) ctrl.play(); else ctrl.pause();
       }
