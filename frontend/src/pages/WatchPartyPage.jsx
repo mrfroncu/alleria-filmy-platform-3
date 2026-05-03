@@ -132,8 +132,11 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
             const state = e.data;
             if (state === window.YT.PlayerState.PLAYING) {
               playingRef.current = true;
-              // When syncing: just ensure poll is running, skip user-action handling
-              if (syncingRef.current) { startPoll(); return; }
+              // Control member syncing: just start poll
+              if (syncingRef.current && canControlRef.current) { startPoll(); return; }
+              // Non-control: when PLAYING fires the snap has settled — clear syncingRef and
+              // immediately re-check position so seeks during the snap window are caught right away
+              if (syncingRef.current) syncingRef.current = false;
               const t = player.getCurrentTime();
               if (canControlRef.current) {
                 expectedTimeRef.current = t;

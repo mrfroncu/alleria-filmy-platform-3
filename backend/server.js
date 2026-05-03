@@ -32,6 +32,7 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Zbyt wiele żądań. Zwolnij.' },
+  skip: (req) => req.path.startsWith('/api/watch-party') || req.path.startsWith('/api/logs/watch-party'),
 });
 
 const app = express();
