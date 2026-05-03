@@ -1,0 +1,30 @@
+# Alleria Filmy — Panel Only
+# Use when the streaming service runs on a separate server (see streaming-standalone/).
+#
+# Usage:
+#   docker compose -f docker-compose.panel-only.yml up -d --build
+#
+# Required .env keys:
+#   STREAM_URL=http://<streaming-server-ip>:4000   ← point to your standalone streamer
+#   STREAM_SECRET=<same secret as on streaming server>
+#   SESSION_SECRET=<random secret>
+#   DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, DISCORD_MEMBER_ROLE_ID
+
+services:
+  alleria-filmy:
+    build: .
+    container_name: alleria-filmy
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    volumes:
+      - alleria-data:/app/backend/data
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+
+volumes:
+  alleria-data:
+    driver: local

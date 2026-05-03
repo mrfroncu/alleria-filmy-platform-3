@@ -2,31 +2,27 @@
 
 Deploy the video streaming/transcoding service on a separate server (e.g. via Tailscale).
 
+All required source files (`server.js`, `package.json`, `versions.js`) are included in this folder.
+
 ## Setup
 
-1. Copy required files into this folder:
-   ```bash
-   cp ../streaming/server.js ./
-   cp ../streaming/package.json ./
-   ```
-
-2. Configure environment:
+1. Configure environment:
    ```bash
    cp .env.example .env
    # Edit .env — set STREAM_SECRET to match main app
    ```
 
-3. Build and start:
+2. Build and start:
    ```bash
    docker compose up -d --build
    ```
 
-4. On the **main app server**, update `.env`:
+3. On the **main app server**, update `.env`:
    ```env
    STREAM_URL=http://<this-server-tailscale-ip>:4000
    ```
 
-5. Rebuild main app:
+4. Rebuild main app:
    ```bash
    docker compose up -d --build
    ```
