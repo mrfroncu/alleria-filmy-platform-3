@@ -41,7 +41,7 @@ function loadYtApi() {
   });
 }
 
-function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek }) {
+function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek, canControl }) {
   // React owns only this wrapper — YT owns the inner div it creates
   const wrapperRef = useRef(null);
 
@@ -169,8 +169,13 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek 
     };
   });
 
-  // React manages only this wrapper div — never the YT iframe inside
-  return <div ref={wrapperRef} className="w-full h-full" />;
+  // React manages only this wrapper div — never the YT iframe inside.
+  // The overlay blocks all mouse interaction for non-control members.
+  return (
+    <div ref={wrapperRef} className="w-full h-full relative">
+      {!canControl && <div className="absolute inset-0 z-10" />}
+    </div>
+  );
 }
 
 // Build source list from a video object (same logic as VideoPage)
@@ -234,13 +239,14 @@ export default function WatchPartyPage() {
       const ctrl = playerControlRef.current;
       if (!ctrl) return;
       if (action.type === 'play') {
-        // No seek on play — just resume. Seeking here causes echo-bounce stutter
-        // for the control member who pressed play (echo arrives ~100ms late).
+        // No seek — just resume. Seeking here causes echo-bounce stutter for the
+        // control member who pressed play (server echo arrives ~100ms late).
         ctrl.play();
       } else if (action.type === 'pause') {
         ctrl.seek(action.position);
         ctrl.pause();
-      } else if (action.type === 'seek') {
+      } else if (action.type === 'seek' || action.type === 'sync') {
+        // Explicit seek and periodic sync both always snap to server position
         ctrl.seek(action.position);
         if (action.playing) ctrl.play(); else ctrl.pause();
       }
@@ -429,7 +435,7 @@ export default function WatchPartyPage() {
               )}
             </div>
           ) : isStreamer && activeStreamVideoId ? (
-            <div className="w-full h-full">
+            <div className="w-full h-full relative">
               <SecurePlayer
                 key={`${currentItem.videoId}-${currentSourceKey}`}
                 streamVideoId={activeStreamVideoId}
@@ -440,6 +446,7 @@ export default function WatchPartyPage() {
                 onPause={canControl ? (pos) => send({ type: 'pause', position: pos }) : undefined}
                 onSeek={canControl ? (pos) => send({ type: 'seek', position: pos }) : undefined}
               />
+              {!canControl && <div className="absolute inset-0 z-10" />}
             </div>
           ) : youtubeId ? (
             <div className="w-full h-full">
@@ -447,14 +454,16 @@ export default function WatchPartyPage() {
                 key={`${currentItem.videoId}-${currentSourceKey}`}
                 videoId={youtubeId}
                 controlRef={playerControlRef}
+                canControl={canControl}
                 onPlay={canControl ? (pos) => send({ type: 'play', position: pos }) : undefined}
                 onPause={canControl ? (pos) => send({ type: 'pause', position: pos }) : undefined}
                 onSeek={canControl ? (pos) => send({ type: 'seek', position: pos }) : undefined}
               />
             </div>
           ) : embedUrl ? (
-            <div className="w-full h-full">
+            <div className="w-full h-full relative">
               <iframe src={embedUrl} className="w-full h-full border-0" allowFullScreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" />
+              {!canControl && <div className="absolute inset-0 z-10" />}
             </div>
           ) : isHtml && currentSrc?.url ? (
             <div className="w-full h-full"><HtmlEmbed html={currentSrc.url} /></div>

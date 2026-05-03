@@ -87,7 +87,7 @@ export function WatchPartyProvider({ children }) {
 
       case 'sync':
         setParty(p => p ? { ...p, position: msg.position, playing: msg.playing, currentIndex: msg.currentIndex ?? p.currentIndex } : p);
-        syncCallbackRef.current?.({ type: msg.playing ? 'play' : 'pause', position: msg.position });
+        syncCallbackRef.current?.({ type: 'sync', position: msg.position, playing: msg.playing });
         break;
 
       case 'kicked':
