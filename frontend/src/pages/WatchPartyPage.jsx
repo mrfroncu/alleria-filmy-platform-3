@@ -50,6 +50,8 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
   const playingRef = useRef(false);
   const expectedTimeRef = useRef(0);
   const lastCheckRef = useRef(Date.now());
+  const desiredPlayingRef = useRef(false); // what the server wants (play/pause state)
+  const canControlRef = useRef(canControl);
   const onPlayRef = useRef(onPlay);
   const onPauseRef = useRef(onPause);
   const onSeekRef = useRef(onSeek);
@@ -57,6 +59,7 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
   useEffect(() => { onPlayRef.current = onPlay; }, [onPlay]);
   useEffect(() => { onPauseRef.current = onPause; }, [onPause]);
   useEffect(() => { onSeekRef.current = onSeek; }, [onSeek]);
+  useEffect(() => { canControlRef.current = canControl; }, [canControl]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -66,12 +69,17 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
     let player = null;
     let pollId = null;
 
-    // Create the player target div imperatively — React never tracks it,
-    // so YT replacing it with an <iframe> won't confuse React's reconciler.
     const playerDiv = document.createElement('div');
-    playerDiv.style.width = '100%';
-    playerDiv.style.height = '100%';
     wrapper.appendChild(playerDiv);
+
+    const snapToExpected = () => {
+      if (!playerRef.current || syncingRef.current) return;
+      syncingRef.current = true;
+      playerRef.current.seekTo(expectedTimeRef.current, true);
+      if (desiredPlayingRef.current) playerRef.current.playVideo();
+      else playerRef.current.pauseVideo();
+      setTimeout(() => { syncingRef.current = false; }, 1500);
+    };
 
     const stopPoll = () => { clearInterval(pollId); pollId = null; };
     const startPoll = () => {
@@ -83,9 +91,17 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
         const expected = expectedTimeRef.current + elapsed;
         const actual = playerRef.current.getCurrentTime();
         if (Math.abs(actual - expected) > 2.5) {
-          expectedTimeRef.current = actual;
-          lastCheckRef.current = now;
-          onSeekRef.current?.(actual);
+          if (canControlRef.current) {
+            // Control member: report drift to server
+            expectedTimeRef.current = actual;
+            lastCheckRef.current = now;
+            onSeekRef.current?.(actual);
+          } else {
+            // Non-control member: snap back to expected position
+            expectedTimeRef.current = expected;
+            lastCheckRef.current = now;
+            snapToExpected();
+          }
         } else {
           expectedTimeRef.current = actual;
           lastCheckRef.current = now;
@@ -102,26 +118,46 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
           onReady: (e) => {
             if (!destroyed) {
               playerRef.current = player;
-              // Apply responsive sizing to the iframe YT creates — percentage widths on YT.Player don't work reliably
               const iframe = e.target.getIframe();
               iframe.style.cssText = 'width:100%;height:100%;display:block;';
             }
           },
           onStateChange: (e) => {
-            if (destroyed) return;
+            if (destroyed || syncingRef.current) return;
             const state = e.data;
             if (state === window.YT.PlayerState.PLAYING) {
               const t = player.getCurrentTime();
               playingRef.current = true;
-              expectedTimeRef.current = t;
-              lastCheckRef.current = Date.now();
-              if (!syncingRef.current) onPlayRef.current?.(t);
-              startPoll();
+              if (canControlRef.current) {
+                expectedTimeRef.current = t;
+                lastCheckRef.current = Date.now();
+                onPlayRef.current?.(t);
+                startPoll();
+              } else {
+                // Non-control pressed play locally
+                if (!desiredPlayingRef.current) {
+                  // Server says paused — snap back immediately
+                  snapToExpected();
+                } else {
+                  // Server says playing but position might differ — poll will correct
+                  expectedTimeRef.current = t;
+                  lastCheckRef.current = Date.now();
+                  startPoll();
+                }
+              }
             } else if (state === window.YT.PlayerState.PAUSED) {
               stopPoll();
               playingRef.current = false;
               const t = player.getCurrentTime();
-              if (!syncingRef.current) onPauseRef.current?.(t);
+              if (canControlRef.current) {
+                onPauseRef.current?.(t);
+              } else {
+                // Non-control paused locally
+                if (desiredPlayingRef.current) {
+                  // Server says playing — snap back immediately
+                  snapToExpected();
+                }
+              }
             } else if (state === window.YT.PlayerState.ENDED) {
               stopPoll();
               playingRef.current = false;
@@ -136,12 +172,10 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
       stopPoll();
       playerRef.current = null;
       try { player?.destroy(); } catch (_) {}
-      // Remove the YT-owned element from wrapper so React can remove wrapper cleanly
       try { if (wrapper.firstChild) wrapper.innerHTML = ''; } catch (_) {}
     };
   }, [videoId]);
 
-  // Expose control interface via controlRef
   useEffect(() => {
     if (!controlRef) return;
     controlRef.current = {
@@ -155,12 +189,14 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
       },
       play: () => {
         if (!playerRef.current) return;
+        desiredPlayingRef.current = true;
         syncingRef.current = true;
         playerRef.current.playVideo();
         setTimeout(() => { syncingRef.current = false; }, 1500);
       },
       pause: () => {
         if (!playerRef.current) return;
+        desiredPlayingRef.current = false;
         syncingRef.current = true;
         playerRef.current.pauseVideo();
         setTimeout(() => { syncingRef.current = false; }, 1500);
@@ -169,13 +205,7 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
     };
   });
 
-  // React manages only this wrapper div — never the YT iframe inside.
-  // The overlay blocks all mouse interaction for non-control members.
-  return (
-    <div ref={wrapperRef} className="w-full h-full relative">
-      {!canControl && <div className="absolute inset-0 z-10" />}
-    </div>
-  );
+  return <div ref={wrapperRef} className="w-full h-full" />;
 }
 
 // Build source list from a video object (same logic as VideoPage)
@@ -435,7 +465,7 @@ export default function WatchPartyPage() {
               )}
             </div>
           ) : isStreamer && activeStreamVideoId ? (
-            <div className="w-full h-full relative">
+            <div className="w-full h-full">
               <SecurePlayer
                 key={`${currentItem.videoId}-${currentSourceKey}`}
                 streamVideoId={activeStreamVideoId}
@@ -446,7 +476,6 @@ export default function WatchPartyPage() {
                 onPause={canControl ? (pos) => send({ type: 'pause', position: pos }) : undefined}
                 onSeek={canControl ? (pos) => send({ type: 'seek', position: pos }) : undefined}
               />
-              {!canControl && <div className="absolute inset-0 z-10" />}
             </div>
           ) : youtubeId ? (
             <div className="w-full h-full">
@@ -461,9 +490,8 @@ export default function WatchPartyPage() {
               />
             </div>
           ) : embedUrl ? (
-            <div className="w-full h-full relative">
+            <div className="w-full h-full">
               <iframe src={embedUrl} className="w-full h-full border-0" allowFullScreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" />
-              {!canControl && <div className="absolute inset-0 z-10" />}
             </div>
           ) : isHtml && currentSrc?.url ? (
             <div className="w-full h-full"><HtmlEmbed html={currentSrc.url} /></div>
