@@ -76,7 +76,7 @@ function YouTubeTrackingPlayer({ videoId, onTimeUpdate, controlRef }) {
       if (destroyed) return;
       player = new window.YT.Player(playerDiv, {
         videoId,
-        playerVars: { autoplay: 0, controls: 1, rel: 0 },
+        playerVars: { autoplay: 0, controls: 1, rel: 0, origin: window.location.origin },
         events: {
           onReady: () => {
             if (controlRef) controlRef.current = { seek: (pos) => player.seekTo(pos, true) };

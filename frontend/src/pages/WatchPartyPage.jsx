@@ -25,23 +25,19 @@ function HtmlEmbed({ html }) {
   return <iframe src={blobUrl} className="w-full h-full border-0" allowFullScreen />;
 }
 
-// YouTube IFrame API — loaded once, shared across all instances
-let _ytApiReady = false;
-let _ytApiCallbacks = [];
+// YouTube IFrame API — polling approach works even if API was already loaded by another page/module
 function loadYtApi() {
-  if (_ytApiReady) return Promise.resolve();
-  return new Promise((resolve) => {
-    _ytApiCallbacks.push(resolve);
-    if (document.getElementById('yt-iframe-api')) return;
-    const tag = document.createElement('script');
-    tag.id = 'yt-iframe-api';
-    tag.src = 'https://www.youtube.com/iframe_api';
-    document.head.appendChild(tag);
-    window.onYouTubeIframeAPIReady = () => {
-      _ytApiReady = true;
-      _ytApiCallbacks.forEach(cb => cb());
-      _ytApiCallbacks = [];
-    };
+  return new Promise(resolve => {
+    if (window.YT?.Player) return resolve();
+    if (!document.getElementById('yt-iframe-api')) {
+      const tag = document.createElement('script');
+      tag.id = 'yt-iframe-api';
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(tag);
+    }
+    const iv = setInterval(() => {
+      if (window.YT?.Player) { clearInterval(iv); resolve(); }
+    }, 50);
   });
 }
 
@@ -101,7 +97,7 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek 
       if (destroyed) return;
       player = new window.YT.Player(playerDiv, {
         videoId,
-        playerVars: { rel: 0, modestbranding: 1, enablejsapi: 1 },
+        playerVars: { rel: 0, enablejsapi: 1, origin: window.location.origin },
         events: {
           onReady: (e) => {
             if (!destroyed) {
