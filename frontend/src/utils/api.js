@@ -136,9 +136,9 @@ export const api = {
     body: JSON.stringify(data),
   }),
 
-  // Debug — Watch Party management
-  getActiveWatchParties: () => request('/debug/watch-parties'),
-  forceDeleteWatchParty: (code) => request(`/debug/watch-parties/${code}`, { method: 'DELETE' }),
+  // Watch Party management (admin)
+  getActiveWatchParties: () => request('/admin/watch-parties'),
+  forceDeleteWatchParty: (code) => request(`/admin/watch-parties/${code}`, { method: 'DELETE' }),
 
   // Debug
   exportDB: () => request('/debug/export'),

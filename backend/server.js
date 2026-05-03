@@ -1734,12 +1734,12 @@ app.post('/api/debug/sql', requireDev, (req, res) => {
   }
 });
 
-// ============ DEBUG: WATCH PARTY MANAGEMENT ============
-app.get('/api/debug/watch-parties', requireDev, (req, res) => {
+// ============ WATCH PARTY MANAGEMENT (admin) ============
+app.get('/api/admin/watch-parties', requireDev, (req, res) => {
   res.json(listParties());
 });
 
-app.delete('/api/debug/watch-parties/:code', requireDev, (req, res) => {
+app.delete('/api/admin/watch-parties/:code', requireDev, (req, res) => {
   const code = req.params.code.toUpperCase();
   const u = req.session.user;
   if (!getParty(code)) return res.status(404).json({ error: 'Party not found' });
