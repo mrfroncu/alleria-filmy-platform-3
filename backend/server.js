@@ -2066,27 +2066,50 @@ app.get('/api/stream/check/:dbVideoId', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// List all streaming files with DB cross-reference
+app.get('/api/stream/files', requireDev, async (req, res) => {
+  try {
+    const r = await fetch(`${STREAM_URL}/videos`, { headers: { 'X-Stream-Token': STREAM_SECRET } });
+    if (!r.ok) throw new Error('Streaming server unreachable');
+    const streamVideos = await r.json();
+    const dbVideos = db.prepare('SELECT id, title, stream_video_id FROM videos WHERE stream_video_id IS NOT NULL').all();
+    const dbMap = new Map(dbVideos.map(v => [v.stream_video_id, { id: v.id, title: v.title }]));
+    res.json(streamVideos.map(sv => ({
+      video_id: sv.video_id,
+      status: sv.status,
+      qualities: sv.qualities || [],
+      sizeBytes: sv.sizeBytes || 0,
+      db_video: dbMap.get(sv.video_id) || null,
+    })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Cleanup orphaned/failed streaming videos
 app.get('/api/stream/cleanup', requireDev, async (req, res) => {
   try {
-    const r = await fetch(`${STREAM_URL}/cleanup/list`, { headers: { 'X-Stream-Token': STREAM_SECRET } });
-    const data = await r.json();
-    // Also find DB videos pointing to non-existent stream IDs
+    const r = await fetch(`${STREAM_URL}/videos`, { headers: { 'X-Stream-Token': STREAM_SECRET } });
+    if (!r.ok) throw new Error('Streaming server unreachable');
+    const streamVideos = await r.json();
+    // Cross-reference with DB — detect files whose DB entry was deleted (ready but orphaned)
+    const dbIds = new Set(
+      db.prepare('SELECT stream_video_id FROM videos WHERE stream_video_id IS NOT NULL').all().map(v => v.stream_video_id)
+    );
+    const orphans = streamVideos
+      .filter(sv => sv.status === 'error' || sv.status === 'unknown' || !dbIds.has(sv.video_id))
+      .map(sv => ({ video_id: sv.video_id, status: sv.status, orphaned_from_db: !dbIds.has(sv.video_id) }));
     const dbOrphans = db.prepare("SELECT id, title, stream_video_id, stream_status FROM videos WHERE stream_video_id IS NOT NULL AND (stream_status = 'error' OR stream_status = 'transcoding')").all();
-    res.json({ ...data, dbOrphans });
+    res.json({ orphans, dbOrphans });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/stream/cleanup', requireDev, async (req, res) => {
   try {
-    // Purge from streaming service
     const r = await fetch(`${STREAM_URL}/cleanup/purge`, {
       method: 'POST',
       headers: { 'X-Stream-Token': STREAM_SECRET, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ video_ids: req.body.video_ids || [] }),
+      body: JSON.stringify({ video_ids: req.body.video_ids || [], force: req.body.force }),
     });
     const data = await r.json();
-    // Also clean DB entries for error/orphan videos if requested
     if (req.body.clean_db) {
       const info = db.prepare("UPDATE videos SET stream_video_id = NULL, stream_status = NULL WHERE stream_status = 'error'").run();
       data.dbCleaned = info.changes;

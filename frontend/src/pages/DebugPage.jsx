@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, Upload, Trash2, AlertTriangle, Database, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw } from 'lucide-react';
+import { Download, Upload, Trash2, AlertTriangle, Database, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square } from 'lucide-react';
 import { api } from '../utils/api';
 
 export default function DebugPage() {
@@ -34,6 +34,38 @@ export default function DebugPage() {
   const [streamStats, setStreamStats] = useState(null);
   const [dbStats, setDbStats] = useState(null);
   const [transcodingVideos, setTranscodingVideos] = useState([]);
+
+  // Stream file manager
+  const [streamFiles, setStreamFiles] = useState(null);
+  const [streamFilesLoading, setStreamFilesLoading] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState(new Set());
+  const [deletingFiles, setDeletingFiles] = useState(false);
+
+  const loadStreamFiles = async () => {
+    setStreamFilesLoading(true);
+    try {
+      const files = await api.streamFiles();
+      setStreamFiles(files);
+      setSelectedFiles(new Set());
+    } catch (e) {
+      setStatus({ type: 'error', msg: 'Błąd ładowania plików streamera: ' + e.message });
+    }
+    setStreamFilesLoading(false);
+  };
+
+  const deleteSelectedFiles = async (ids) => {
+    if (!ids.length) return;
+    if (!confirm(`Usunąć ${ids.length} plik(ów) ze streamera? Operacja nieodwracalna!`)) return;
+    setDeletingFiles(true);
+    let deleted = 0;
+    for (const id of ids) {
+      try { await api.deleteStream(id); deleted++; } catch (_) {}
+    }
+    setStatus({ type: 'success', msg: `Usunięto ${deleted} plik(ów) ze streamera.` });
+    setDeletingFiles(false);
+    await loadStreamFiles();
+    fetch('/api/stream/stats').then(r => r.json()).then(setStreamStats).catch(() => {});
+  };
 
   useEffect(() => {
     loadWatchParties();
@@ -328,6 +360,167 @@ export default function DebugPage() {
             })}
           </div>
         )}
+      </div>
+
+      {/* Streaming file manager — full width */}
+      <div className="card p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-blue-50 dark:bg-blue-500/10 rounded-xl flex items-center justify-center">
+              <HardDrive className="w-5 h-5 text-blue-500" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Pliki streamera</h3>
+              <p className="text-xs text-zinc-500">Wszystkie pliki HLS na serwerze streamingu — zarządzanie i usuwanie</p>
+            </div>
+          </div>
+          <button
+            onClick={loadStreamFiles}
+            disabled={streamFilesLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl transition-all font-semibold"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${streamFilesLoading ? 'animate-spin' : ''}`} />
+            {streamFiles ? 'Odśwież' : 'Załaduj'}
+          </button>
+        </div>
+
+        {streamFiles === null && !streamFilesLoading && (
+          <p className="text-zinc-400 text-sm text-center py-6">Kliknij „Załaduj" aby pobrać listę plików</p>
+        )}
+        {streamFilesLoading && (
+          <p className="text-zinc-400 text-sm text-center py-6 flex items-center justify-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" /> Ładowanie...
+          </p>
+        )}
+
+        {streamFiles !== null && !streamFilesLoading && (() => {
+          const orphans = streamFiles.filter(f => !f.db_video);
+          const totalSize = streamFiles.reduce((s, f) => s + (f.sizeBytes || 0), 0);
+          const selectedOrphans = streamFiles.filter(f => !f.db_video).map(f => f.video_id);
+          const allSelected = streamFiles.length > 0 && selectedFiles.size === streamFiles.length;
+
+          const fmtSize = (bytes) => {
+            if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + ' GB';
+            if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+            return (bytes / 1024).toFixed(0) + ' KB';
+          };
+
+          return (
+            <>
+              {/* Summary bar */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3 text-xs text-zinc-500">
+                <span><span className="font-bold text-zinc-800 dark:text-zinc-200">{streamFiles.length}</span> plików</span>
+                <span><span className="font-bold text-zinc-800 dark:text-zinc-200">{fmtSize(totalSize)}</span> łącznie</span>
+                {orphans.length > 0 && (
+                  <span className="text-amber-600 dark:text-amber-400 font-semibold">{orphans.length} osierocone (brak w DB)</span>
+                )}
+                {selectedFiles.size > 0 && (
+                  <span className="text-blue-600 dark:text-blue-400 font-semibold">{selectedFiles.size} zaznaczonych</span>
+                )}
+              </div>
+
+              {/* Bulk actions */}
+              {streamFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <button
+                    onClick={() => setSelectedFiles(allSelected ? new Set() : new Set(streamFiles.map(f => f.video_id)))}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 rounded-lg font-semibold transition-colors"
+                  >
+                    {allSelected ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+                    {allSelected ? 'Odznacz wszystko' : 'Zaznacz wszystko'}
+                  </button>
+                  {orphans.length > 0 && (
+                    <button
+                      onClick={() => setSelectedFiles(new Set(selectedOrphans))}
+                      className="px-3 py-1.5 text-xs bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 rounded-lg font-semibold transition-colors"
+                    >
+                      Zaznacz osierocone ({orphans.length})
+                    </button>
+                  )}
+                  {selectedFiles.size > 0 && (
+                    <button
+                      onClick={() => deleteSelectedFiles([...selectedFiles])}
+                      disabled={deletingFiles}
+                      className="px-3 py-1.5 text-xs bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 text-red-700 dark:text-red-400 rounded-lg font-semibold transition-colors disabled:opacity-50"
+                    >
+                      {deletingFiles ? 'Usuwanie...' : `Usuń zaznaczone (${selectedFiles.size})`}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* File list */}
+              {streamFiles.length === 0 ? (
+                <p className="text-zinc-400 text-sm text-center py-4">Brak plików na serwerze streamingu</p>
+              ) : (
+                <div className="space-y-1 max-h-[400px] overflow-y-auto pr-1">
+                  {streamFiles.map(f => {
+                    const isOrphan = !f.db_video;
+                    const isSelected = selectedFiles.has(f.video_id);
+                    const statusColor = f.status === 'ready' ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10'
+                      : f.status === 'error' ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10'
+                      : f.status === 'transcoding' ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10'
+                      : 'text-zinc-500 bg-zinc-100 dark:bg-zinc-800';
+
+                    return (
+                      <div
+                        key={f.video_id}
+                        onClick={() => setSelectedFiles(prev => {
+                          const next = new Set(prev);
+                          next.has(f.video_id) ? next.delete(f.video_id) : next.add(f.video_id);
+                          return next;
+                        })}
+                        className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-colors select-none ${
+                          isSelected ? 'bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50 border border-transparent'
+                        }`}
+                      >
+                        {/* Checkbox */}
+                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-zinc-300 dark:border-zinc-600'}`}>
+                          {isSelected && <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                        </div>
+
+                        {/* Status badge */}
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 ${statusColor}`}>
+                          {f.status}
+                        </span>
+
+                        {/* Title / orphan badge */}
+                        <div className="flex-1 min-w-0">
+                          {f.db_video ? (
+                            <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate block">{f.db_video.title}</span>
+                          ) : (
+                            <span className="text-sm font-bold text-amber-600 dark:text-amber-400">Osierocony — brak w bazie</span>
+                          )}
+                          <span className="text-[10px] text-zinc-400 font-mono">{f.video_id}</span>
+                        </div>
+
+                        {/* Qualities */}
+                        <div className="hidden sm:flex gap-1 shrink-0">
+                          {(f.qualities || []).map(q => (
+                            <span key={q} className="text-[10px] px-1.5 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded font-mono">{q}</span>
+                          ))}
+                        </div>
+
+                        {/* Size */}
+                        <span className="text-xs text-zinc-500 font-mono shrink-0 w-16 text-right">{fmtSize(f.sizeBytes || 0)}</span>
+
+                        {/* Delete button */}
+                        <button
+                          onClick={e => { e.stopPropagation(); deleteSelectedFiles([f.video_id]); }}
+                          disabled={deletingFiles}
+                          className="shrink-0 p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-40"
+                          title="Usuń ten plik"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {/* 2-column grid for tools */}

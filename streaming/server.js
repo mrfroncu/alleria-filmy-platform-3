@@ -155,24 +155,24 @@ app.get('/cleanup/list', requireToken, (req, res) => {
 });
 
 app.post('/cleanup/purge', requireToken, (req, res) => {
-  const { video_ids } = req.body; // array of video_ids to delete, or empty = delete all failed
+  const { video_ids, force } = req.body;
   if (!fs.existsSync(MEDIA_DIR)) return res.json({ deleted: 0 });
   const dirs = fs.readdirSync(MEDIA_DIR);
   let deleted = 0;
   for (const d of dirs) {
     if (video_ids && video_ids.length > 0 && !video_ids.includes(d)) continue;
-    const statusPath = path.join(MEDIA_DIR, d, 'status.json');
-    let status = { status: 'unknown' };
-    try { status = JSON.parse(fs.readFileSync(statusPath, 'utf8')); } catch (e) {}
-    if (status.status === 'error' || status.status === 'unknown') {
-      try {
-        fs.rmSync(path.join(MEDIA_DIR, d), { recursive: true });
-        const keyPath = path.join(KEYS_DIR, d);
-        if (fs.existsSync(keyPath)) fs.rmSync(keyPath, { recursive: true });
-        deleted++;
-        console.log(`[CLEANUP] Deleted orphan: ${d}`);
-      } catch (e) {}
+    if (!force) {
+      let status = { status: 'unknown' };
+      try { status = JSON.parse(fs.readFileSync(path.join(MEDIA_DIR, d, 'status.json'), 'utf8')); } catch (_) {}
+      if (status.status !== 'error' && status.status !== 'unknown') continue;
     }
+    try {
+      fs.rmSync(path.join(MEDIA_DIR, d), { recursive: true });
+      const keyPath = path.join(KEYS_DIR, d);
+      if (fs.existsSync(keyPath)) fs.rmSync(keyPath, { recursive: true });
+      deleted++;
+      console.log(`[CLEANUP] Deleted: ${d}${force ? ' (forced)' : ''}`);
+    } catch (_) {}
   }
   res.json({ deleted });
 });
@@ -181,12 +181,24 @@ app.post('/cleanup/purge', requireToken, (req, res) => {
 app.get('/videos', requireToken, (req, res) => {
   if (!fs.existsSync(MEDIA_DIR)) return res.json([]);
   const dirs = fs.readdirSync(MEDIA_DIR).filter(d => {
-    const statusPath = path.join(MEDIA_DIR, d, 'status.json');
-    return fs.existsSync(statusPath);
+    return fs.existsSync(path.join(MEDIA_DIR, d, 'status.json'));
   });
+
+  const getDirSize = (dir) => {
+    let size = 0;
+    try {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        size += e.isDirectory() ? getDirSize(p) : fs.statSync(p).size;
+      }
+    } catch (_) {}
+    return size;
+  };
+
   const videos = dirs.map(d => {
     const status = JSON.parse(fs.readFileSync(path.join(MEDIA_DIR, d, 'status.json'), 'utf8'));
-    return { video_id: d, ...status };
+    const sizeBytes = getDirSize(path.join(MEDIA_DIR, d)) + getDirSize(path.join(KEYS_DIR, d));
+    return { video_id: d, ...status, sizeBytes };
   });
   res.json(videos);
 });
