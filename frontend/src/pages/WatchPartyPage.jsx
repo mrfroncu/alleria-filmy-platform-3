@@ -202,9 +202,13 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
       play: () => {
         if (!playerRef.current) return;
         desiredPlayingRef.current = true;
+        // Don't overwrite expectedTimeRef if a seek just set it — seekTo is async
+        // so getCurrentTime() would still return the pre-seek position
+        if (!syncingRef.current) {
+          expectedTimeRef.current = playerRef.current.getCurrentTime();
+          lastCheckRef.current = Date.now();
+        }
         syncingRef.current = true;
-        expectedTimeRef.current = playerRef.current.getCurrentTime();
-        lastCheckRef.current = Date.now();
         playerRef.current.playVideo();
         setTimeout(() => { syncingRef.current = false; }, 1500);
       },
@@ -283,8 +287,12 @@ export default function WatchPartyPage() {
       const ctrl = playerControlRef.current;
       if (!ctrl) return;
       if (action.type === 'play') {
-        // No seek — just resume. Seeking here causes echo-bounce stutter for the
-        // control member who pressed play (server echo arrives ~100ms late).
+        // Seek to server position first if significantly off (handles host scrub → play sequences).
+        // Within 3s tolerance: skip seek to avoid stutter for the control member's own echo.
+        const current = ctrl.getCurrentTime?.() ?? 0;
+        if (Math.abs(current - action.position) > 3) {
+          ctrl.seek(action.position);
+        }
         ctrl.play();
       } else if (action.type === 'pause') {
         ctrl.seek(action.position);
