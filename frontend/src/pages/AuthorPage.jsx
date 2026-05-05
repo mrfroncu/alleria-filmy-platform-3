@@ -44,7 +44,7 @@ export default function AuthorPage() {
         setAuthor(a);
         setVideos(Array.isArray(v) ? v : v.videos ?? []);
       })
-      .catch(() => setError('Nie znaleziono autora.'))
+      .catch(e => setError(e.message || 'Nie znaleziono autora.'))
       .finally(() => setLoading(false));
   }, [authorId]);
 

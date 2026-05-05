@@ -1420,6 +1420,7 @@ app.get('/api/authors/:id', requireAuth, (req, res) => {
     GROUP BY u.id
   `).get(parseInt(req.params.id));
   if (!author) return res.status(404).json({ error: 'Autor nie znaleziony.' });
+  if (author.video_count === 0) return res.status(404).json({ error: 'To konto nie opublikowało żadnego filmu.' });
   res.json(author);
 });
 
