@@ -1,8 +1,8 @@
 name: Deploy via rsync
 
 on:
-  push:
-    branches: [main]
+  release:
+    types: [published]
 
 jobs:
   deploy:
