@@ -222,10 +222,11 @@ export default function Layout({ children }) {
           {/* Version info */}
           {versions.panel && (
             <div className="pt-2 text-[8px] text-zinc-400 dark:text-zinc-600 font-mono text-center">
-              Panel & API: v{versions.panel} | Player: v{versions.stream}{' '}
-              {versions.streamStatus === 'compatible' && <span className="text-emerald-500">(C)</span>}
-              {versions.streamStatus === 'deprecated' && <span className="text-amber-500">(Streamer deprecated)</span>}
-              {versions.streamStatus === 'offline' && <span className="text-red-500">(offline)</span>}
+              Panel & API: v{versions.panel} | Player:{' '}
+              {versions.streamStatus === 'offline'
+                ? <span className="text-red-500">(offline)</span>
+                : <>v{versions.stream}{' '}{versions.streamStatus === 'compatible' && <span className="text-emerald-500">(C)</span>}{versions.streamStatus === 'deprecated' && <span className="text-amber-500">(Streamer deprecated)</span>}</>
+              }
             </div>
           )}
         </div>
