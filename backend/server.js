@@ -213,7 +213,10 @@ app.delete('/api/watch-party/:code', requireAuth, (req, res) => {
 // Proxy streaming version with compatibility check
 app.get('/api/version/streaming', requireAuth, async (req, res) => {
   try {
-    const r = await fetch(`${STREAM_URL || 'http://streaming:4000'}/version`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    const r = await fetch(`${STREAM_URL || 'http://streaming:4000'}/version`, { signal: controller.signal });
+    clearTimeout(timeout);
     const data = await r.json();
     const sv = data.version || '0.0.0';
     const isCompat = sv >= STREAM_MIN_VERSION;
