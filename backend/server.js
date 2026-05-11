@@ -1156,7 +1156,7 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
       description || '', publish_date,
       category_id ? parseInt(category_id) : null,
       stream_video_id || existing.stream_video_id || null,
-      drm_enhanced === 'true' || drm_enhanced === '1' ? 1 : (existing.drm_enhanced || 0),
+      drm_enhanced === 'true' || drm_enhanced === '1' ? 1 : 0,
       access_mode || existing.access_mode || 'category',
       req.params.id);
 
