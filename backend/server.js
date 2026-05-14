@@ -1896,17 +1896,22 @@ app.post('/api/stream/upload/complete', requireAdmin, async (req, res) => {
   console.log(`[CHUNK] Assembling ${meta.total_chunks} chunks for ${upload_id}...`);
 
   try {
-    const writeStream = fs.createWriteStream(assembledPath);
-    for (let i = 0; i < meta.total_chunks; i++) {
-      const chunkPath = path.join(uploadDir, `chunk_${String(i).padStart(6, '0')}`);
-      if (!fs.existsSync(chunkPath)) throw new Error(`Chunk ${i} missing`);
-      const data = fs.readFileSync(chunkPath);
-      writeStream.write(data);
-    }
     await new Promise((resolve, reject) => {
+      const writeStream = fs.createWriteStream(assembledPath);
       writeStream.on('finish', resolve);
       writeStream.on('error', reject);
-      writeStream.end();
+
+      let i = 0;
+      const pipeNext = () => {
+        if (i >= meta.total_chunks) { writeStream.end(); return; }
+        const chunkPath = path.join(uploadDir, `chunk_${String(i).padStart(6, '0')}`);
+        if (!fs.existsSync(chunkPath)) { writeStream.destroy(new Error(`Chunk ${i} missing`)); return; }
+        const readStream = fs.createReadStream(chunkPath);
+        readStream.on('error', err => writeStream.destroy(err));
+        readStream.on('end', () => { i++; pipeNext(); });
+        readStream.pipe(writeStream, { end: false });
+      };
+      pipeNext();
     });
 
     const fileSize = fs.statSync(assembledPath).size;
