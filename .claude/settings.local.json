@@ -13,7 +13,9 @@
       "Bash(python3 -c ' *)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Matthew\\\\Documents\\\\#Github\\\\alleria-filmy-platform-3\" -Directory)",
+      "Bash(Select-Object Name)"
     ]
   }
 }

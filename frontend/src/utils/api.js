@@ -109,6 +109,7 @@ export const api = {
   uploadStream: (formData) => request('/stream/upload', { method: 'POST', body: formData }),
   streamFiles: () => request('/stream/files'),
   streamTranscoding: () => request('/stream/transcoding'),
+  debugAccess: (type, id) => request(`/debug/access/${type}/${id}`),
   streamStatus: (videoId) => request(`/stream/status/${videoId}`),
   streamCheck: (dbVideoId) => request(`/stream/check/${dbVideoId}`),
   streamCleanupList: () => request('/stream/cleanup'),

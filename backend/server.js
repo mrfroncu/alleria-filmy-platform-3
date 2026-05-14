@@ -1638,12 +1638,58 @@ app.put('/api/profile', requireAuth, (req, res) => {
 });
 
 // ============ DEBUG / DEV API ============
-// Block all debug endpoints in production
-app.use('/api/debug', (req, res, next) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(404).json({ error: 'Not found' });
+
+app.get('/api/debug/access/:type/:id', requireDev, (req, res) => {
+  const { type, id } = req.params;
+  const users = db.prepare('SELECT id, username, display_name, avatar, role, discord_roles FROM users ORDER BY role DESC, display_name ASC').all();
+
+  const computeUsers = (viewerRoles, editorRoles, isPublic, customAccessIds = null) =>
+    users.map(u => {
+      const dr = JSON.parse(u.discord_roles || '[]');
+      let hasAccess = false, reason = '';
+      if (u.role === 'admin' || u.role === 'dev') {
+        hasAccess = true; reason = u.role;
+      } else if (customAccessIds !== null) {
+        hasAccess = customAccessIds.has(u.id);
+        reason = hasAccess ? 'custom_access' : 'not_in_custom_list';
+      } else if (isPublic) {
+        hasAccess = true; reason = 'public';
+      } else {
+        const mv = dr.find(r => viewerRoles.includes(r));
+        const me = dr.find(r => editorRoles.includes(r));
+        if (mv || me) { hasAccess = true; reason = me ? `editor:${me}` : `viewer:${mv}`; }
+        else { reason = 'no_matching_role'; }
+      }
+      return { id: u.id, username: u.username, display_name: u.display_name, avatar: u.avatar, role: u.role, discord_roles: dr, has_access: hasAccess, reason };
+    });
+
+  if (type === 'category') {
+    const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+    if (!cat) return res.status(404).json({ error: 'Category not found' });
+    const rules = db.prepare('SELECT * FROM category_access WHERE category_id = ?').all(id);
+    const viewerRoles = rules.filter(r => r.access_type === 'viewer').map(r => r.discord_role_id);
+    const editorRoles = rules.filter(r => r.access_type === 'editor').map(r => r.discord_role_id);
+    const isPublic = rules.length === 0;
+    return res.json({ type: 'category', name: cat.name, is_public: isPublic, viewer_roles: viewerRoles, editor_roles: editorRoles, users: computeUsers(viewerRoles, editorRoles, isPublic) });
   }
-  next();
+
+  if (type === 'video') {
+    const video = db.prepare('SELECT v.*, c.name AS category_name FROM videos v LEFT JOIN categories c ON v.category_id = c.id WHERE v.id = ?').get(id);
+    if (!video) return res.status(404).json({ error: 'Video not found' });
+    let viewerRoles = [], editorRoles = [], isPublic = false, customIds = null;
+    if (video.access_mode === 'custom') {
+      const rows = db.prepare('SELECT user_id FROM video_access WHERE video_id = ?').all(video.id);
+      customIds = new Set(rows.map(r => r.user_id));
+    } else if (video.category_id) {
+      const rules = db.prepare('SELECT * FROM category_access WHERE category_id = ?').all(video.category_id);
+      viewerRoles = rules.filter(r => r.access_type === 'viewer').map(r => r.discord_role_id);
+      editorRoles = rules.filter(r => r.access_type === 'editor').map(r => r.discord_role_id);
+      isPublic = rules.length === 0;
+    } else { isPublic = true; }
+    return res.json({ type: 'video', title: video.title, access_mode: video.access_mode, category_id: video.category_id, category_name: video.category_name, is_public: isPublic, viewer_roles: viewerRoles, editor_roles: editorRoles, users: computeUsers(viewerRoles, editorRoles, isPublic, customIds) });
+  }
+
+  res.status(400).json({ error: 'Invalid type' });
 });
 
 const EXPORT_SKIP_TABLES = new Set(['sessions']);

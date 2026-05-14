@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, Upload, Trash2, AlertTriangle, Database, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square } from 'lucide-react';
+import { Download, Upload, Trash2, AlertTriangle, Database, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck } from 'lucide-react';
 import { api } from '../utils/api';
 
 export default function DebugPage() {
@@ -130,6 +130,48 @@ export default function DebugPage() {
     }, 10000);
     return () => clearInterval(interval);
   }, [transcodingVideos.length]);
+  // Access checker
+  const [accessMode, setAccessMode] = useState('category');
+  const [accessCategories, setAccessCategories] = useState([]);
+  const [accessVideos, setAccessVideos] = useState([]);
+  const [accessSelectedId, setAccessSelectedId] = useState('');
+  const [accessResult, setAccessResult] = useState(null);
+  const [accessLoading, setAccessLoading] = useState(false);
+
+  useEffect(() => {
+    api.getCategories().then(setAccessCategories).catch(() => {});
+    api.getVideos({ include_transcoding: '1' }).then(setAccessVideos).catch(() => {});
+  }, []);
+
+  const checkAccess = async () => {
+    if (!accessSelectedId) return;
+    setAccessLoading(true);
+    setAccessResult(null);
+    try {
+      const data = await api.debugAccess(accessMode, accessSelectedId);
+      setAccessResult(data);
+    } catch (e) {
+      setAccessResult({ error: e.message });
+    }
+    setAccessLoading(false);
+  };
+
+  const reasonLabel = (reason, viewerRoles, editorRoles) => {
+    if (reason === 'admin') return { text: 'Administrator', color: 'text-violet-600 dark:text-violet-400' };
+    if (reason === 'dev') return { text: 'Developer', color: 'text-violet-600 dark:text-violet-400' };
+    if (reason === 'public' || reason === 'public_category') return { text: 'Kategoria publiczna', color: 'text-emerald-600 dark:text-emerald-400' };
+    if (reason === 'no_category') return { text: 'Film bez kategorii (publiczny)', color: 'text-emerald-600 dark:text-emerald-400' };
+    if (reason === 'custom_access') return { text: 'Dostęp niestandardowy', color: 'text-blue-600 dark:text-blue-400' };
+    if (reason === 'not_in_custom_list') return { text: 'Brak na liście niestandardowej', color: 'text-red-500' };
+    if (reason === 'no_matching_role') {
+      const allRoles = [...(viewerRoles || []), ...(editorRoles || [])];
+      return { text: `Brak wymaganej roli${allRoles.length ? ` (wymaga: ${allRoles.slice(0, 2).join(', ')}${allRoles.length > 2 ? '…' : ''})` : ''}`, color: 'text-red-500' };
+    }
+    if (reason?.startsWith('viewer:')) return { text: `Rola widza: ${reason.slice(7)}`, color: 'text-emerald-600 dark:text-emerald-400' };
+    if (reason?.startsWith('editor:')) return { text: `Rola edytora: ${reason.slice(7)}`, color: 'text-emerald-600 dark:text-emerald-400' };
+    return { text: reason || '—', color: 'text-zinc-400' };
+  };
+
   const [creatingUser, setCreatingUser] = useState(false);
 
   const handleExport = async () => {
@@ -568,6 +610,110 @@ export default function DebugPage() {
                 </div>
               )}
             </>
+          );
+        })()}
+      </div>
+
+      {/* Access Checker */}
+      <div className="card p-6 mb-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-9 h-9 bg-blue-50 dark:bg-blue-500/10 rounded-xl flex items-center justify-center">
+            <ShieldCheck className="w-5 h-5 text-blue-500" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Sprawdź uprawnienia</h3>
+            <p className="text-xs text-zinc-500">Lista użytkowników z dostępem do wybranej kategorii lub filmu i powód dostępu</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3 mb-4">
+          <div className="flex rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 shrink-0">
+            {['category', 'video'].map(m => (
+              <button key={m} type="button"
+                onClick={() => { setAccessMode(m); setAccessSelectedId(''); setAccessResult(null); }}
+                className={`px-4 py-2 text-xs font-bold transition-colors ${accessMode === m ? 'bg-blue-500 text-white' : 'bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}>
+                {m === 'category' ? 'Kategoria' : 'Film'}
+              </button>
+            ))}
+          </div>
+          <select
+            value={accessSelectedId}
+            onChange={e => { setAccessSelectedId(e.target.value); setAccessResult(null); }}
+            className="input-field !py-2 text-sm flex-1 min-w-[200px]"
+          >
+            <option value="">Wybierz {accessMode === 'category' ? 'kategorię' : 'film'}...</option>
+            {accessMode === 'category'
+              ? accessCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
+              : accessVideos.map(v => <option key={v.id} value={v.id}>{v.title}</option>)
+            }
+          </select>
+          <button
+            onClick={checkAccess}
+            disabled={!accessSelectedId || accessLoading}
+            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold rounded-xl transition-colors disabled:opacity-40 shrink-0"
+          >
+            {accessLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sprawdź'}
+          </button>
+        </div>
+
+        {accessResult?.error && (
+          <div className="p-3 bg-red-50 dark:bg-red-500/10 rounded-xl text-sm text-red-600 dark:text-red-400">{accessResult.error}</div>
+        )}
+
+        {accessResult && !accessResult.error && (() => {
+          const withAccess = accessResult.users.filter(u => u.has_access);
+          const withoutAccess = accessResult.users.filter(u => !u.has_access);
+          return (
+            <div className="space-y-4">
+              {/* Summary */}
+              <div className="flex flex-wrap gap-3 text-xs">
+                <span className="px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-xl font-semibold text-zinc-600 dark:text-zinc-400">
+                  {accessResult.type === 'category' ? accessResult.name : accessResult.title}
+                </span>
+                {accessResult.access_mode === 'custom' && (
+                  <span className="px-3 py-1.5 bg-blue-50 dark:bg-blue-500/10 rounded-xl font-bold text-blue-600 dark:text-blue-400">Dostęp niestandardowy</span>
+                )}
+                {accessResult.is_public && (
+                  <span className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl font-bold text-emerald-600 dark:text-emerald-400">Publiczna</span>
+                )}
+                {!accessResult.is_public && accessResult.viewer_roles?.length > 0 && (
+                  <span className="px-3 py-1.5 bg-amber-50 dark:bg-amber-500/10 rounded-xl font-semibold text-amber-700 dark:text-amber-400">
+                    {accessResult.viewer_roles.length} rola/e widza · {accessResult.editor_roles?.length || 0} edytora
+                  </span>
+                )}
+                {accessResult.category_name && (
+                  <span className="px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-zinc-500">Kat: {accessResult.category_name}</span>
+                )}
+                <span className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl font-bold text-emerald-600 dark:text-emerald-400">{withAccess.length} ma dostęp</span>
+                <span className="px-3 py-1.5 bg-red-50 dark:bg-red-500/10 rounded-xl font-bold text-red-500">{withoutAccess.length} bez dostępu</span>
+              </div>
+
+              {/* User table */}
+              <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                <div className="max-h-[500px] overflow-y-auto">
+                  {[...withAccess, ...withoutAccess].map(u => {
+                    const { text, color } = reasonLabel(u.reason, accessResult.viewer_roles, accessResult.editor_roles);
+                    return (
+                      <div key={u.id} className={`flex items-center gap-3 px-4 py-2.5 border-b border-zinc-100 dark:border-zinc-800/60 last:border-0 ${u.has_access ? '' : 'opacity-50'}`}>
+                        {u.avatar
+                          ? <img src={u.avatar} alt="" className="w-7 h-7 rounded-full shrink-0 object-cover" />
+                          : <div className="w-7 h-7 rounded-full bg-zinc-200 dark:bg-zinc-700 shrink-0 flex items-center justify-center text-[10px] font-bold text-zinc-500">{(u.display_name || u.username || '?')[0].toUpperCase()}</div>
+                        }
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-semibold text-zinc-900 dark:text-white">{u.display_name || u.username}</span>
+                          <span className="text-[10px] text-zinc-400 ml-1.5 font-mono">@{u.username}</span>
+                        </div>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-lg font-bold ${u.role === 'dev' ? 'bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300' : u.role === 'admin' ? 'bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>{u.role}</span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${u.has_access ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                          <span className={`text-xs font-medium ${color}`}>{text}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           );
         })()}
       </div>
