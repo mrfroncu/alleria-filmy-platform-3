@@ -2137,6 +2137,37 @@ app.post('/api/stream/cleanup', requireDev, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Active transcoding jobs from streaming server
+app.get('/api/stream/transcoding', requireAdmin, async (req, res) => {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const r = await fetch(`${STREAM_URL}/transcoding`, { headers: { 'X-Stream-Token': STREAM_SECRET }, signal: controller.signal });
+    clearTimeout(timeout);
+    const jobs = await r.json();
+    if (!jobs.length) return res.json([]);
+    const placeholders = jobs.map(() => '?').join(',');
+    const ids = jobs.map(j => j.video_id);
+    // Search in both main stream_video_id and mirror URL fields
+    const dbRows = db.prepare(`
+      SELECT id, title, stream_video_id,
+        mirror1_url, mirror2_url, mirror3_url, mirror4_url, mirror5_url
+      FROM videos
+      WHERE stream_video_id IN (${placeholders})
+        OR mirror1_url IN (${placeholders}) OR mirror2_url IN (${placeholders})
+        OR mirror3_url IN (${placeholders}) OR mirror4_url IN (${placeholders})
+        OR mirror5_url IN (${placeholders})
+    `).all(...ids, ...ids, ...ids, ...ids, ...ids, ...ids);
+    const dbMap = new Map();
+    for (const v of dbRows) {
+      const check = (url) => { if (url) { const m = url.match(/^self-hosted:(.+)$/); if (m) dbMap.set(m[1], { id: v.id, title: v.title }); } };
+      if (v.stream_video_id) dbMap.set(v.stream_video_id, { id: v.id, title: v.title });
+      [v.mirror1_url, v.mirror2_url, v.mirror3_url, v.mirror4_url, v.mirror5_url].forEach(check);
+    }
+    res.json(jobs.map(j => ({ ...j, db_video: dbMap.get(j.video_id) || null })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ============ COMMENTS ============
 app.get('/api/videos/:id/comments', requireAuth, (req, res) => {
   try {

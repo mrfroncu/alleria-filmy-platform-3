@@ -35,6 +35,17 @@ export default function DebugPage() {
   const [dbStats, setDbStats] = useState(null);
   const [transcodingVideos, setTranscodingVideos] = useState([]);
 
+  // Live transcoding from streaming server
+  const [liveTranscoding, setLiveTranscoding] = useState(null); // null = not yet loaded
+  const [transcodingLoading, setTranscodingLoading] = useState(false);
+
+  const loadLiveTranscoding = async () => {
+    try {
+      const jobs = await api.streamTranscoding();
+      setLiveTranscoding(jobs);
+    } catch (_) { setLiveTranscoding([]); }
+  };
+
   // Stream file manager
   const [streamFiles, setStreamFiles] = useState(null);
   const [streamFilesLoading, setStreamFilesLoading] = useState(false);
@@ -84,6 +95,13 @@ export default function DebugPage() {
     }).catch(() => {});
     // Load transcoding videos
     loadTranscoding();
+    loadLiveTranscoding();
+  }, []);
+
+  // Poll live transcoding every 5s
+  useEffect(() => {
+    const interval = setInterval(loadLiveTranscoding, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadTranscoding = () => {
@@ -241,34 +259,65 @@ export default function DebugPage() {
       </div>
 
       {/* Transcoding Monitor — full width */}
-      {transcodingVideos.length > 0 && (
-        <div className="card p-6 mb-6">
-          <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-3 flex items-center gap-2">
-            <Loader2 className="w-4 h-4 text-amber-500 animate-spin" /> Aktywne transkodowanie ({transcodingVideos.length})
+      <div className="card p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display flex items-center gap-2">
+            {liveTranscoding?.length > 0
+              ? <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
+              : <BarChart3 className="w-4 h-4 text-zinc-400" />}
+            Transkodowanie na serwerze
+            {liveTranscoding !== null && (
+              <span className={`text-xs font-mono px-2 py-0.5 rounded-lg ${liveTranscoding.length > 0 ? 'bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>
+                {liveTranscoding.length} aktywnych
+              </span>
+            )}
           </h3>
+          <button onClick={loadLiveTranscoding} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl transition-all font-semibold">
+            <RefreshCw className="w-3.5 h-3.5" /> Odśwież
+          </button>
+        </div>
+
+        {liveTranscoding === null && (
+          <p className="text-zinc-400 text-sm text-center py-4 flex items-center justify-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" /> Ładowanie...
+          </p>
+        )}
+
+        {liveTranscoding !== null && liveTranscoding.length === 0 && (
+          <p className="text-zinc-400 text-sm text-center py-4">Brak aktywnych transkodowań</p>
+        )}
+
+        {liveTranscoding?.length > 0 && (
           <div className="space-y-3">
-            {transcodingVideos.map(v => (
-              <div key={v.id} className="flex items-center gap-4 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
-                <div className="w-16 h-10 bg-zinc-200 dark:bg-zinc-700 rounded-lg overflow-hidden shrink-0">
-                  {v.thumbnail ? <img src={v.thumbnail} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-zinc-400 text-[8px]">brak</div>}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-zinc-900 dark:text-white truncate">{v.title}</p>
-                  <p className="text-[10px] text-zinc-500">
-                    {v._quality ? `Jakość: ${v._quality}` : 'Oczekiwanie...'} • {v._progress != null ? `${v._progress}%` : '0%'}
-                  </p>
-                </div>
-                <div className="w-24 shrink-0">
-                  <div className="h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-amber-500 rounded-full transition-all duration-500" style={{ width: `${v._progress || 0}%` }}></div>
+            {liveTranscoding.map(job => (
+              <div key={job.video_id} className="p-4 bg-amber-50/50 dark:bg-amber-500/5 rounded-xl border border-amber-200 dark:border-amber-500/20 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-zinc-900 dark:text-white truncate">
+                      {job.db_video ? job.db_video.title : <span className="text-zinc-400 italic">Brak w bazie danych</span>}
+                    </p>
+                    <p className="text-[10px] font-mono text-zinc-400 mt-0.5">{job.video_id}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {job.quality && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 rounded-lg font-mono">{job.quality}</span>
+                    )}
+                    <span className="text-sm font-mono font-bold text-amber-600 dark:text-amber-400 w-10 text-right">{job.progress}%</span>
                   </div>
                 </div>
-                <span className="text-xs font-mono font-bold text-amber-600 shrink-0">{v._progress || 0}%</span>
+                <div className="space-y-1">
+                  <div className="h-2.5 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-500" style={{ width: `${job.progress}%` }} />
+                  </div>
+                  <p className="text-[10px] text-zinc-400">
+                    {job.quality ? `Kodowanie jakości ${job.quality}` : 'Oczekiwanie na start...'} — odświeżanie co 5s
+                  </p>
+                </div>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Watch Party manager */}
       <div className="card p-6 mb-6">
