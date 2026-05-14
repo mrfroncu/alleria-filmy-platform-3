@@ -80,7 +80,7 @@ app.use('/media', (req, res, next) => {
 app.post('/upload', requireToken, upload.single('video'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-  const videoId = uuidv4();
+  const videoId = req.body.video_id || uuidv4();
   const enableDrm = req.body.drm_enhanced === 'true';
 
   console.log(`[STREAM] Upload received: ${req.file.originalname} (${(req.file.size / 1024 / 1024).toFixed(1)} MB)`);

@@ -1910,44 +1910,54 @@ app.post('/api/stream/upload/complete', requireAdmin, async (req, res) => {
     });
 
     const fileSize = fs.statSync(assembledPath).size;
-    console.log(`[CHUNK] Assembled: ${(fileSize / 1024 / 1024).toFixed(1)} MB — forwarding to streaming service...`);
+    console.log(`[CHUNK] Assembled: ${(fileSize / 1024 / 1024).toFixed(1)} MB — forwarding to streaming service in background...`);
 
-    // Forward assembled file to streaming service via stream
-    const { PassThrough } = require('stream');
-    const boundary = '----AlleriaBoundary' + Date.now();
-    const safeFilename = (meta.filename || 'upload.mp4').replace(/[^a-zA-Z0-9._\-\s]/g, '_').replace(/\r|\n/g, '').slice(0, 255);
-    const preamble = Buffer.from(
-      `--${boundary}\r\nContent-Disposition: form-data; name="video"; filename="${safeFilename}"\r\nContent-Type: video/mp4\r\n\r\n`
-    );
-    const epilogue = Buffer.from(
-      `\r\n--${boundary}\r\nContent-Disposition: form-data; name="drm_enhanced"\r\n\r\n${meta.drm_enhanced ? 'true' : 'false'}\r\n--${boundary}--\r\n`
-    );
+    // Pre-generate video_id so we can respond immediately without waiting for the transfer
+    const { v4: uuidv4 } = require('uuid');
+    const videoId = uuidv4();
 
-    const bodyStream = new PassThrough();
-    bodyStream.write(preamble);
-    const fileStream = fs.createReadStream(assembledPath);
-    fileStream.on('data', chunk => bodyStream.write(chunk));
-    fileStream.on('end', () => { bodyStream.write(epilogue); bodyStream.end(); });
-    fileStream.on('error', err => bodyStream.destroy(err));
+    // Respond to the frontend immediately — transfer to streaming service happens in background
+    res.json({ success: true, video_id: videoId, status: 'uploading' });
 
-    const streamRes = await fetch(`${STREAM_URL}/upload`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        'X-Stream-Token': STREAM_SECRET,
-      },
-      body: bodyStream,
-      duplex: 'half',
+    // Background upload to streaming service
+    setImmediate(async () => {
+      try {
+        const { PassThrough } = require('stream');
+        const boundary = '----AlleriaBoundary' + Date.now();
+        const safeFilename = (meta.filename || 'upload.mp4').replace(/[^a-zA-Z0-9._\-\s]/g, '_').replace(/\r|\n/g, '').slice(0, 255);
+        const preamble = Buffer.from(
+          `--${boundary}\r\nContent-Disposition: form-data; name="video"; filename="${safeFilename}"\r\nContent-Type: video/mp4\r\n\r\n`
+        );
+        const epilogue = Buffer.from(
+          `\r\n--${boundary}\r\nContent-Disposition: form-data; name="drm_enhanced"\r\n\r\n${meta.drm_enhanced ? 'true' : 'false'}\r\n--${boundary}\r\nContent-Disposition: form-data; name="video_id"\r\n\r\n${videoId}\r\n--${boundary}--\r\n`
+        );
+
+        const bodyStream = new PassThrough();
+        bodyStream.write(preamble);
+        const fileStream = fs.createReadStream(assembledPath);
+        fileStream.on('data', chunk => bodyStream.write(chunk));
+        fileStream.on('end', () => { bodyStream.write(epilogue); bodyStream.end(); });
+        fileStream.on('error', err => bodyStream.destroy(err));
+
+        const streamRes = await fetch(`${STREAM_URL}/upload`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+            'X-Stream-Token': STREAM_SECRET,
+          },
+          body: bodyStream,
+          duplex: 'half',
+        });
+
+        const data = await streamRes.json();
+        console.log(`[CHUNK] ✅ Transfer complete: ${upload_id} → stream ${data.video_id || 'error'}`);
+      } catch (err) {
+        console.error(`[CHUNK] ❌ Background transfer failed: ${upload_id}:`, err.message);
+      } finally {
+        try { fs.rmSync(uploadDir, { recursive: true }); } catch (e) {}
+        try { fs.unlinkSync(assembledPath); } catch (e) {}
+      }
     });
-
-    const data = await streamRes.json();
-    console.log(`[CHUNK] ✅ Complete: ${upload_id} → stream ${data.video_id || 'error'}`);
-
-    // Cleanup
-    try { fs.rmSync(uploadDir, { recursive: true }); } catch (e) {}
-    try { fs.unlinkSync(assembledPath); } catch (e) {}
-
-    res.json(data);
   } catch (err) {
     console.error(`[CHUNK] Error completing ${upload_id}:`, err);
     try { fs.rmSync(uploadDir, { recursive: true }); } catch (e) {}

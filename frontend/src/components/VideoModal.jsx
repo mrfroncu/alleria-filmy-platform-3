@@ -855,6 +855,37 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
               <textarea value={description} onChange={e => setDescription(e.target.value)} className="input-field resize-none h-32" placeholder="Opis filmu..." />
             </div>
 
+            {!isSelfHosted && uploadProgress && (
+              <div className="space-y-3 p-4 bg-violet-50/50 dark:bg-violet-500/5 rounded-xl border border-violet-100 dark:border-violet-500/10">
+                <div className="flex items-center gap-2 text-sm text-violet-600 dark:text-violet-300 font-medium">
+                  {uploadPercent < 100 && <div className="w-4 h-4 border-2 border-violet-500 border-t-transparent rounded-full animate-spin shrink-0" />}
+                  {uploadPercent >= 100 && <svg className="w-4 h-4 text-emerald-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>}
+                  <span className="flex-1">{uploadProgress}</span>
+                  <span className="text-xs font-mono text-violet-500">{uploadPercent}%</span>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Całość</span>
+                    <span className="text-[10px] font-mono text-zinc-500">{uploadPercent}%</span>
+                  </div>
+                  <div className="h-2.5 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-violet-500 to-violet-500 rounded-full transition-all duration-300 ease-out" style={{ width: `${uploadPercent}%` }} />
+                  </div>
+                </div>
+                {chunkPercent > 0 && uploadPercent < 95 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Bieżąca część</span>
+                      <span className="text-[10px] font-mono text-zinc-500">{chunkPercent}%</span>
+                    </div>
+                    <div className="h-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                      <div className="h-full bg-emerald-500 rounded-full transition-all duration-150 ease-out" style={{ width: `${chunkPercent}%` }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <button type="submit" disabled={submitting} className="w-full py-5 bg-gradient-to-br from-violet-500 to-violet-600 text-white rounded-2xl font-bold hover:from-violet-600 hover:to-violet-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-4 shadow-xl shadow-violet-500/20 active:scale-[0.98]">
               {submitting ? 'Zapisywanie...' : isEdit ? 'Zapisz zmiany' : 'Dodaj film'}
             </button>
