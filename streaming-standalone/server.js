@@ -80,7 +80,7 @@ app.use('/media', (req, res, next) => {
 app.post('/upload', requireToken, upload.single('video'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-  const videoId = uuidv4();
+  const videoId = req.body.video_id || uuidv4();
   const enableDrm = req.body.drm_enhanced === 'true';
 
   console.log(`[STREAM] Upload received: ${req.file.originalname} (${(req.file.size / 1024 / 1024).toFixed(1)} MB)`);
@@ -201,6 +201,22 @@ app.get('/videos', requireToken, (req, res) => {
     return { video_id: d, ...status, sizeBytes };
   });
   res.json(videos);
+});
+
+// ============ ACTIVE TRANSCODING ============
+app.get('/transcoding', requireToken, (req, res) => {
+  if (!fs.existsSync(MEDIA_DIR)) return res.json([]);
+  const result = [];
+  for (const d of fs.readdirSync(MEDIA_DIR)) {
+    const statusPath = path.join(MEDIA_DIR, d, 'status.json');
+    if (!fs.existsSync(statusPath)) continue;
+    try {
+      const s = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
+      if (s.status === 'transcoding')
+        result.push({ video_id: d, progress: s.progress || 0, quality: s.quality || null });
+    } catch (_) {}
+  }
+  res.json(result);
 });
 
 // ============ HEALTH & VERSION ============
