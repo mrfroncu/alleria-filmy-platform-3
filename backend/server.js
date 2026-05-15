@@ -2277,13 +2277,32 @@ app.get('/api/stream/check/:dbVideoId', requireAdmin, async (req, res) => {
 });
 
 // List all streaming files with DB cross-reference
+function buildStreamDbMap() {
+  const rows = db.prepare(`
+    SELECT id, title, stream_video_id,
+      mirror1_url, mirror2_url, mirror3_url, mirror4_url, mirror5_url
+    FROM videos
+    WHERE stream_video_id IS NOT NULL
+      OR mirror1_url LIKE 'self-hosted:%' OR mirror2_url LIKE 'self-hosted:%'
+      OR mirror3_url LIKE 'self-hosted:%' OR mirror4_url LIKE 'self-hosted:%'
+      OR mirror5_url LIKE 'self-hosted:%'
+  `).all();
+  const map = new Map();
+  for (const v of rows) {
+    if (v.stream_video_id) map.set(v.stream_video_id, { id: v.id, title: v.title });
+    for (const url of [v.mirror1_url, v.mirror2_url, v.mirror3_url, v.mirror4_url, v.mirror5_url]) {
+      if (url) { const m = url.match(/^self-hosted:(.+)$/); if (m) map.set(m[1], { id: v.id, title: v.title }); }
+    }
+  }
+  return map;
+}
+
 app.get('/api/stream/files', requireDev, async (req, res) => {
   try {
     const r = await fetch(`${STREAM_URL}/videos`, { headers: { 'X-Stream-Token': STREAM_SECRET } });
     if (!r.ok) throw new Error('Streaming server unreachable');
     const streamVideos = await r.json();
-    const dbVideos = db.prepare('SELECT id, title, stream_video_id FROM videos WHERE stream_video_id IS NOT NULL').all();
-    const dbMap = new Map(dbVideos.map(v => [v.stream_video_id, { id: v.id, title: v.title }]));
+    const dbMap = buildStreamDbMap();
     res.json(streamVideos.map(sv => ({
       video_id: sv.video_id,
       status: sv.status,
@@ -2300,10 +2319,8 @@ app.get('/api/stream/cleanup', requireDev, async (req, res) => {
     const r = await fetch(`${STREAM_URL}/videos`, { headers: { 'X-Stream-Token': STREAM_SECRET } });
     if (!r.ok) throw new Error('Streaming server unreachable');
     const streamVideos = await r.json();
-    // Cross-reference with DB — detect files whose DB entry was deleted (ready but orphaned)
-    const dbIds = new Set(
-      db.prepare('SELECT stream_video_id FROM videos WHERE stream_video_id IS NOT NULL').all().map(v => v.stream_video_id)
-    );
+    const dbMap = buildStreamDbMap();
+    const dbIds = new Set(dbMap.keys());
     const orphans = streamVideos
       .filter(sv => sv.status === 'error' || sv.status === 'unknown' || !dbIds.has(sv.video_id))
       .map(sv => ({ video_id: sv.video_id, status: sv.status, orphaned_from_db: !dbIds.has(sv.video_id) }));
