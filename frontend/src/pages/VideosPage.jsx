@@ -92,11 +92,23 @@ export default function VideosPage() {
             ? (categories.find(c => c.slug === categorySlug)?.name || categorySlug)
             : 'Baza Filmów'}
         </h1>
-        <p className="text-zinc-500 dark:text-zinc-400 text-base sm:text-lg">
-          {categorySlug
-            ? (categories.find(c => c.slug === categorySlug)?.description || 'Filmy w tej kategorii.')
-            : 'Przeglądaj materiały wideo społeczności.'}
-        </p>
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-zinc-500 dark:text-zinc-400 text-base sm:text-lg">
+            {categorySlug
+              ? (categories.find(c => c.slug === categorySlug)?.description || 'Filmy w tej kategorii.')
+              : 'Przeglądaj materiały wideo społeczności.'}
+          </p>
+          {continueWatching.length > 0 && (
+            <button
+              onClick={handleResetProgress}
+              disabled={resetting}
+              className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-xs text-zinc-400 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 font-medium transition-all disabled:opacity-50"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Resetuj postęp oglądania
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Search & Filters Bar */}
@@ -361,19 +373,6 @@ export default function VideosPage() {
         </>
       )}
 
-      {/* Reset progress — shown only when there's something to reset */}
-      {continueWatching.length > 0 && (
-        <div className="flex justify-center mt-12">
-          <button
-            onClick={handleResetProgress}
-            disabled={resetting}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs text-zinc-400 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 font-medium transition-all disabled:opacity-50"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Resetuj postęp oglądania
-          </button>
-        </div>
-      )}
     </div>
   );
 }
