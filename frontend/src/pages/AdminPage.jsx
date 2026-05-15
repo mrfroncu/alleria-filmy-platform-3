@@ -1,18 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Users, Tag, Film, Search, X, CheckSquare, Square, Shield } from 'lucide-react';
+import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import VideoModal from '../components/VideoModal';
 
 export default function AdminPage() {
   const [videos, setVideos] = useState([]);
-  const [users, setUsers] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [tags, setTags] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [ranks, setRanks] = useState([]);
-  const [userRanks, setUserRanks] = useState({});
-  const [editingUserRanks, setEditingUserRanks] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [tab, setTab] = useState('videos');
@@ -29,18 +25,10 @@ export default function AdminPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [v, u, au, t, c, r] = await Promise.all([
-        api.getVideos({ include_transcoding: '1' }), api.getUsers(), api.getAllUsers(), api.getTags(), api.getCategories(), api.getRanks()
+      const [v, au, t, c] = await Promise.all([
+        api.getVideos({ include_transcoding: '1' }), api.getAllUsers(), api.getTags(), api.getCategories()
       ]);
-      setVideos(v); setUsers(u); setAllUsers(au); setTags(t); setCategories(c); setRanks(r);
-      // Load all user ranks in parallel
-      if (r.length > 0) {
-        const rankMap = {};
-        await Promise.all(u.map(async usr => {
-          try { rankMap[usr.id] = (await api.getUserRanks(usr.id)).map(rk => rk.id); } catch { rankMap[usr.id] = []; }
-        }));
-        setUserRanks(rankMap);
-      }
+      setVideos(v); setAllUsers(au); setTags(t); setCategories(c);
     } catch (err) { console.error(err); }
     setLoading(false);
   };
@@ -111,7 +99,6 @@ export default function AdminPage() {
 
   const tabs = [
     { key: 'videos', label: 'Biblioteka', icon: Film },
-    { key: 'users', label: 'Użytkownicy', icon: Users },
     { key: 'tags', label: 'Tagi', icon: Tag },
   ];
 
@@ -119,7 +106,7 @@ export default function AdminPage() {
     <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
       <div className="mb-8">
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">Panel Redaktora</h1>
-        <p className="text-zinc-500 dark:text-zinc-400">Zarządzaj filmami, użytkownikami i logami platformy.</p>
+        <p className="text-zinc-500 dark:text-zinc-400">Zarządzaj filmami i tagami platformy.</p>
       </div>
 
       {/* Tabs */}
@@ -272,170 +259,6 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* === USERS TAB === */}
-      {tab === 'users' && (
-        <div className="card overflow-hidden">
-          {editingUserRanks && (
-            <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-indigo-50 dark:bg-indigo-500/10">
-              <div className="flex items-center gap-3 flex-wrap">
-                <Shield className="w-4 h-4 text-indigo-500 flex-shrink-0" />
-                <span className="text-sm font-bold text-indigo-700 dark:text-indigo-300">Rangi: {editingUserRanks.name}</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {ranks.map(r => {
-                    const active = editingUserRanks.rankIds.includes(r.id);
-                    return (
-                      <button key={r.id} type="button"
-                        onClick={() => setEditingUserRanks(prev => ({ ...prev, rankIds: active ? prev.rankIds.filter(x => x !== r.id) : [...prev.rankIds, r.id] }))}
-                        className={`text-xs px-2.5 py-1 rounded-lg font-medium border transition-all ${active ? 'text-white border-transparent' : 'bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-600'}`}
-                        style={active ? { backgroundColor: r.color, borderColor: r.color } : {}}>
-                        {r.name}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="ml-auto flex gap-2">
-                  <button onClick={async () => {
-                    try {
-                      await api.setUserRanks(editingUserRanks.userId, editingUserRanks.rankIds);
-                      setUserRanks(prev => ({ ...prev, [editingUserRanks.userId]: editingUserRanks.rankIds }));
-                      setEditingUserRanks(null);
-                    } catch (err) { alert('Błąd: ' + err.message); }
-                  }} className="text-xs px-3 py-1.5 bg-indigo-500 text-white rounded-lg font-medium hover:bg-indigo-600 transition-colors">Zapisz</button>
-                  <button onClick={() => setEditingUserRanks(null)} className="text-xs px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded-lg font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">Anuluj</button>
-                </div>
-              </div>
-            </div>
-          )}
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-zinc-200 dark:border-zinc-800">
-                  <th className="text-left px-4 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Użytkownik</th>
-                  <th className="text-left px-4 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Rola</th>
-                  <th className="text-left px-4 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Widz kategorii</th>
-                  <th className="text-left px-4 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Redaktor kategorii</th>
-                  {ranks.length > 0 && <th className="text-left px-4 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Rangi</th>}
-                  <th className="text-left px-4 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Metoda</th>
-                  <th className="text-left px-4 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Ostatnio</th>
-                  <th className="text-right px-4 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Akcje</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map(u => {
-                  const userRoles = (() => { try { return JSON.parse(u.discord_roles || '[]'); } catch { return []; } })();
-                  const isDevOnly = u.role === 'dev';
-                  const assignedRankIds = userRanks[u.id] || [];
-                  const parseModes = (m) => {
-                    if (!m) return { vm: 'public', em: 'none' };
-                    if (m.includes(':')) { const [vm, em] = m.split(':'); return { vm, em }; }
-                    if (m === 'custom') return { vm: 'custom', em: 'none' };
-                    if (m === 'roles') return { vm: 'roles', em: 'roles' };
-                    return { vm: 'public', em: 'none' };
-                  };
-                  const viewerCats = isDevOnly ? categories : categories.filter(cat => {
-                    const { vm, em } = parseModes(cat.access_mode);
-                    if (vm === 'public') return true;
-                    let canView = false;
-                    if (vm === 'roles') {
-                      const vRIds = (cat.access || []).filter(a => a.access_type === 'viewer').map(a => a.discord_role_id);
-                      const vKIds = (cat.rank_access || []).filter(a => a.access_type === 'viewer').map(a => a.rank_id);
-                      canView = userRoles.some(r => vRIds.includes(r)) || assignedRankIds.some(r => vKIds.includes(r));
-                    }
-                    if (!canView && em === 'roles') {
-                      const eRIds = (cat.access || []).filter(a => a.access_type === 'editor').map(a => a.discord_role_id);
-                      const eKIds = (cat.rank_access || []).filter(a => a.access_type === 'editor').map(a => a.rank_id);
-                      if (userRoles.some(r => eRIds.includes(r)) || assignedRankIds.some(r => eKIds.includes(r))) canView = true;
-                    }
-                    return canView;
-                  });
-                  const editorCats = isDevOnly ? categories : categories.filter(cat => {
-                    const { em } = parseModes(cat.access_mode);
-                    if (em !== 'roles') return false;
-                    const eRIds = (cat.access || []).filter(a => a.access_type === 'editor').map(a => a.discord_role_id);
-                    const eKIds = (cat.rank_access || []).filter(a => a.access_type === 'editor').map(a => a.rank_id);
-                    return userRoles.some(r => eRIds.includes(r)) || assignedRankIds.some(r => eKIds.includes(r));
-                  });
-                  return (
-                  <tr key={u.id} className="border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-white/[0.02] transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <img src={u.avatar || `https://ui-avatars.com/api/?name=${u.display_name || u.username}&background=6366f1&color=fff`} alt="" className="w-7 h-7 rounded-lg object-cover border border-zinc-200 dark:border-zinc-700" />
-                        <div>
-                          <p className="text-sm font-bold text-zinc-900 dark:text-white">{u.display_name || u.username}</p>
-                          <p className="text-[10px] text-zinc-500 font-mono">@{u.username} • ID:{u.id}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex px-2 py-0.5 rounded-lg text-[10px] font-bold ${
-                        u.role === 'dev' ? 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300' :
-                        u.role === 'admin' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' :
-                        'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'
-                      }`}>{u.role?.toUpperCase()}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1 max-w-[200px]">
-                        {isDevOnly ? (
-                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Wszystkie</span>
-                        ) : viewerCats.length === 0 ? (
-                          <span className="text-[10px] text-zinc-400">—</span>
-                        ) : viewerCats.map(c => (
-                          <span key={c.id} className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 rounded">{c.name}</span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1 max-w-[200px]">
-                        {isDevOnly ? (
-                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Wszystkie</span>
-                        ) : editorCats.length === 0 ? (
-                          <span className="text-[10px] text-zinc-400">—</span>
-                        ) : editorCats.map(c => (
-                          <span key={c.id} className="text-[10px] font-bold px-1.5 py-0.5 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 rounded">{c.name}</span>
-                        ))}
-                      </div>
-                    </td>
-                    {ranks.length > 0 && (
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 flex-wrap max-w-[160px]">
-                          {assignedRankIds.length === 0 ? (
-                            <span className="text-[10px] text-zinc-400">—</span>
-                          ) : ranks.filter(r => assignedRankIds.includes(r.id)).map(r => (
-                            <span key={r.id} className="text-[10px] font-medium px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: r.color }}>{r.name}</span>
-                          ))}
-                          <button onClick={() => setEditingUserRanks({ userId: u.id, name: u.display_name || u.username, rankIds: [...assignedRankIds] })}
-                            className="p-0.5 hover:bg-indigo-100 dark:hover:bg-indigo-500/10 rounded text-zinc-400 hover:text-indigo-500 transition-all ml-0.5" title="Edytuj rangi">
-                            <Pencil className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </td>
-                    )}
-                    <td className="px-4 py-3 text-xs text-zinc-500">{u.auth_method}</td>
-                    <td className="px-4 py-3 text-xs text-zinc-500 font-mono">{formatDate(u.last_login)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={async () => {
-                          if (!confirm(`Usunąć konto "${u.display_name || u.username}"?\n\nTo nie jest ban — użytkownik może zalogować się ponownie.`)) return;
-                          try {
-                            await api.deleteUser(u.id);
-                            setUsers(prev => prev.filter(x => x.id !== u.id));
-                          } catch (err) { alert('Błąd: ' + err.message); }
-                        }}
-                        className="p-1.5 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
-                        title="Usuń konto"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-            </table>
           </div>
         </div>
       )}
