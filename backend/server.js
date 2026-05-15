@@ -256,6 +256,51 @@ function getUserRankIds(userId) {
   return db.prepare('SELECT rank_id FROM user_rank_assignments WHERE user_id = ?').all(userId).map(r => r.rank_id);
 }
 
+// Parse compound access_mode string → { vm: viewer_mode, em: editor_mode }
+// Format: 'viewer_mode:editor_mode'
+// viewer_mode: 'public' | 'roles' | 'custom'
+// editor_mode: 'none' | 'roles' | 'custom'
+function parseCatModes(accessMode) {
+  const mode = accessMode || '';
+  if (mode.includes(':')) {
+    const [vm, em] = mode.split(':');
+    return { vm, em };
+  }
+  // Legacy fallback
+  if (mode === 'custom') return { vm: 'custom', em: 'none' };
+  if (mode === 'roles') return { vm: 'roles', em: 'roles' };
+  return { vm: 'public', em: 'none' };
+}
+
+// Check if user has view access to a category (returns {canView, canEdit})
+function checkCatAccess(catId, accessMode, userId, userRoles, userRankIds) {
+  const { vm, em } = parseCatModes(accessMode);
+
+  let canView = false;
+  if (vm === 'public') {
+    canView = true;
+  } else if (vm === 'roles') {
+    const vRoles = db.prepare("SELECT discord_role_id FROM category_access WHERE category_id = ? AND access_type = 'viewer'").all(catId).map(r => r.discord_role_id);
+    const vRanks = db.prepare("SELECT rank_id FROM category_rank_access WHERE category_id = ? AND access_type = 'viewer'").all(catId).map(r => r.rank_id);
+    canView = userRoles.some(r => vRoles.includes(r)) || userRankIds.some(r => vRanks.includes(r));
+  } else if (vm === 'custom') {
+    canView = !!db.prepare("SELECT 1 FROM category_user_access WHERE category_id = ? AND user_id = ? AND access_type = 'viewer'").get(catId, userId);
+  }
+
+  let canEdit = false;
+  if (em === 'roles') {
+    const eRoles = db.prepare("SELECT discord_role_id FROM category_access WHERE category_id = ? AND access_type = 'editor'").all(catId).map(r => r.discord_role_id);
+    const eRanks = db.prepare("SELECT rank_id FROM category_rank_access WHERE category_id = ? AND access_type = 'editor'").all(catId).map(r => r.rank_id);
+    canEdit = userRoles.some(r => eRoles.includes(r)) || userRankIds.some(r => eRanks.includes(r));
+  } else if (em === 'custom') {
+    canEdit = !!db.prepare("SELECT 1 FROM category_user_access WHERE category_id = ? AND user_id = ? AND access_type = 'editor'").get(catId, userId);
+  }
+
+  // Editors can always view
+  if (canEdit) canView = true;
+  return { canView, canEdit };
+}
+
 // ============ DISCORD AUTH ============
 function discordRedirectHandler(req, res) {
   if (!process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_REDIRECT_URI) {
@@ -877,17 +922,8 @@ app.get('/api/videos', requireAuth, (req, res) => {
     const allCats = db.prepare('SELECT id, access_mode FROM categories').all();
     const restrictedCatIds = [];
     for (const cat of allCats) {
-      if (cat.access_mode === 'custom') {
-        const inList = !!db.prepare('SELECT 1 FROM category_user_access WHERE category_id = ? AND user_id = ?').get(cat.id, userId);
-        if (!inList) restrictedCatIds.push(cat.id);
-      } else {
-        const catRoles = db.prepare("SELECT discord_role_id FROM category_access WHERE category_id = ? AND access_type IN ('viewer','editor')").all(cat.id).map(r => r.discord_role_id);
-        const catRankIds = db.prepare("SELECT rank_id FROM category_rank_access WHERE category_id = ? AND access_type IN ('viewer','editor')").all(cat.id).map(r => r.rank_id);
-        if (catRoles.length > 0 || catRankIds.length > 0) {
-          const hasAccess = catRoles.some(r => userRoles.includes(r)) || userRankIds.some(r => catRankIds.includes(r));
-          if (!hasAccess) restrictedCatIds.push(cat.id);
-        }
-      }
+      const { canView } = checkCatAccess(cat.id, cat.access_mode, userId, userRoles, userRankIds);
+      if (!canView) restrictedCatIds.push(cat.id);
     }
     if (restrictedCatIds.length > 0) {
       conditions.push(`(v.category_id IS NULL OR v.category_id NOT IN (${restrictedCatIds.map(() => '?').join(',')}))`);
@@ -912,23 +948,13 @@ app.get('/api/videos', requireAuth, (req, res) => {
   }
 
   if (category) {
-    // Check category access — only dev bypasses
     if (!isDev) {
       const cat = db.prepare('SELECT id, access_mode FROM categories WHERE slug = ?').get(category);
       if (cat) {
-        if (cat.access_mode === 'custom') {
-          const inList = !!db.prepare('SELECT 1 FROM category_user_access WHERE category_id = ? AND user_id = ?').get(cat.id, req.session.user.id);
-          if (!inList) return res.json([]);
-        } else {
-          const catViewerRoles = db.prepare("SELECT discord_role_id FROM category_access WHERE category_id = ? AND access_type IN ('viewer','editor')").all(cat.id).map(r => r.discord_role_id);
-          const catViewerRankIds = db.prepare("SELECT rank_id FROM category_rank_access WHERE category_id = ? AND access_type IN ('viewer','editor')").all(cat.id).map(r => r.rank_id);
-          if (catViewerRoles.length > 0 || catViewerRankIds.length > 0) {
-            const userRoles = req.session.user.discord_roles || [];
-            const userRankIds = getUserRankIds(req.session.user.id);
-            const hasAccess = catViewerRoles.some(r => userRoles.includes(r)) || userRankIds.some(r => catViewerRankIds.includes(r));
-            if (!hasAccess) return res.json([]);
-          }
-        }
+        const uRoles = req.session.user.discord_roles || [];
+        const uRankIds = getUserRankIds(req.session.user.id);
+        const { canView } = checkCatAccess(cat.id, cat.access_mode, req.session.user.id, uRoles, uRankIds);
+        if (!canView) return res.json([]);
       }
     }
     conditions.push('v.category_id = (SELECT id FROM categories WHERE slug = ?)');
@@ -985,15 +1011,11 @@ app.get('/api/videos/:id', requireAuth, (req, res) => {
       }
       // Check category access
       if (video.category_id) {
-        const catRoles = db.prepare("SELECT discord_role_id FROM category_access WHERE category_id = ? AND access_type IN ('viewer','editor')").all(video.category_id).map(a => a.discord_role_id);
-        const catRankIds = db.prepare("SELECT rank_id FROM category_rank_access WHERE category_id = ? AND access_type IN ('viewer','editor')").all(video.category_id).map(a => a.rank_id);
-        if (catRoles.length > 0 || catRankIds.length > 0) {
-          const userRoles = user.discord_roles || [];
-          const userRankIds = getUserRankIds(user.id);
-          const hasAccess = catRoles.some(r => userRoles.includes(r)) || userRankIds.some(r => catRankIds.includes(r));
-          if (!hasAccess) return res.status(403).json({ error: 'Brak dostępu do tej kategorii.' });
+        const cat = db.prepare('SELECT access_mode FROM categories WHERE id = ?').get(video.category_id);
+        if (cat) {
+          const { canView } = checkCatAccess(video.category_id, cat.access_mode, user.id, user.discord_roles || [], getUserRankIds(user.id));
+          if (!canView) return res.status(403).json({ error: 'Brak dostępu do tej kategorii.' });
         }
-        // catRoles.length === 0 && catRankIds.length === 0 → public category
       }
     }
 
@@ -1292,30 +1314,14 @@ app.get('/api/categories', requireAuth, (req, res) => {
       return res.json(cats);
     }
 
-    // Regular users — check role-based or custom access
+    // Regular users — check access using compound mode
     const userId = user.id;
     const userRoles = user.discord_roles || [];
     const userRankIds = getUserRankIds(userId);
     const cats = allCats.map(c => {
       const access = db.prepare('SELECT * FROM category_access WHERE category_id = ?').all(c.id);
       const rank_access = db.prepare('SELECT cra.*, r.name AS rank_name, r.color AS rank_color FROM category_rank_access cra JOIN app_ranks r ON cra.rank_id = r.id WHERE cra.category_id = ?').all(c.id);
-      let canView, canEdit;
-      if (c.access_mode === 'custom') {
-        const inList = !!db.prepare('SELECT 1 FROM category_user_access WHERE category_id = ? AND user_id = ?').get(c.id, userId);
-        canView = inList;
-        canEdit = false;
-      } else {
-        const viewerRoles = access.filter(a => a.access_type === 'viewer').map(a => a.discord_role_id);
-        const editorRoles = access.filter(a => a.access_type === 'editor').map(a => a.discord_role_id);
-        const viewerRankIds = rank_access.filter(a => a.access_type === 'viewer').map(a => a.rank_id);
-        const editorRankIds = rank_access.filter(a => a.access_type === 'editor').map(a => a.rank_id);
-        const noViewRestrictions = viewerRoles.length === 0 && viewerRankIds.length === 0;
-        const hasDiscordView = userRoles.some(r => viewerRoles.includes(r)) || userRoles.some(r => editorRoles.includes(r));
-        const hasRankView = userRankIds.some(r => viewerRankIds.includes(r)) || userRankIds.some(r => editorRankIds.includes(r));
-        canView = noViewRestrictions || hasDiscordView || hasRankView;
-        canEdit = (editorRoles.length === 0 && editorRankIds.length === 0) ? false
-          : (userRoles.some(r => editorRoles.includes(r)) || userRankIds.some(r => editorRankIds.includes(r)));
-      }
+      const { canView, canEdit } = checkCatAccess(c.id, c.access_mode, userId, userRoles, userRankIds);
       const videoCount = db.prepare('SELECT COUNT(*) AS c FROM videos WHERE category_id = ?').get(c.id).c;
       return { ...c, access, rank_access, videoCount, canView, canEdit };
     }).filter(c => c.canView);
@@ -1362,38 +1368,41 @@ app.delete('/api/categories/:id', requireDev, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Set category access roles (dev only)
+// Set category access (dev only)
+// New payload: { viewer_mode, editor_mode, viewers, editors, rank_viewers, rank_editors, viewer_user_ids, editor_user_ids }
+// viewer_mode: 'public' | 'roles' | 'custom'
+// editor_mode: 'none' | 'roles' | 'custom'
 app.post('/api/categories/:id/access', requireDev, (req, res) => {
   try {
-    const { viewers, editors, rank_viewers, rank_editors, access_mode, user_ids } = req.body;
-    const mode = access_mode || 'roles';
-    db.prepare('UPDATE categories SET access_mode = ? WHERE id = ?').run(mode, req.params.id);
-    if (mode === 'custom') {
-      db.prepare('DELETE FROM category_user_access WHERE category_id = ?').run(req.params.id);
-      db.prepare('DELETE FROM category_rank_access WHERE category_id = ?').run(req.params.id);
-      if (user_ids && user_ids.length > 0) {
-        const stmt = db.prepare('INSERT OR IGNORE INTO category_user_access (category_id, user_id) VALUES (?, ?)');
-        user_ids.forEach(uid => stmt.run(req.params.id, uid));
-      }
-    } else {
-      db.prepare('DELETE FROM category_access WHERE category_id = ?').run(req.params.id);
-      db.prepare('DELETE FROM category_rank_access WHERE category_id = ?').run(req.params.id);
-      if (viewers) {
-        const stmt = db.prepare('INSERT OR IGNORE INTO category_access (category_id, discord_role_id, access_type) VALUES (?, ?, ?)');
-        viewers.forEach(r => stmt.run(req.params.id, r, 'viewer'));
-      }
-      if (editors) {
-        const stmt = db.prepare('INSERT OR IGNORE INTO category_access (category_id, discord_role_id, access_type) VALUES (?, ?, ?)');
-        editors.forEach(r => stmt.run(req.params.id, r, 'editor'));
-      }
-      if (rank_viewers && rank_viewers.length > 0) {
-        const stmt = db.prepare('INSERT OR IGNORE INTO category_rank_access (category_id, rank_id, access_type) VALUES (?, ?, ?)');
-        rank_viewers.forEach(rid => stmt.run(req.params.id, rid, 'viewer'));
-      }
-      if (rank_editors && rank_editors.length > 0) {
-        const stmt = db.prepare('INSERT OR IGNORE INTO category_rank_access (category_id, rank_id, access_type) VALUES (?, ?, ?)');
-        rank_editors.forEach(rid => stmt.run(req.params.id, rid, 'editor'));
-      }
+    const { viewer_mode, editor_mode, viewers, editors, rank_viewers, rank_editors, viewer_user_ids, editor_user_ids } = req.body;
+    const vm = viewer_mode || 'public';
+    const em = editor_mode || 'none';
+    const catId = req.params.id;
+
+    db.prepare('UPDATE categories SET access_mode = ? WHERE id = ?').run(`${vm}:${em}`, catId);
+    db.prepare('DELETE FROM category_access WHERE category_id = ?').run(catId);
+    db.prepare('DELETE FROM category_rank_access WHERE category_id = ?').run(catId);
+    db.prepare('DELETE FROM category_user_access WHERE category_id = ?').run(catId);
+
+    if (vm === 'roles') {
+      const stmtR = db.prepare('INSERT OR IGNORE INTO category_access (category_id, discord_role_id, access_type) VALUES (?, ?, ?)');
+      const stmtRank = db.prepare('INSERT OR IGNORE INTO category_rank_access (category_id, rank_id, access_type) VALUES (?, ?, ?)');
+      (viewers || []).forEach(r => stmtR.run(catId, r, 'viewer'));
+      (rank_viewers || []).forEach(rid => stmtRank.run(catId, rid, 'viewer'));
+    }
+    if (em === 'roles') {
+      const stmtR = db.prepare('INSERT OR IGNORE INTO category_access (category_id, discord_role_id, access_type) VALUES (?, ?, ?)');
+      const stmtRank = db.prepare('INSERT OR IGNORE INTO category_rank_access (category_id, rank_id, access_type) VALUES (?, ?, ?)');
+      (editors || []).forEach(r => stmtR.run(catId, r, 'editor'));
+      (rank_editors || []).forEach(rid => stmtRank.run(catId, rid, 'editor'));
+    }
+    if (vm === 'custom') {
+      const stmt = db.prepare('INSERT OR IGNORE INTO category_user_access (category_id, user_id, access_type) VALUES (?, ?, ?)');
+      (viewer_user_ids || []).forEach(uid => stmt.run(catId, uid, 'viewer'));
+    }
+    if (em === 'custom') {
+      const stmt = db.prepare('INSERT OR IGNORE INTO category_user_access (category_id, user_id, access_type) VALUES (?, ?, ?)');
+      (editor_user_ids || []).forEach(uid => stmt.run(catId, uid, 'editor'));
     }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1404,8 +1413,9 @@ app.get('/api/categories/:id/user-access', requireDev, (req, res) => {
   try {
     const cat = db.prepare('SELECT access_mode FROM categories WHERE id = ?').get(req.params.id);
     if (!cat) return res.status(404).json({ error: 'Not found' });
-    const users = db.prepare('SELECT u.id, u.username, u.display_name FROM category_user_access cua JOIN users u ON cua.user_id = u.id WHERE cua.category_id = ?').all(req.params.id);
-    res.json({ access_mode: cat.access_mode || 'roles', users });
+    const viewerUsers = db.prepare("SELECT u.id, u.username, u.display_name FROM category_user_access cua JOIN users u ON cua.user_id = u.id WHERE cua.category_id = ? AND cua.access_type = 'viewer'").all(req.params.id);
+    const editorUsers = db.prepare("SELECT u.id, u.username, u.display_name FROM category_user_access cua JOIN users u ON cua.user_id = u.id WHERE cua.category_id = ? AND cua.access_type = 'editor'").all(req.params.id);
+    res.json({ access_mode: cat.access_mode || 'public:none', viewer_users: viewerUsers, editor_users: editorUsers });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1771,68 +1781,62 @@ app.put('/api/profile', requireAuth, (req, res) => {
 
 app.get('/api/debug/access/:type/:id', requireDev, (req, res) => {
   const { type, id } = req.params;
-  const users = db.prepare('SELECT id, username, display_name, avatar, role, discord_roles FROM users ORDER BY role DESC, display_name ASC').all();
+  const dbUsers = db.prepare('SELECT id, username, display_name, avatar, role, discord_roles FROM users ORDER BY role DESC, display_name ASC').all();
 
-  const computeUsers = (viewerRoles, editorRoles, viewerRankIds, editorRankIds, isPublic, customAccessIds = null) =>
-    users.map(u => {
+  const computeUsers = (catId, accessMode, videoCustomIds = null) =>
+    dbUsers.map(u => {
       const dr = JSON.parse(u.discord_roles || '[]');
       const ur = getUserRankIds(u.id);
-      let hasAccess = false, reason = '';
       if (u.role === 'dev') {
-        hasAccess = true; reason = 'dev';
-      } else if (customAccessIds !== null) {
-        hasAccess = customAccessIds.has(u.id);
-        reason = hasAccess ? 'custom_access' : 'not_in_custom_list';
-      } else if (isPublic) {
-        hasAccess = true; reason = 'public';
-      } else {
-        const mv = dr.find(r => viewerRoles.includes(r));
-        const me = dr.find(r => editorRoles.includes(r));
-        const mrv = ur.find(r => viewerRankIds.includes(r));
-        const mre = ur.find(r => editorRankIds.includes(r));
-        if (mv || me || mrv || mre) {
-          hasAccess = true;
-          reason = me ? `editor:discord:${me}` : mre ? `editor:rank:${mre}` : mv ? `viewer:discord:${mv}` : `viewer:rank:${mrv}`;
-        } else { reason = 'no_matching_role'; }
+        return { id: u.id, username: u.username, display_name: u.display_name, avatar: u.avatar, role: u.role, discord_roles: dr, app_rank_ids: ur, has_access: true, can_edit: true, reason: 'dev' };
       }
-      return { id: u.id, username: u.username, display_name: u.display_name, avatar: u.avatar, role: u.role, discord_roles: dr, app_rank_ids: ur, has_access: hasAccess, reason };
+      if (videoCustomIds !== null) {
+        const has = videoCustomIds.has(u.id);
+        return { id: u.id, username: u.username, display_name: u.display_name, avatar: u.avatar, role: u.role, discord_roles: dr, app_rank_ids: ur, has_access: has, can_edit: false, reason: has ? 'custom_video_access' : 'not_in_custom_list' };
+      }
+      const { canView, canEdit } = checkCatAccess(catId, accessMode, u.id, dr, ur);
+      let reason = 'no_access';
+      if (canEdit) reason = 'editor';
+      else if (canView) {
+        const { vm } = parseCatModes(accessMode);
+        reason = vm === 'public' ? 'public' : vm === 'custom' ? 'custom_viewer' : 'viewer_role_or_rank';
+      }
+      return { id: u.id, username: u.username, display_name: u.display_name, avatar: u.avatar, role: u.role, discord_roles: dr, app_rank_ids: ur, has_access: canView, can_edit: canEdit, reason };
     });
 
   if (type === 'category') {
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
     if (!cat) return res.status(404).json({ error: 'Category not found' });
-    if (cat.access_mode === 'custom') {
-      const rows = db.prepare('SELECT user_id FROM category_user_access WHERE category_id = ?').all(id);
-      const customIds = new Set(rows.map(r => r.user_id));
-      return res.json({ type: 'category', name: cat.name, access_mode: 'custom', is_public: false, viewer_roles: [], editor_roles: [], viewer_rank_ids: [], editor_rank_ids: [], users: computeUsers([], [], [], [], false, customIds) });
-    }
+    const { vm, em } = parseCatModes(cat.access_mode);
     const rules = db.prepare('SELECT * FROM category_access WHERE category_id = ?').all(id);
     const rankRules = db.prepare('SELECT cra.*, r.name AS rank_name FROM category_rank_access cra JOIN app_ranks r ON cra.rank_id = r.id WHERE cra.category_id = ?').all(id);
-    const viewerRoles = rules.filter(r => r.access_type === 'viewer').map(r => r.discord_role_id);
-    const editorRoles = rules.filter(r => r.access_type === 'editor').map(r => r.discord_role_id);
-    const viewerRankIds = rankRules.filter(r => r.access_type === 'viewer').map(r => r.rank_id);
-    const editorRankIds = rankRules.filter(r => r.access_type === 'editor').map(r => r.rank_id);
-    const isPublic = rules.length === 0 && rankRules.length === 0;
-    return res.json({ type: 'category', name: cat.name, access_mode: cat.access_mode || 'roles', is_public: isPublic, viewer_roles: viewerRoles, editor_roles: editorRoles, viewer_rank_ids: viewerRankIds, editor_rank_ids: editorRankIds, rank_rules: rankRules, users: computeUsers(viewerRoles, editorRoles, viewerRankIds, editorRankIds, isPublic) });
+    return res.json({
+      type: 'category', name: cat.name, access_mode: cat.access_mode,
+      viewer_mode: vm, editor_mode: em,
+      viewer_roles: rules.filter(r => r.access_type === 'viewer').map(r => r.discord_role_id),
+      editor_roles: rules.filter(r => r.access_type === 'editor').map(r => r.discord_role_id),
+      viewer_ranks: rankRules.filter(r => r.access_type === 'viewer'),
+      editor_ranks: rankRules.filter(r => r.access_type === 'editor'),
+      users: computeUsers(parseInt(id), cat.access_mode),
+    });
   }
 
   if (type === 'video') {
-    const video = db.prepare('SELECT v.*, c.name AS category_name FROM videos v LEFT JOIN categories c ON v.category_id = c.id WHERE v.id = ?').get(id);
+    const video = db.prepare('SELECT v.*, c.name AS category_name, c.access_mode AS cat_access_mode FROM videos v LEFT JOIN categories c ON v.category_id = c.id WHERE v.id = ?').get(id);
     if (!video) return res.status(404).json({ error: 'Video not found' });
-    let viewerRoles = [], editorRoles = [], viewerRankIds = [], editorRankIds = [], isPublic = false, customIds = null;
     if (video.access_mode === 'custom') {
       const rows = db.prepare('SELECT user_id FROM video_access WHERE video_id = ?').all(video.id);
-      customIds = new Set(rows.map(r => r.user_id));
-    } else if (video.category_id) {
-      const rules = db.prepare('SELECT * FROM category_access WHERE category_id = ?').all(video.category_id);
-      const rankRules = db.prepare('SELECT * FROM category_rank_access WHERE category_id = ?').all(video.category_id);
-      viewerRoles = rules.filter(r => r.access_type === 'viewer').map(r => r.discord_role_id);
-      editorRoles = rules.filter(r => r.access_type === 'editor').map(r => r.discord_role_id);
-      viewerRankIds = rankRules.filter(r => r.access_type === 'viewer').map(r => r.rank_id);
-      editorRankIds = rankRules.filter(r => r.access_type === 'editor').map(r => r.rank_id);
-      isPublic = rules.length === 0 && rankRules.length === 0;
-    } else { isPublic = true; }
-    return res.json({ type: 'video', title: video.title, access_mode: video.access_mode, category_id: video.category_id, category_name: video.category_name, is_public: isPublic, viewer_roles: viewerRoles, editor_roles: editorRoles, viewer_rank_ids: viewerRankIds, editor_rank_ids: editorRankIds, users: computeUsers(viewerRoles, editorRoles, viewerRankIds, editorRankIds, isPublic, customIds) });
+      return res.json({ type: 'video', title: video.title, access_mode: 'custom', users: computeUsers(null, null, new Set(rows.map(r => r.user_id))) });
+    }
+    const catId = video.category_id;
+    const catMode = catId ? (video.cat_access_mode || 'public:none') : 'public:none';
+    const { vm, em } = parseCatModes(catMode);
+    return res.json({
+      type: 'video', title: video.title, access_mode: video.access_mode,
+      category_id: catId, category_name: video.category_name,
+      viewer_mode: vm, editor_mode: em,
+      users: catId ? computeUsers(catId, catMode) : computeUsers(null, 'public:none'),
+    });
   }
 
   res.status(400).json({ error: 'Invalid type' });

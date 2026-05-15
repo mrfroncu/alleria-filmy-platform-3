@@ -327,20 +327,37 @@ export default function AdminPage() {
               <tbody>
                 {users.map(u => {
                   const userRoles = (() => { try { return JSON.parse(u.discord_roles || '[]'); } catch { return []; } })();
-                  const isDevAdmin = u.role === 'dev' || u.role === 'admin';
+                  const isDevOnly = u.role === 'dev';
                   const assignedRankIds = userRanks[u.id] || [];
-                  const viewerCats = isDevAdmin ? categories : categories.filter(cat => {
-                    const viewerRoleIds = (cat.access || []).filter(a => a.access_type === 'viewer').map(a => a.discord_role_id);
-                    const editorRoleIds = (cat.access || []).filter(a => a.access_type === 'editor').map(a => a.discord_role_id);
-                    const viewerRankIds = (cat.rank_access || []).filter(a => a.access_type === 'viewer').map(a => a.rank_id);
-                    const editorRankIds = (cat.rank_access || []).filter(a => a.access_type === 'editor').map(a => a.rank_id);
-                    const noRestriction = viewerRoleIds.length === 0 && viewerRankIds.length === 0;
-                    return noRestriction || userRoles.some(r => viewerRoleIds.includes(r)) || userRoles.some(r => editorRoleIds.includes(r)) || assignedRankIds.some(r => viewerRankIds.includes(r)) || assignedRankIds.some(r => editorRankIds.includes(r));
+                  const parseModes = (m) => {
+                    if (!m) return { vm: 'public', em: 'none' };
+                    if (m.includes(':')) { const [vm, em] = m.split(':'); return { vm, em }; }
+                    if (m === 'custom') return { vm: 'custom', em: 'none' };
+                    if (m === 'roles') return { vm: 'roles', em: 'roles' };
+                    return { vm: 'public', em: 'none' };
+                  };
+                  const viewerCats = isDevOnly ? categories : categories.filter(cat => {
+                    const { vm, em } = parseModes(cat.access_mode);
+                    if (vm === 'public') return true;
+                    let canView = false;
+                    if (vm === 'roles') {
+                      const vRIds = (cat.access || []).filter(a => a.access_type === 'viewer').map(a => a.discord_role_id);
+                      const vKIds = (cat.rank_access || []).filter(a => a.access_type === 'viewer').map(a => a.rank_id);
+                      canView = userRoles.some(r => vRIds.includes(r)) || assignedRankIds.some(r => vKIds.includes(r));
+                    }
+                    if (!canView && em === 'roles') {
+                      const eRIds = (cat.access || []).filter(a => a.access_type === 'editor').map(a => a.discord_role_id);
+                      const eKIds = (cat.rank_access || []).filter(a => a.access_type === 'editor').map(a => a.rank_id);
+                      if (userRoles.some(r => eRIds.includes(r)) || assignedRankIds.some(r => eKIds.includes(r))) canView = true;
+                    }
+                    return canView;
                   });
-                  const editorCats = isDevAdmin ? categories : categories.filter(cat => {
-                    const editorRoleIds = (cat.access || []).filter(a => a.access_type === 'editor').map(a => a.discord_role_id);
-                    const editorRankIds = (cat.rank_access || []).filter(a => a.access_type === 'editor').map(a => a.rank_id);
-                    return userRoles.some(r => editorRoleIds.includes(r)) || assignedRankIds.some(r => editorRankIds.includes(r));
+                  const editorCats = isDevOnly ? categories : categories.filter(cat => {
+                    const { em } = parseModes(cat.access_mode);
+                    if (em !== 'roles') return false;
+                    const eRIds = (cat.access || []).filter(a => a.access_type === 'editor').map(a => a.discord_role_id);
+                    const eKIds = (cat.rank_access || []).filter(a => a.access_type === 'editor').map(a => a.rank_id);
+                    return userRoles.some(r => eRIds.includes(r)) || assignedRankIds.some(r => eKIds.includes(r));
                   });
                   return (
                   <tr key={u.id} className="border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-white/[0.02] transition-colors">
@@ -362,7 +379,7 @@ export default function AdminPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1 max-w-[200px]">
-                        {isDevAdmin ? (
+                        {isDevOnly ? (
                           <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Wszystkie</span>
                         ) : viewerCats.length === 0 ? (
                           <span className="text-[10px] text-zinc-400">—</span>
@@ -373,7 +390,7 @@ export default function AdminPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1 max-w-[200px]">
-                        {isDevAdmin ? (
+                        {isDevOnly ? (
                           <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Wszystkie</span>
                         ) : editorCats.length === 0 ? (
                           <span className="text-[10px] text-zinc-400">—</span>

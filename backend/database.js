@@ -170,6 +170,15 @@ function initDB() {
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   )`);
 
+  // Add access_type to category_user_access to support editors in custom mode
+  try { db.exec(`ALTER TABLE category_user_access ADD COLUMN access_type TEXT DEFAULT 'viewer'`); } catch (e) {}
+
+  // Migrate legacy access_mode values to new compound format: viewer_mode:editor_mode
+  // 'roles' → 'roles:roles', 'custom' → 'custom:none', NULL/empty → 'public:none'
+  try { db.exec(`UPDATE categories SET access_mode = 'roles:roles' WHERE access_mode = 'roles'`); } catch (e) {}
+  try { db.exec(`UPDATE categories SET access_mode = 'custom:none' WHERE access_mode = 'custom'`); } catch (e) {}
+  try { db.exec(`UPDATE categories SET access_mode = 'public:none' WHERE access_mode IS NULL OR access_mode = ''`); } catch (e) {}
+
   // Migrate: is_embed=1 → type='embed'
   try { db.exec(`UPDATE videos SET mirror1_type='embed' WHERE mirror1_is_embed=1 AND mirror1_type='link'`); } catch (e) {}
   try { db.exec(`UPDATE videos SET mirror2_type='embed' WHERE mirror2_is_embed=1 AND mirror2_type='link'`); } catch (e) {}

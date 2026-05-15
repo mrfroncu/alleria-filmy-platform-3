@@ -13,14 +13,18 @@ export default function ManagePage() {
   const [catOrder, setCatOrder] = useState('0');
   const [catParentId, setCatParentId] = useState('');
   const [editingCat, setEditingCat] = useState(null);
+  // viewer_mode: 'public' | 'roles' | 'custom'
+  // editor_mode: 'none' | 'roles' | 'custom'
+  const [catViewerMode, setCatViewerMode] = useState('public');
+  const [catEditorMode, setCatEditorMode] = useState('none');
   const [catViewerRoles, setCatViewerRoles] = useState('');
   const [catEditorRoles, setCatEditorRoles] = useState('');
   const [catViewerRankIds, setCatViewerRankIds] = useState([]);
   const [catEditorRankIds, setCatEditorRankIds] = useState([]);
+  const [catViewerUserIds, setCatViewerUserIds] = useState([]);
+  const [catEditorUserIds, setCatEditorUserIds] = useState([]);
   const [catWebhookUrl, setCatWebhookUrl] = useState('');
   const [catWebhookTemplate, setCatWebhookTemplate] = useState('');
-  const [catAccessMode, setCatAccessMode] = useState('roles');
-  const [catAllowedUsers, setCatAllowedUsers] = useState([]);
 
   // Rank form state
   const [rankName, setRankName] = useState('');
@@ -36,9 +40,11 @@ export default function ManagePage() {
 
   const resetForm = () => {
     setCatName(''); setCatDesc(''); setCatOrder('0'); setCatParentId('');
-    setCatViewerRoles(''); setCatEditorRoles(''); setCatViewerRankIds([]); setCatEditorRankIds([]);
+    setCatViewerMode('public'); setCatEditorMode('none');
+    setCatViewerRoles(''); setCatEditorRoles('');
+    setCatViewerRankIds([]); setCatEditorRankIds([]);
+    setCatViewerUserIds([]); setCatEditorUserIds([]);
     setCatWebhookUrl(''); setCatWebhookTemplate('');
-    setCatAccessMode('roles'); setCatAllowedUsers([]);
     setEditingCat(null);
   };
 
@@ -51,12 +57,14 @@ export default function ManagePage() {
     try {
       const data = { name: catName, description: catDesc, sort_order: parseInt(catOrder) || 0, parent_id: catParentId ? parseInt(catParentId) : null, webhook_url: catWebhookUrl, webhook_template: catWebhookTemplate };
       const accessPayload = {
-        access_mode: catAccessMode,
-        viewers: catAccessMode === 'roles' ? catViewerRoles.split(',').map(s => s.trim()).filter(Boolean) : [],
-        editors: catAccessMode === 'roles' ? catEditorRoles.split(',').map(s => s.trim()).filter(Boolean) : [],
-        rank_viewers: catAccessMode === 'roles' ? catViewerRankIds : [],
-        rank_editors: catAccessMode === 'roles' ? catEditorRankIds : [],
-        user_ids: catAccessMode === 'custom' ? catAllowedUsers : [],
+        viewer_mode: catViewerMode,
+        editor_mode: catEditorMode,
+        viewers: catViewerMode === 'roles' ? catViewerRoles.split(',').map(s => s.trim()).filter(Boolean) : [],
+        editors: catEditorMode === 'roles' ? catEditorRoles.split(',').map(s => s.trim()).filter(Boolean) : [],
+        rank_viewers: catViewerMode === 'roles' ? catViewerRankIds : [],
+        rank_editors: catEditorMode === 'roles' ? catEditorRankIds : [],
+        viewer_user_ids: catViewerMode === 'custom' ? catViewerUserIds : [],
+        editor_user_ids: catEditorMode === 'custom' ? catEditorUserIds : [],
       };
       if (editingCat) {
         await api.updateCategory(editingCat.id, data);
@@ -82,19 +90,26 @@ export default function ManagePage() {
     setCatParentId(String(cat.parent_id || ''));
     setCatWebhookUrl(cat.webhook_url || '');
     setCatWebhookTemplate(cat.webhook_template || '');
+    // Parse compound mode string
+    const rawMode = cat.access_mode || 'public:none';
+    const [vm, em] = rawMode.includes(':') ? rawMode.split(':')
+      : rawMode === 'custom' ? ['custom', 'none']
+      : rawMode === 'roles' ? ['roles', 'roles']
+      : ['public', 'none'];
+    setCatViewerMode(vm);
+    setCatEditorMode(em);
     setCatViewerRoles((cat.access || []).filter(a => a.access_type === 'viewer').map(a => a.discord_role_id).join(','));
     setCatEditorRoles((cat.access || []).filter(a => a.access_type === 'editor').map(a => a.discord_role_id).join(','));
     setCatViewerRankIds((cat.rank_access || []).filter(a => a.access_type === 'viewer').map(a => a.rank_id));
     setCatEditorRankIds((cat.rank_access || []).filter(a => a.access_type === 'editor').map(a => a.rank_id));
-    const mode = cat.access_mode || 'roles';
-    setCatAccessMode(mode);
-    if (mode === 'custom') {
+    if (vm === 'custom' || em === 'custom') {
       try {
         const r = await api.getCategoryUserAccess(cat.id);
-        setCatAllowedUsers(r.users.map(u => u.id));
-      } catch (_) { setCatAllowedUsers([]); }
+        setCatViewerUserIds((r.viewer_users || []).map(u => u.id));
+        setCatEditorUserIds((r.editor_users || []).map(u => u.id));
+      } catch (_) { setCatViewerUserIds([]); setCatEditorUserIds([]); }
     } else {
-      setCatAllowedUsers([]);
+      setCatViewerUserIds([]); setCatEditorUserIds([]);
     }
   };
 
@@ -107,13 +122,7 @@ export default function ManagePage() {
     } catch (e) { setStatus({ type: 'error', msg: e.message }); }
   };
 
-  const toggleUser = (userId) => {
-    setCatAllowedUsers(prev =>
-      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
-    );
-  };
-
-  const toggleRankId = (setter, id) => setter(prev => prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]);
+  const toggleId = (setter, id) => setter(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const saveRank = async () => {
     if (!rankName.trim()) return;
@@ -177,66 +186,42 @@ export default function ManagePage() {
             </div>
           </div>
 
-          {/* Access mode toggle */}
-          <div>
-            <label className="label-field">Tryb dostępu</label>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setCatAccessMode('roles')}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${catAccessMode === 'roles' ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>
-                Role Discord
-              </button>
-              <button type="button" onClick={() => setCatAccessMode('custom')}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5 ${catAccessMode === 'custom' ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>
-                <Users className="w-3.5 h-3.5" /> Niestandardowe
-              </button>
-            </div>
-          </div>
-
-          {catAccessMode === 'roles' ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div><label className="label-field">Role widzów (Discord Role IDs)</label><input type="text" value={catViewerRoles} onChange={e => setCatViewerRoles(e.target.value)} className="input-field font-mono" placeholder="ID1,ID2 (puste = wszyscy)" /></div>
-                <div><label className="label-field">Role redaktorów (Discord Role IDs)</label><input type="text" value={catEditorRoles} onChange={e => setCatEditorRoles(e.target.value)} className="input-field font-mono" placeholder="ID1,ID2" /></div>
+          {/* Independent viewer/editor access sections */}
+          <div className="space-y-5 border border-zinc-200 dark:border-zinc-700 rounded-2xl p-4">
+            {/* WIDZOWIE */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">👁 Widzowie</span>
               </div>
-              {ranks.length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="label-field">Rangi widzów</label>
-                    <div className="flex flex-wrap gap-1.5 mt-1">
+              <div className="flex gap-1.5 mb-3">
+                {[['public', 'Wszyscy'], ['roles', 'Role/rangi'], ['custom', 'Lista użytkowników']].map(([val, lbl]) => (
+                  <button key={val} type="button" onClick={() => setCatViewerMode(val)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${catViewerMode === val ? 'bg-blue-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              {catViewerMode === 'roles' && (
+                <div className="space-y-2">
+                  <input type="text" value={catViewerRoles} onChange={e => setCatViewerRoles(e.target.value)} className="input-field font-mono text-sm" placeholder="Discord Role IDs, np. 123456,789012 (puste = brak filtrowania)" />
+                  {ranks.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
                       {ranks.map(r => (
-                        <button key={r.id} type="button" onClick={() => toggleRankId(setCatViewerRankIds, r.id)}
+                        <button key={r.id} type="button" onClick={() => toggleId(setCatViewerRankIds, r.id)}
                           className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all border ${catViewerRankIds.includes(r.id) ? 'text-white border-transparent' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400'}`}
                           style={catViewerRankIds.includes(r.id) ? { backgroundColor: r.color, borderColor: r.color } : {}}>
                           {r.name}
                         </button>
                       ))}
                     </div>
-                  </div>
-                  <div>
-                    <label className="label-field">Rangi redaktorów</label>
-                    <div className="flex flex-wrap gap-1.5 mt-1">
-                      {ranks.map(r => (
-                        <button key={r.id} type="button" onClick={() => toggleRankId(setCatEditorRankIds, r.id)}
-                          className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all border ${catEditorRankIds.includes(r.id) ? 'text-white border-transparent' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400'}`}
-                          style={catEditorRankIds.includes(r.id) ? { backgroundColor: r.color, borderColor: r.color } : {}}>
-                          {r.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
-            </div>
-          ) : (
-            <div>
-              <label className="label-field">Użytkownicy z dostępem ({catAllowedUsers.length} wybranych)</label>
-              {allUsers.length === 0 ? (
-                <p className="text-sm text-zinc-400 italic">Brak użytkowników</p>
-              ) : (
-                <div className="max-h-48 overflow-y-auto border border-zinc-200 dark:border-zinc-700 rounded-xl divide-y divide-zinc-100 dark:divide-zinc-800">
+              {catViewerMode === 'custom' && (
+                <div className="max-h-36 overflow-y-auto border border-zinc-200 dark:border-zinc-700 rounded-xl divide-y divide-zinc-100 dark:divide-zinc-800">
                   {allUsers.map(u => (
-                    <label key={u.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
-                      <input type="checkbox" checked={catAllowedUsers.includes(u.id)} onChange={() => toggleUser(u.id)} className="rounded accent-violet-500" />
+                    <label key={u.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                      <input type="checkbox" checked={catViewerUserIds.includes(u.id)} onChange={() => toggleId(setCatViewerUserIds, u.id)} className="rounded accent-blue-500" />
                       <span className="text-sm text-zinc-900 dark:text-white font-medium">{u.display_name || u.username}</span>
                       <span className="text-xs text-zinc-400 ml-auto">{u.role}</span>
                     </label>
@@ -244,7 +229,51 @@ export default function ManagePage() {
                 </div>
               )}
             </div>
-          )}
+
+            <div className="border-t border-zinc-100 dark:border-zinc-800" />
+
+            {/* REDAKTORZY */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">✏️ Redaktorzy</span>
+              </div>
+              <div className="flex gap-1.5 mb-3">
+                {[['none', 'Brak'], ['roles', 'Role/rangi'], ['custom', 'Lista użytkowników']].map(([val, lbl]) => (
+                  <button key={val} type="button" onClick={() => setCatEditorMode(val)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${catEditorMode === val ? 'bg-amber-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              {catEditorMode === 'roles' && (
+                <div className="space-y-2">
+                  <input type="text" value={catEditorRoles} onChange={e => setCatEditorRoles(e.target.value)} className="input-field font-mono text-sm" placeholder="Discord Role IDs, np. 123456,789012" />
+                  {ranks.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {ranks.map(r => (
+                        <button key={r.id} type="button" onClick={() => toggleId(setCatEditorRankIds, r.id)}
+                          className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all border ${catEditorRankIds.includes(r.id) ? 'text-white border-transparent' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400'}`}
+                          style={catEditorRankIds.includes(r.id) ? { backgroundColor: r.color, borderColor: r.color } : {}}>
+                          {r.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {catEditorMode === 'custom' && (
+                <div className="max-h-36 overflow-y-auto border border-zinc-200 dark:border-zinc-700 rounded-xl divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {allUsers.map(u => (
+                    <label key={u.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                      <input type="checkbox" checked={catEditorUserIds.includes(u.id)} onChange={() => toggleId(setCatEditorUserIds, u.id)} className="rounded accent-amber-500" />
+                      <span className="text-sm text-zinc-900 dark:text-white font-medium">{u.display_name || u.username}</span>
+                      <span className="text-xs text-zinc-400 ml-auto">{u.role}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
           <div><label className="label-field">Discord Webhook URL (opcjonalnie)</label><input type="text" value={catWebhookUrl} onChange={e => setCatWebhookUrl(e.target.value)} className="input-field font-mono" placeholder="https://discord.com/api/webhooks/..." /></div>
           <div>
@@ -315,11 +344,11 @@ export default function ManagePage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-bold text-zinc-900 dark:text-white">{opt.depth > 0 ? '↳ ' : ''}{cat.name}</span>
                       <span className="text-xs text-zinc-400">({cat.videoCount || 0} filmów)</span>
-                      {cat.access_mode === 'custom' && <span className="text-[9px] bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5"><Users className="w-2.5 h-2.5" /> NIESTANDARDOWE</span>}
+                      {(cat.access_mode || '').includes('custom') && <span className="text-[9px] bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5"><Users className="w-2.5 h-2.5" /> NIESTANDARDOWE</span>}
                       {cat.webhook_url && <span className="text-[9px] bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 rounded font-bold">WEBHOOK</span>}
                     </div>
                     {cat.description && <p className="text-xs text-zinc-400 mt-0.5">{cat.description}</p>}
-                    {cat.access_mode !== 'custom' && ((cat.access && cat.access.length > 0) || (cat.rank_access && cat.rank_access.length > 0)) && (
+                    {((cat.access && cat.access.length > 0) || (cat.rank_access && cat.rank_access.length > 0)) && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {(cat.access || []).map((a, i) => (
                           <span key={`d-${i}`} className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${a.access_type === 'editor' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300'}`}>
