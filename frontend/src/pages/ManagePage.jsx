@@ -8,6 +8,7 @@ export default function ManagePage() {
 
   // Category state
   const [cats, setCats] = useState([]);
+  const [users, setUsers] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [ranks, setRanks] = useState([]);
   const [status, setStatus] = useState(null);
@@ -39,8 +40,9 @@ export default function ManagePage() {
 
   const loadUsers = async () => {
     try {
-      const [u, r] = await Promise.all([api.getAllUsers(), api.getRanks()]);
-      setAllUsers(u);
+      const [u, au, r] = await Promise.all([api.getUsers(), api.getAllUsers(), api.getRanks()]);
+      setUsers(u);
+      setAllUsers(au);
       setRanks(r);
       if (r.length > 0) {
         const rankMap = {};
@@ -473,7 +475,7 @@ export default function ManagePage() {
                 </tr>
               </thead>
               <tbody>
-                {allUsers.map(u => {
+                {users.map(u => {
                   const userRoles = (() => { try { return JSON.parse(u.discord_roles || '[]'); } catch { return []; } })();
                   const isDevOnly = u.role === 'dev';
                   const assignedRankIds = userRanks[u.id] || [];
@@ -563,6 +565,7 @@ export default function ManagePage() {
                             if (!confirm(`Usunąć konto "${u.display_name || u.username}"?\n\nTo nie jest ban — użytkownik może zalogować się ponownie.`)) return;
                             try {
                               await api.deleteUser(u.id);
+                              setUsers(prev => prev.filter(x => x.id !== u.id));
                               setAllUsers(prev => prev.filter(x => x.id !== u.id));
                             } catch (err) { alert('Błąd: ' + err.message); }
                           }}
