@@ -835,8 +835,9 @@ app.post('/api/auth/logout', (req, res) => {
 // ============ VIDEOS API ============
 app.get('/api/videos', requireAuth, (req, res) => {
   const { search, tags, author, sort = 'newest', include_transcoding, category } = req.query;
-  const isAdmin = req.session.user.role === 'admin' || req.session.user.role === 'dev';
-  
+  const isAdminOrDev = req.session.user.role === 'admin' || req.session.user.role === 'dev';
+  const isDev = req.session.user.role === 'dev';
+
   let sql = `
     SELECT v.*, u.username AS author_name, u.display_name AS author_display_name,
     c.name AS category_name, c.slug AS category_slug,
@@ -848,22 +849,22 @@ app.get('/api/videos', requireAuth, (req, res) => {
     LEFT JOIN video_tags vt ON v.id = vt.video_id
     LEFT JOIN tags t ON vt.tag_id = t.id
   `;
-  
+
   const conditions = [];
   const params = [];
 
-  // Hide transcoding videos from regular users
-  if (!isAdmin || !include_transcoding) {
+  // Hide transcoding videos from regular users (admin+dev can see them)
+  if (!isAdminOrDev || !include_transcoding) {
     conditions.push("(v.stream_status IS NULL OR v.stream_status = 'ready')");
   }
 
-  // Hide scheduled (future) videos from regular users
-  if (!isAdmin) {
+  // Hide scheduled (future) videos from regular users (admin+dev can see them)
+  if (!isAdminOrDev) {
     conditions.push("v.publish_date <= datetime('now')");
   }
 
-  // Access control for non-admin users
-  if (!isAdmin) {
+  // Access control — only dev bypasses category/content restrictions
+  if (!isDev) {
     const userId = req.session.user.id;
     const userRoles = req.session.user.discord_roles || [];
     const userRankIds = getUserRankIds(userId);
@@ -911,8 +912,8 @@ app.get('/api/videos', requireAuth, (req, res) => {
   }
 
   if (category) {
-    // Check category access for non-admin users
-    if (!isAdmin) {
+    // Check category access — only dev bypasses
+    if (!isDev) {
       const cat = db.prepare('SELECT id, access_mode FROM categories WHERE slug = ?').get(category);
       if (cat) {
         if (cat.access_mode === 'custom') {
@@ -973,10 +974,10 @@ app.get('/api/videos/:id', requireAuth, (req, res) => {
     
     if (!video) return res.status(404).json({ error: 'Video not found' });
 
-    // Access enforcement for non-admin users
+    // Access enforcement — only dev bypasses category restrictions
     const user = req.session.user;
-    const isAdmin = user.role === 'admin' || user.role === 'dev';
-    if (!isAdmin) {
+    const isDev = user.role === 'dev';
+    if (!isDev) {
       // Check custom access
       if (video.access_mode === 'custom') {
         const hasAccess = db.prepare('SELECT 1 FROM video_access WHERE video_id = ? AND user_id = ?').get(video.id, user.id);
@@ -1278,10 +1279,10 @@ app.get('/api/categories', requireAuth, (req, res) => {
   try {
     const allCats = db.prepare('SELECT * FROM categories ORDER BY sort_order, name').all();
     const user = req.session.user;
-    const isDevOrAdmin = user.role === 'dev' || user.role === 'admin';
+    const isDev = user.role === 'dev';
 
-    // Dev/admin sees all categories
-    if (isDevOrAdmin) {
+    // Only dev sees all categories without restriction
+    if (isDev) {
       const cats = allCats.map(c => {
         const access = db.prepare('SELECT * FROM category_access WHERE category_id = ?').all(c.id);
         const rank_access = db.prepare('SELECT cra.*, r.name AS rank_name, r.color AS rank_color FROM category_rank_access cra JOIN app_ranks r ON cra.rank_id = r.id WHERE cra.category_id = ?').all(c.id);
@@ -1777,8 +1778,8 @@ app.get('/api/debug/access/:type/:id', requireDev, (req, res) => {
       const dr = JSON.parse(u.discord_roles || '[]');
       const ur = getUserRankIds(u.id);
       let hasAccess = false, reason = '';
-      if (u.role === 'admin' || u.role === 'dev') {
-        hasAccess = true; reason = u.role;
+      if (u.role === 'dev') {
+        hasAccess = true; reason = 'dev';
       } else if (customAccessIds !== null) {
         hasAccess = customAccessIds.has(u.id);
         reason = hasAccess ? 'custom_access' : 'not_in_custom_list';
