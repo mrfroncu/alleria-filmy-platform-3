@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { FolderOpen, Plus, Pencil, Trash2, X, Shield } from 'lucide-react';
+import { FolderOpen, Plus, Pencil, Trash2, Users } from 'lucide-react';
 import { api } from '../utils/api';
 import { buildCategoryTreeOptions } from '../utils/helpers';
 
 export default function ManagePage() {
   const [cats, setCats] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [status, setStatus] = useState(null);
   const [catName, setCatName] = useState('');
   const [catDesc, setCatDesc] = useState('');
@@ -15,12 +16,18 @@ export default function ManagePage() {
   const [catEditorRoles, setCatEditorRoles] = useState('');
   const [catWebhookUrl, setCatWebhookUrl] = useState('');
   const [catWebhookTemplate, setCatWebhookTemplate] = useState('');
+  const [catAccessMode, setCatAccessMode] = useState('roles');
+  const [catAllowedUsers, setCatAllowedUsers] = useState([]);
 
-  useEffect(() => { api.getCategories().then(setCats).catch(() => {}); }, []);
+  useEffect(() => {
+    api.getCategories().then(setCats).catch(() => {});
+    api.getAllUsers().then(setAllUsers).catch(() => {});
+  }, []);
 
   const resetForm = () => {
     setCatName(''); setCatDesc(''); setCatOrder('0'); setCatParentId('');
     setCatViewerRoles(''); setCatEditorRoles(''); setCatWebhookUrl(''); setCatWebhookTemplate('');
+    setCatAccessMode('roles'); setCatAllowedUsers([]);
     setEditingCat(null);
   };
 
@@ -28,20 +35,20 @@ export default function ManagePage() {
     if (!catName.trim()) return;
     try {
       const data = { name: catName, description: catDesc, sort_order: parseInt(catOrder) || 0, parent_id: catParentId ? parseInt(catParentId) : null, webhook_url: catWebhookUrl, webhook_template: catWebhookTemplate };
+      const accessPayload = {
+        access_mode: catAccessMode,
+        viewers: catAccessMode === 'roles' ? catViewerRoles.split(',').map(s => s.trim()).filter(Boolean) : [],
+        editors: catAccessMode === 'roles' ? catEditorRoles.split(',').map(s => s.trim()).filter(Boolean) : [],
+        user_ids: catAccessMode === 'custom' ? catAllowedUsers : [],
+      };
       if (editingCat) {
         await api.updateCategory(editingCat.id, data);
-        await api.setCategoryAccess(editingCat.id, {
-          viewers: catViewerRoles.split(',').map(s => s.trim()).filter(Boolean),
-          editors: catEditorRoles.split(',').map(s => s.trim()).filter(Boolean),
-        });
+        await api.setCategoryAccess(editingCat.id, accessPayload);
         setStatus({ type: 'success', msg: `Kategoria "${catName}" zaktualizowana.` });
       } else {
         const r = await api.createCategory(data);
-        if (r.category && (catViewerRoles || catEditorRoles)) {
-          await api.setCategoryAccess(r.category.id, {
-            viewers: catViewerRoles.split(',').map(s => s.trim()).filter(Boolean),
-            editors: catEditorRoles.split(',').map(s => s.trim()).filter(Boolean),
-          });
+        if (r.category) {
+          await api.setCategoryAccess(r.category.id, accessPayload);
         }
         setStatus({ type: 'success', msg: `Kategoria "${catName}" utworzona.` });
       }
@@ -50,7 +57,7 @@ export default function ManagePage() {
     } catch (e) { setStatus({ type: 'error', msg: e.message }); }
   };
 
-  const startEdit = (cat) => {
+  const startEdit = async (cat) => {
     setEditingCat(cat);
     setCatName(cat.name);
     setCatDesc(cat.description || '');
@@ -60,6 +67,16 @@ export default function ManagePage() {
     setCatWebhookTemplate(cat.webhook_template || '');
     setCatViewerRoles((cat.access || []).filter(a => a.access_type === 'viewer').map(a => a.discord_role_id).join(','));
     setCatEditorRoles((cat.access || []).filter(a => a.access_type === 'editor').map(a => a.discord_role_id).join(','));
+    const mode = cat.access_mode || 'roles';
+    setCatAccessMode(mode);
+    if (mode === 'custom') {
+      try {
+        const r = await api.getCategoryUserAccess(cat.id);
+        setCatAllowedUsers(r.users.map(u => u.id));
+      } catch (_) { setCatAllowedUsers([]); }
+    } else {
+      setCatAllowedUsers([]);
+    }
   };
 
   const deleteCategory = async (cat) => {
@@ -69,6 +86,12 @@ export default function ManagePage() {
       setCats(prev => prev.filter(c => c.id !== cat.id));
       setStatus({ type: 'success', msg: `Kategoria "${cat.name}" usunięta.` });
     } catch (e) { setStatus({ type: 'error', msg: e.message }); }
+  };
+
+  const toggleUser = (userId) => {
+    setCatAllowedUsers(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
   };
 
   return (
@@ -108,10 +131,46 @@ export default function ManagePage() {
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div><label className="label-field">Role widzów (Discord Role IDs)</label><input type="text" value={catViewerRoles} onChange={e => setCatViewerRoles(e.target.value)} className="input-field font-mono" placeholder="ID1,ID2 (puste = wszyscy)" /></div>
-            <div><label className="label-field">Role redaktorów (Discord Role IDs)</label><input type="text" value={catEditorRoles} onChange={e => setCatEditorRoles(e.target.value)} className="input-field font-mono" placeholder="ID1,ID2" /></div>
+
+          {/* Access mode toggle */}
+          <div>
+            <label className="label-field">Tryb dostępu</label>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setCatAccessMode('roles')}
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${catAccessMode === 'roles' ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>
+                Role Discord
+              </button>
+              <button type="button" onClick={() => setCatAccessMode('custom')}
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5 ${catAccessMode === 'custom' ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>
+                <Users className="w-3.5 h-3.5" /> Niestandardowe
+              </button>
+            </div>
           </div>
+
+          {catAccessMode === 'roles' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div><label className="label-field">Role widzów (Discord Role IDs)</label><input type="text" value={catViewerRoles} onChange={e => setCatViewerRoles(e.target.value)} className="input-field font-mono" placeholder="ID1,ID2 (puste = wszyscy)" /></div>
+              <div><label className="label-field">Role redaktorów (Discord Role IDs)</label><input type="text" value={catEditorRoles} onChange={e => setCatEditorRoles(e.target.value)} className="input-field font-mono" placeholder="ID1,ID2" /></div>
+            </div>
+          ) : (
+            <div>
+              <label className="label-field">Użytkownicy z dostępem ({catAllowedUsers.length} wybranych)</label>
+              {allUsers.length === 0 ? (
+                <p className="text-sm text-zinc-400 italic">Brak użytkowników</p>
+              ) : (
+                <div className="max-h-48 overflow-y-auto border border-zinc-200 dark:border-zinc-700 rounded-xl divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {allUsers.map(u => (
+                    <label key={u.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                      <input type="checkbox" checked={catAllowedUsers.includes(u.id)} onChange={() => toggleUser(u.id)} className="rounded accent-violet-500" />
+                      <span className="text-sm text-zinc-900 dark:text-white font-medium">{u.display_name || u.username}</span>
+                      <span className="text-xs text-zinc-400 ml-auto">{u.role}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div><label className="label-field">Discord Webhook URL (opcjonalnie)</label><input type="text" value={catWebhookUrl} onChange={e => setCatWebhookUrl(e.target.value)} className="input-field font-mono" placeholder="https://discord.com/api/webhooks/..." /></div>
           <div>
             <label className="label-field">Szablon wiadomości webhook</label>
@@ -139,13 +198,14 @@ export default function ManagePage() {
               return (
                 <div key={cat.id} className="flex items-center gap-3 p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors" style={{ marginLeft: opt.depth * 24 }}>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-bold text-zinc-900 dark:text-white">{opt.depth > 0 ? '↳ ' : ''}{cat.name}</span>
                       <span className="text-xs text-zinc-400">({cat.videoCount || 0} filmów)</span>
+                      {cat.access_mode === 'custom' && <span className="text-[9px] bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5"><Users className="w-2.5 h-2.5" /> NIESTANDARDOWE</span>}
                       {cat.webhook_url && <span className="text-[9px] bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 rounded font-bold">WEBHOOK</span>}
                     </div>
                     {cat.description && <p className="text-xs text-zinc-400 mt-0.5">{cat.description}</p>}
-                    {cat.access && cat.access.length > 0 && (
+                    {cat.access_mode !== 'custom' && cat.access && cat.access.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {cat.access.map((a, i) => (
                           <span key={i} className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${a.access_type === 'editor' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300'}`}>

@@ -60,6 +60,7 @@ export const api = {
   setCategoryAccess: (id, data) => request(`/categories/${id}/access`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
   }),
+  getCategoryUserAccess: (id) => request(`/categories/${id}/user-access`),
 
   // Video access
   getVideoAccess: (id) => request(`/videos/${id}/access`),

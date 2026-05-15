@@ -161,6 +161,14 @@ function initDB() {
   try { db.exec(`ALTER TABLE comments ADD COLUMN deleted INTEGER DEFAULT 0`); } catch (e) {}
   try { db.exec(`ALTER TABLE videos ADD COLUMN mirror1_type TEXT DEFAULT 'link'`); } catch (e) {}
   try { db.exec(`ALTER TABLE videos ADD COLUMN mirror2_type TEXT DEFAULT 'link'`); } catch (e) {}
+  try { db.exec(`ALTER TABLE categories ADD COLUMN access_mode TEXT DEFAULT 'roles'`); } catch (e) {}
+  db.exec(`CREATE TABLE IF NOT EXISTS category_user_access (
+    category_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    PRIMARY KEY (category_id, user_id),
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`);
 
   // Migrate: is_embed=1 → type='embed'
   try { db.exec(`UPDATE videos SET mirror1_type='embed' WHERE mirror1_is_embed=1 AND mirror1_type='link'`); } catch (e) {}
