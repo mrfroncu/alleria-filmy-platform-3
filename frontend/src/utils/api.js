@@ -81,6 +81,20 @@ export const api = {
   getUsers: () => request('/users'),
   getAllUsers: () => request('/users/all'),
   deleteUser: (id) => request(`/users/${id}`, { method: 'DELETE' }),
+  getUserRanks: (id) => request(`/users/${id}/ranks`),
+  setUserRanks: (id, rank_ids) => request(`/users/${id}/ranks`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rank_ids }),
+  }),
+
+  // App ranks
+  getRanks: () => request('/ranks'),
+  createRank: (data) => request('/ranks', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
+  updateRank: (id, data) => request(`/ranks/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
+  deleteRank: (id) => request(`/ranks/${id}`, { method: 'DELETE' }),
 
   // Logs (paginated)
   getWatchLogs: (page = 1) => request(`/logs/watch?page=${page}`),

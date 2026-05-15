@@ -221,6 +221,37 @@ function initDB() {
     FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
   )`);
 
+  // App ranks (application-level ranks, independent of Discord roles)
+  db.exec(`CREATE TABLE IF NOT EXISTS app_ranks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT DEFAULT '',
+    color TEXT DEFAULT '#6366f1',
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+
+  // User rank assignments
+  db.exec(`CREATE TABLE IF NOT EXISTS user_rank_assignments (
+    user_id INTEGER NOT NULL,
+    rank_id INTEGER NOT NULL,
+    assigned_by INTEGER,
+    assigned_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, rank_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (rank_id) REFERENCES app_ranks(id) ON DELETE CASCADE
+  )`);
+
+  // Category rank-based access (per-category editor/viewer access via app ranks)
+  db.exec(`CREATE TABLE IF NOT EXISTS category_rank_access (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category_id INTEGER NOT NULL,
+    rank_id INTEGER NOT NULL,
+    access_type TEXT NOT NULL DEFAULT 'viewer',
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+    FOREIGN KEY (rank_id) REFERENCES app_ranks(id) ON DELETE CASCADE,
+    UNIQUE(category_id, rank_id, access_type)
+  )`);
+
   return db;
 }
 

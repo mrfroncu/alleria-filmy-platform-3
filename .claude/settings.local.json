@@ -17,7 +17,15 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Matthew\\\\Documents\\\\#Github\\\\alleria-filmy-platform-3\" -Directory)",
       "Bash(Select-Object Name)",
       "Bash(cd /c/Users/Matthew/Documents/'#Github'/alleria-filmy-platform-3 && find . -type f -name \"*.jsx\" -o -name \"*.js\" | head -30)",
-      "Read(//c/c/Users/Matthew/Documents/#Github/**)"
+      "Read(//c/c/Users/Matthew/Documents/#Github/**)",
+      "Bash(node -e \"require\\('./database.js'\\)\")",
+      "Bash(node --check server.js)",
+      "Bash(/usr/local/bin/node --version)",
+      "Bash(/opt/homebrew/bin/node --version)",
+      "Bash(ls /usr/local/bin/node* /opt/homebrew/bin/node* ~/.nvm/versions/node/*/bin/node 2>/dev/null | head -5)",
+      "Read(//usr/local/bin/**)",
+      "Bash(find /Users/mfronc/.nvm /opt/homebrew /usr/local -name \"node\" -type f 2>/dev/null | head -5)",
+      "Read(//usr/local/**)"
     ]
   }
 }
