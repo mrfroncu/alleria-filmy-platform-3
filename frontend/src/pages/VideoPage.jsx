@@ -548,11 +548,10 @@ export default function VideoPage() {
           <div className="flex items-stretch gap-3 sm:gap-4 mb-6 anim-stagger-4">
             {prevVideo ? (
               <button onClick={() => goToVideo(prevVideo.id, 'prev')}
-                className="flex-1 min-w-0 max-w-[50%] p-4 text-left rounded-[20px] transition-all group"
+                className="flex-1 min-w-0 max-w-[50%] p-4 text-left tilt-card a-card group"
                 style={{ background: 'rgba(246,246,250,0.03)', border: '1px solid var(--line-2)' }}
-                onMouseMove={e => { const r = e.currentTarget.getBoundingClientRect(); e.currentTarget.style.setProperty('--mx', `${((e.clientX - r.left) / r.width * 100)}%`); e.currentTarget.style.setProperty('--my', `${((e.clientY - r.top) / r.height * 100)}%`); }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,91,46,0.22)'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--line-2)'; }}>
+                onMouseMove={e => { const r = e.currentTarget.getBoundingClientRect(); const px=(e.clientX-r.left)/r.width-0.5,py=(e.clientY-r.top)/r.height-0.5; e.currentTarget.style.transform=`perspective(1000px) rotateY(${px*6}deg) rotateX(${-py*6}deg) translateY(-4px)`; e.currentTarget.style.setProperty('--mx', `${((e.clientX-r.left)/r.width*100)}%`); e.currentTarget.style.setProperty('--my', `${((e.clientY-r.top)/r.height*100)}%`); }}
+                onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.borderColor = 'var(--line-2)'; }}>
                 <div className="flex items-center gap-1.5 text-xs font-bold font-mono uppercase tracking-wider mb-1.5 transition-transform group-hover:-translate-x-0.5"
                   style={{ color: 'var(--ember)' }}>
                   <ChevronLeft className="w-3.5 h-3.5" /> poprzedni
@@ -563,11 +562,10 @@ export default function VideoPage() {
 
             {nextVideo ? (
               <button onClick={() => goToVideo(nextVideo.id, 'next')}
-                className="flex-1 min-w-0 max-w-[50%] p-4 text-right ml-auto rounded-[20px] transition-all group"
+                className="flex-1 min-w-0 max-w-[50%] p-4 text-right ml-auto tilt-card a-card group"
                 style={{ background: 'rgba(246,246,250,0.03)', border: '1px solid var(--line-2)' }}
-                onMouseMove={e => { const r = e.currentTarget.getBoundingClientRect(); e.currentTarget.style.setProperty('--mx', `${((e.clientX - r.left) / r.width * 100)}%`); e.currentTarget.style.setProperty('--my', `${((e.clientY - r.top) / r.height * 100)}%`); }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,91,46,0.22)'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--line-2)'; }}>
+                onMouseMove={e => { const r = e.currentTarget.getBoundingClientRect(); const px=(e.clientX-r.left)/r.width-0.5,py=(e.clientY-r.top)/r.height-0.5; e.currentTarget.style.transform=`perspective(1000px) rotateY(${px*6}deg) rotateX(${-py*6}deg) translateY(-4px)`; e.currentTarget.style.setProperty('--mx', `${((e.clientX-r.left)/r.width*100)}%`); e.currentTarget.style.setProperty('--my', `${((e.clientY-r.top)/r.height*100)}%`); }}
+                onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.borderColor = 'var(--line-2)'; }}>
                 <div className="flex items-center justify-end gap-1.5 text-xs font-bold font-mono uppercase tracking-wider mb-1.5 transition-transform group-hover:translate-x-0.5"
                   style={{ color: 'var(--ember)' }}>
                   następny <ChevronRight className="w-3.5 h-3.5" />

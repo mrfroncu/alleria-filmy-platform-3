@@ -18,30 +18,34 @@ function useScrollReveal(ref, options = {}) {
   }, []);
 }
 
-// ── Mouse-tracking glow ─────────────────────────────────────────────────────
-function useMouseGlow(ref) {
+// ── Mouse-tracking glow + 3D tilt ───────────────────────────────────────────
+function useTiltGlow() {
   const onMove = useCallback((e) => {
     const el = e.currentTarget;
-    const rect = el.getBoundingClientRect();
-    el.style.setProperty('--mx', `${((e.clientX - rect.left) / rect.width) * 100}%`);
-    el.style.setProperty('--my', `${((e.clientY - rect.top) / rect.height) * 100}%`);
+    const r = el.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top)  / r.height - 0.5;
+    el.style.transform = `perspective(1000px) rotateY(${px * 8}deg) rotateX(${-py * 8}deg) translateY(-6px)`;
+    el.style.setProperty('--mx', `${((e.clientX - r.left) / r.width) * 100}%`);
+    el.style.setProperty('--my', `${((e.clientY - r.top) / r.height) * 100}%`);
   }, []);
-  return onMove;
+  const onLeave = useCallback((e) => {
+    e.currentTarget.style.transform = '';
+  }, []);
+  return { onMove, onLeave };
 }
 
 // ── Video card ──────────────────────────────────────────────────────────────
 function VideoCard({ video, categorySlug, progress, delay = 0 }) {
-  const cardRef = useRef(null);
-  const onMove = useMouseGlow(cardRef);
+  const { onMove, onLeave } = useTiltGlow();
 
   const p = progress;
   const pct = p && p.duration > 0 ? Math.min(100, (p.position / p.duration) * 100) : 0;
 
   return (
     <Link
-      ref={cardRef}
       to={`/video/${video.id}${categorySlug ? `?from=${categorySlug}` : ''}`}
-      className="video-card block no-underline"
+      className="video-card tilt-card block no-underline group"
       style={{
         background: 'linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%)',
         border: '1px solid var(--line-2)',
@@ -49,6 +53,7 @@ function VideoCard({ video, categorySlug, progress, delay = 0 }) {
         animationDelay: `${delay}ms`,
       }}
       onMouseMove={onMove}
+      onMouseLeave={onLeave}
     >
       {/* Thumbnail */}
       <div className="relative overflow-hidden" style={{ borderRadius: '19px 19px 0 0', aspectRatio: '16/9' }}>
@@ -62,9 +67,9 @@ function VideoCard({ video, categorySlug, progress, delay = 0 }) {
         )}
 
         {/* Hover play overlay */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300"
-          style={{ background: 'rgba(10,10,16,0.45)' }}>
-          <div className="w-14 h-14 rounded-full flex items-center justify-center transition-transform duration-300 hover:scale-110"
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100"
+          style={{ background: 'rgba(10,10,16,0.45)', transition: 'opacity 0.3s' }}>
+          <div className="w-14 h-14 rounded-full flex items-center justify-center orb-pulse"
             style={{ background: 'var(--ember)', boxShadow: '0 0 30px var(--ember-glow)' }}>
             <Play className="w-6 h-6 text-white ml-0.5" fill="white" />
           </div>
@@ -193,12 +198,26 @@ export default function VideosPage() {
       .finally(() => setLoading(false));
   }, [search, selectedTags, selectedAuthor, sort, categorySlug]);
 
-  // Trigger grid reveal after loading
+  // Trigger grid reveal + in-flash border shimmer on cards
   useEffect(() => {
     if (!loading && gridRef.current) {
       const el = gridRef.current;
       el.classList.remove('in');
-      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        el.classList.add('in');
+        // Flash border shimmer on each card as it enters
+        const cards = el.querySelectorAll('.video-card');
+        const obs = new IntersectionObserver((entries) => {
+          entries.forEach(e => {
+            if (e.isIntersecting) {
+              e.target.classList.add('in-flash');
+              obs.unobserve(e.target);
+            }
+          });
+        }, { threshold: 0.15 });
+        cards.forEach(c => obs.observe(c));
+        return () => obs.disconnect();
+      }));
     }
   }, [loading, page]);
 
@@ -233,39 +252,43 @@ export default function VideosPage() {
     <div className="relative" style={{ color: 'var(--fg)' }}>
 
       {/* ── Header ── */}
-      <div ref={headerRef} className="rv rv-up px-8 sm:px-12 pt-12 pb-8">
-        <div className="mb-2">
-          <span className="mono-label">
-            {categorySlug ? `Kategoria / ${title}` : 'Alleria Filmy / Baza'}
-          </span>
-        </div>
+      <div ref={headerRef} className="rv rv-blur px-8 sm:px-12 pt-12 pb-8 relative overflow-hidden">
+        {/* Hero grid background */}
+        <div className="hero-grid-bg" />
 
-        <div className="flex items-end justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="font-bold leading-tight tracking-tight"
-              style={{ fontSize: 'clamp(28px, 4vw, 48px)', color: 'var(--fg)', letterSpacing: '-0.03em' }}>
-              {title}
-            </h1>
-            <p className="mt-2 text-base" style={{ color: 'var(--fg-3)' }}>{subtitle}</p>
+        <div className="relative z-10">
+          <div className="mb-3 chip-in" style={{ animationDelay: '0s' }}>
+            <span className="panel-meta">
+              {categorySlug ? `Kategoria / ${title}` : 'Alleria Filmy / Baza'}
+            </span>
           </div>
 
-          {continueWatching.length > 0 && (
-            <button
-              onClick={handleResetProgress}
-              disabled={resetting}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider transition-all"
-              style={{ border: '1px solid var(--line-2)', color: 'var(--fg-3)' }}
-              onMouseEnter={e => { e.currentTarget.style.color = 'var(--err)'; e.currentTarget.style.borderColor = 'rgba(239,111,108,0.3)'; e.currentTarget.style.background = 'rgba(239,111,108,0.05)'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'var(--fg-3)'; e.currentTarget.style.borderColor = 'var(--line-2)'; e.currentTarget.style.background = ''; }}
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Resetuj postęp
-            </button>
-          )}
-        </div>
+          <div className="flex items-end justify-between gap-4 flex-wrap">
+            <div>
+              <h1 className="font-bold leading-tight underline-in"
+                style={{ fontSize: 'clamp(28px, 5vw, 56px)', color: 'var(--fg)', letterSpacing: '-0.04em', lineHeight: 1.0 }}>
+                {title}
+              </h1>
+              <p className="mt-3 text-base max-w-lg" style={{ color: 'var(--fg-2)', lineHeight: 1.6 }}>{subtitle}</p>
+            </div>
 
-        {/* Separator */}
-        <div className="mt-8 h-px" style={{ background: 'linear-gradient(90deg, var(--ember), transparent)' }} />
+            {continueWatching.length > 0 && (
+              <button
+                onClick={handleResetProgress}
+                disabled={resetting}
+                className="btn-glass magnet flex items-center gap-2 text-xs font-bold font-mono uppercase tracking-wider"
+                onMouseEnter={e => { e.currentTarget.style.color = 'var(--err)'; e.currentTarget.style.borderColor = 'rgba(239,111,108,0.3)'; e.currentTarget.style.background = 'rgba(239,111,108,0.06)'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = ''; e.currentTarget.style.borderColor = ''; e.currentTarget.style.background = ''; }}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Resetuj postęp
+              </button>
+            )}
+          </div>
+
+          {/* Separator */}
+          <div className="mt-8 h-px" style={{ background: 'linear-gradient(90deg, var(--ember), var(--cyber), transparent)' }} />
+        </div>
       </div>
 
       {/* ── Search & Filters ── */}

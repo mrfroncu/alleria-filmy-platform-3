@@ -81,6 +81,34 @@ export default function Layout({ children }) {
     api.getCategories().then(setCategories).catch(() => {});
   }, [location.pathname]);
 
+  // Global reveal observer — watches all .rv, .stagger, .splittxt in main content
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('in');
+          if (e.target.classList.contains('stagger')) {
+            [...e.target.children].forEach((child, i) => {
+              child.style.transitionDelay = (i * 0.1) + 's';
+            });
+          }
+          obs.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.10, rootMargin: '0px 0px -5% 0px', root: main });
+
+    const scan = () => {
+      main.querySelectorAll('.rv:not(.in), .stagger:not(.in), .splittxt:not(.in)').forEach(el => obs.observe(el));
+    };
+    scan();
+    // Re-scan on route changes (children re-render)
+    const mutObs = new MutationObserver(scan);
+    mutObs.observe(main, { childList: true, subtree: true });
+    return () => { obs.disconnect(); mutObs.disconnect(); };
+  }, []);
+
   useEffect(() => {
     Promise.all([
       fetch('/api/version').then(r => r.json()).catch(() => ({})),
@@ -90,16 +118,123 @@ export default function Layout({ children }) {
     });
   }, []);
 
-  // Cursor light tracking
+  // Cursor light — LERP tracking (smooth lag like the reference)
   useEffect(() => {
     const el = cursorRef.current;
     if (!el) return;
-    const onMove = (e) => {
-      el.style.left = e.clientX + 'px';
-      el.style.top  = e.clientY + 'px';
+    let mx = window.innerWidth / 2, my = window.innerHeight / 2;
+    let cx = mx, cy = my;
+    let raf;
+    const onMove = (e) => { mx = e.clientX; my = e.clientY; };
+    const tick = () => {
+      cx += (mx - cx) * 0.12;
+      cy += (my - cy) * 0.12;
+      el.style.transform = `translate(${cx - 300}px, ${cy - 300}px)`;
+      raf = requestAnimationFrame(tick);
     };
     window.addEventListener('mousemove', onMove, { passive: true });
-    return () => window.removeEventListener('mousemove', onMove);
+    raf = requestAnimationFrame(tick);
+    return () => { window.removeEventListener('mousemove', onMove); cancelAnimationFrame(raf); };
+  }, []);
+
+  // Click FX — ripple + shock ring + particle burst (from reference index-main.html)
+  useEffect(() => {
+    const burstColors = ['#ff5b2e', '#ff8a5e', '#4dd9e8', '#9d6dff', '#65e892', '#f5b958'];
+
+    function spawnBurst(x, y, accent) {
+      const count = 10 + Math.floor(Math.random() * 6);
+      for (let i = 0; i < count; i++) {
+        const p = document.createElement('div');
+        p.className = 'click-burst';
+        const sz = 4 + Math.random() * 5;
+        p.style.width = sz + 'px'; p.style.height = sz + 'px';
+        const color = accent || burstColors[Math.floor(Math.random() * burstColors.length)];
+        p.style.background = color;
+        p.style.boxShadow = `0 0 ${sz * 2}px ${color}`;
+        p.style.left = x + 'px'; p.style.top = y + 'px';
+        const ang = (Math.PI * 2 * i / count) + (Math.random() - 0.5) * 0.6;
+        const dist = 50 + Math.random() * 60;
+        const dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist;
+        const dur = 600 + Math.random() * 300;
+        document.body.appendChild(p);
+        const start = performance.now();
+        (function tick(now) {
+          const t = Math.min(1, (now - start) / dur);
+          const e = 1 - Math.pow(1 - t, 3);
+          p.style.transform = `translate(${dx*e}px, ${dy*e + (t*t*30)}px) scale(${1-t})`;
+          p.style.opacity = String(1 - t);
+          if (t < 1) requestAnimationFrame(tick); else p.remove();
+        })(start);
+      }
+    }
+
+    function spawnRipple(target, x, y) {
+      const r = target.getBoundingClientRect();
+      const rip = document.createElement('span');
+      rip.className = 'click-ripple';
+      const size = Math.max(r.width, r.height) * 1.8;
+      rip.style.width = size + 'px'; rip.style.height = size + 'px';
+      rip.style.left = (x - r.left) + 'px'; rip.style.top = (y - r.top) + 'px';
+      target.appendChild(rip);
+      setTimeout(() => rip.remove(), 800);
+
+      const shock = document.createElement('span');
+      shock.className = 'click-shock';
+      shock.style.width = (size * 1.2) + 'px'; shock.style.height = (size * 1.2) + 'px';
+      shock.style.left = (x - r.left) + 'px'; shock.style.top = (y - r.top) + 'px';
+      target.appendChild(shock);
+      setTimeout(() => shock.remove(), 700);
+    }
+
+    const onDown = (e) => {
+      if (e.button !== 0 && e.pointerType !== 'touch') return;
+      const t = e.target.closest('a, button, [data-fx]');
+      if (!t) return;
+      const accent = t.classList.contains('btn-ember') ? '#ff5b2e' : null;
+      spawnRipple(t, e.clientX, e.clientY);
+      if (t.matches('a, button, [data-fx]')) {
+        spawnBurst(e.clientX, e.clientY, accent);
+        t.classList.add('btn-press');
+        setTimeout(() => t.classList.remove('btn-press'), 320);
+      }
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, []);
+
+  // Magnetic buttons
+  useEffect(() => {
+    const onMove = (e) => {
+      const btn = e.target.closest('.magnet');
+      if (!btn) return;
+      const r = btn.getBoundingClientRect();
+      const x = e.clientX - r.left - r.width / 2;
+      const y = e.clientY - r.top - r.height / 2;
+      btn.style.transform = `translate(${x * 0.12}px, ${y * 0.12}px)`;
+    };
+    const onLeave = (e) => {
+      const btn = e.target.closest('.magnet');
+      if (btn) btn.style.transform = '';
+    };
+    document.addEventListener('mousemove', onMove, { passive: true });
+    document.addEventListener('mouseleave', onLeave, { passive: true });
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseleave', onLeave);
+    };
+  }, []);
+
+  // Global mouse-tracking glow for data-glow elements
+  useEffect(() => {
+    const onMove = (e) => {
+      const card = e.target.closest('[data-glow]');
+      if (!card) return;
+      const r = card.getBoundingClientRect();
+      card.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100) + '%');
+      card.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100) + '%');
+    };
+    document.addEventListener('mousemove', onMove, { passive: true });
+    return () => document.removeEventListener('mousemove', onMove);
   }, []);
 
   const isActive = (path, prefixes) => {
@@ -159,26 +294,29 @@ export default function Layout({ children }) {
 
       {/* Ambient backdrop blobs */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
-        <div className="absolute rounded-full animate-float1"
+        <div className="absolute rounded-full"
           style={{
             width: '50vw', height: '50vw',
-            background: 'var(--ember)', opacity: 0.10,
-            top: '-15%', left: '-10%', filter: 'blur(110px)',
+            background: 'var(--ember)', opacity: 0.42,
+            top: '-15%', left: '-10%', filter: 'blur(100px)',
             animation: 'float1 24s ease-in-out infinite',
+            willChange: 'transform',
           }} />
         <div className="absolute rounded-full"
           style={{
             width: '45vw', height: '45vw',
-            background: 'var(--violet-a)', opacity: 0.08,
-            bottom: '-15%', right: '-10%', filter: 'blur(110px)',
+            background: 'var(--violet-a)', opacity: 0.35,
+            bottom: '-15%', right: '-10%', filter: 'blur(100px)',
             animation: 'float2 28s ease-in-out infinite',
+            willChange: 'transform',
           }} />
         <div className="absolute rounded-full"
           style={{
-            width: '35vw', height: '35vw',
-            background: 'var(--cyber)', opacity: 0.05,
-            top: '50%', left: '30%', filter: 'blur(110px)',
+            width: '40vw', height: '40vw',
+            background: 'var(--cyber)', opacity: 0.18,
+            top: '50%', left: '30%', filter: 'blur(100px)',
             animation: 'float3 32s ease-in-out infinite',
+            willChange: 'transform',
           }} />
       </div>
 
