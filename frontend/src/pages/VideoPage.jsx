@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,9 +10,6 @@ import VideoModal from '../components/VideoModal';
 
 function Portal({ children }) { return ReactDOM.createPortal(children, document.body); }
 
-// Blob URL iframe — creates a local blob:// URL from HTML string
-// This is the ONLY reliable way to render arbitrary HTML with inline JS handlers
-// doc.write() fails behind Cloudflare, srcDoc gets escaped by React, dangerouslySetInnerHTML strips JS
 function HtmlEmbed({ html }) {
   const [blobUrl, setBlobUrl] = useState(null);
   useEffect(() => {
@@ -27,7 +24,6 @@ function HtmlEmbed({ html }) {
   return <iframe src={blobUrl} className="w-full h-full border-0" sandbox="allow-forms" allowFullScreen />;
 }
 
-// YouTube IFrame API loader — robust polling, works even if API already loaded by another module
 function loadYtApi() {
   return new Promise(resolve => {
     if (window.YT?.Player) return resolve();
@@ -37,69 +33,42 @@ function loadYtApi() {
       tag.src = 'https://www.youtube.com/iframe_api';
       document.head.appendChild(tag);
     }
-    const iv = setInterval(() => {
-      if (window.YT?.Player) { clearInterval(iv); resolve(); }
-    }, 50);
+    const iv = setInterval(() => { if (window.YT?.Player) { clearInterval(iv); resolve(); } }, 50);
   });
 }
 
-// YouTube player with progress tracking — React owns wrapper div only, YT owns inner element
 function YouTubeTrackingPlayer({ videoId, onTimeUpdate, controlRef }) {
   const wrapperRef = useRef(null);
   const onTimeUpdateRef = useRef(onTimeUpdate);
   useEffect(() => { onTimeUpdateRef.current = onTimeUpdate; }, [onTimeUpdate]);
-
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper || !videoId) return;
     let destroyed = false, player = null, pollId = null;
-
-    const reportTime = () => {
-      if (!player) return;
-      const ct = player.getCurrentTime?.() ?? 0;
-      const dur = player.getDuration?.() ?? 0;
-      if (dur > 0 && onTimeUpdateRef.current) onTimeUpdateRef.current(ct, dur);
-    };
+    const reportTime = () => { if (!player) return; const ct = player.getCurrentTime?.() ?? 0; const dur = player.getDuration?.() ?? 0; if (dur > 0 && onTimeUpdateRef.current) onTimeUpdateRef.current(ct, dur); };
     const stopPoll = () => { if (pollId) { clearInterval(pollId); pollId = null; } };
-    const startPoll = () => {
-      stopPoll();
-      reportTime(); // report immediately so we don't miss a 2s window
-      pollId = setInterval(reportTime, 2000);
-    };
-
+    const startPoll = () => { stopPoll(); reportTime(); pollId = setInterval(reportTime, 2000); };
     const playerDiv = document.createElement('div');
     playerDiv.style.width = '100%';
     playerDiv.style.height = '100%';
     wrapper.appendChild(playerDiv);
-
     loadYtApi().then(() => {
       if (destroyed) return;
       player = new window.YT.Player(playerDiv, {
         videoId,
         playerVars: { autoplay: 0, controls: 1, rel: 0, origin: window.location.origin },
         events: {
-          onReady: () => {
-            if (controlRef) controlRef.current = { seek: (pos) => player.seekTo(pos, true) };
-          },
-          onStateChange: ({ data }) => {
-            if (data === window.YT.PlayerState.PLAYING) startPoll();
-            else stopPoll();
-          },
+          onReady: () => { if (controlRef) controlRef.current = { seek: (pos) => player.seekTo(pos, true) }; },
+          onStateChange: ({ data }) => { if (data === window.YT.PlayerState.PLAYING) startPoll(); else stopPoll(); },
         },
       });
     });
-
-    return () => {
-      destroyed = true; stopPoll();
-      try { player?.destroy(); } catch (_) {}
-      try { if (wrapper.firstChild) wrapper.innerHTML = ''; } catch (_) {}
-    };
+    return () => { destroyed = true; stopPoll(); try { player?.destroy(); } catch (_) {} try { if (wrapper.firstChild) wrapper.innerHTML = ''; } catch (_) {} };
   }, [videoId]);
-
   return <div ref={wrapperRef} className="w-full h-full" />;
 }
 
-// Comment — stable component outside render
+// ── Comment node ────────────────────────────────────────────────────────────
 function CommentNode({ c, depth, replies, user, editingId, editContent, setEditContent, silentEdit, setSilentEdit, onStartEdit, onSaveEdit, onCancelEdit, onReply, onDelete, onHardDelete, editHistoryId, setEditHistoryId }) {
   const isEditing = editingId === c.id;
   const isDev = user?.role === 'dev';
@@ -108,47 +77,118 @@ function CommentNode({ c, depth, replies, user, editingId, editContent, setEditC
   let history = []; try { history = JSON.parse(c.edit_history || '[]'); } catch (e) {}
 
   return (
-    <div className={depth > 0 ? 'ml-6 sm:ml-10 border-l-2 border-violet-200/50 dark:border-violet-800/30 pl-4' : ''}>
-      <div className="flex gap-3 group py-2 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 -mx-2 px-2 rounded-xl transition-colors">
-        <img src={c.avatar || `https://ui-avatars.com/api/?name=${c.display_name || c.username || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className={`w-8 h-8 rounded-xl shrink-0 object-cover mt-0.5 ${isDeleted ? 'opacity-40 grayscale' : ''}`} />
+    <div className={depth > 0 ? 'ml-6 sm:ml-10 pl-4' : ''}
+      style={depth > 0 ? { borderLeft: '2px solid rgba(255,91,46,0.18)' } : {}}>
+      <div className="flex gap-3 group py-2.5 -mx-2 px-2 rounded-xl transition-all"
+        style={{ background: '' }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(246,246,250,0.03)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
+        <img
+          src={c.avatar || `https://ui-avatars.com/api/?name=${c.display_name || c.username || 'U'}&background=ff5b2e&color=fff&size=80`}
+          alt=""
+          className={`w-8 h-8 rounded-xl shrink-0 object-cover mt-0.5 ${isDeleted ? 'opacity-30 grayscale' : ''}`}
+        />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-            <span className={`text-sm font-bold ${isDeleted ? 'text-zinc-400' : 'text-zinc-900 dark:text-white'}`}>{c.display_name || c.username}</span>
-            <span className="text-[10px] text-zinc-400 font-mono">{formatDate(c.created_at)}</span>
-            {c.edited === 1 && !isDeleted && <button onClick={() => setEditHistoryId(editHistoryId === c.id ? null : c.id)} className="text-[9px] text-zinc-400 hover:text-violet-500 transition-colors">(edytowano)</button>}
+            <span className={`text-sm font-bold ${isDeleted ? '' : ''}`}
+              style={{ color: isDeleted ? 'var(--fg-4)' : 'var(--fg)' }}>
+              {c.display_name || c.username}
+            </span>
+            <span className="text-[10px] font-mono" style={{ color: 'var(--fg-4)' }}>{formatDate(c.created_at)}</span>
+            {c.edited === 1 && !isDeleted && (
+              <button onClick={() => setEditHistoryId(editHistoryId === c.id ? null : c.id)}
+                className="text-[9px] font-mono transition-colors"
+                style={{ color: 'var(--fg-4)' }}
+                onMouseEnter={e => { e.currentTarget.style.color = 'var(--ember)'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = 'var(--fg-4)'; }}>
+                (edytowano)
+              </button>
+            )}
           </div>
-          {isDeleted ? <p className="text-sm text-zinc-400 italic">(komentarz usunięty)</p>
-          : isEditing ? (
-            <div className="space-y-2" onClick={e => e.stopPropagation()}>
-              <textarea value={editContent} onChange={e => setEditContent(e.target.value)} className="input-field !py-2 !px-3 text-sm resize-none" rows={2} autoFocus />
-              <div className="flex items-center gap-2">
-                <button onClick={() => onSaveEdit(c.id)} className="p-1.5 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg transition-all hover:scale-110"><Check className="w-4 h-4" /></button>
-                <button onClick={onCancelEdit} className="p-1.5 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-all hover:scale-110"><X className="w-4 h-4" /></button>
-                {isDev && <label className="flex items-center gap-1.5 text-[10px] text-amber-500 cursor-pointer ml-2 select-none"><input type="checkbox" checked={silentEdit} onChange={e => setSilentEdit(e.target.checked)} className="w-3 h-3 rounded" /> Ciche</label>}
+
+          {isDeleted
+            ? <p className="text-sm italic" style={{ color: 'var(--fg-4)' }}>(komentarz usunięty)</p>
+            : isEditing ? (
+              <div className="space-y-2" onClick={e => e.stopPropagation()}>
+                <textarea value={editContent} onChange={e => setEditContent(e.target.value)}
+                  className="glass-input !py-2 !px-3 text-sm resize-none w-full" rows={2} autoFocus />
+                <div className="flex items-center gap-2">
+                  <button onClick={() => onSaveEdit(c.id)}
+                    className="p-1.5 rounded-lg transition-all hover:scale-110"
+                    style={{ color: 'var(--ok)', background: 'rgba(101,232,146,0.08)' }}>
+                    <Check className="w-4 h-4" />
+                  </button>
+                  <button onClick={onCancelEdit}
+                    className="p-1.5 rounded-lg transition-all hover:scale-110"
+                    style={{ color: 'var(--fg-3)', background: 'rgba(246,246,250,0.05)' }}>
+                    <X className="w-4 h-4" />
+                  </button>
+                  {isDev && (
+                    <label className="flex items-center gap-1.5 text-[10px] cursor-pointer ml-2 select-none" style={{ color: 'var(--warn)' }}>
+                      <input type="checkbox" checked={silentEdit} onChange={e => setSilentEdit(e.target.checked)} className="w-3 h-3 rounded" />
+                      Ciche
+                    </label>
+                  )}
+                </div>
               </div>
-            </div>
-          ) : <p className="text-sm text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap break-words">{c.content}</p>}
+            ) : (
+              <p className="text-sm whitespace-pre-wrap break-words" style={{ color: 'var(--fg-3)' }}>
+                {c.content}
+              </p>
+            )
+          }
+
           {editHistoryId === c.id && history.length > 0 && (
-            <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700 animate-scale-in">
-              <p className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Historia edycji</p>
-              {history.map((h, i) => <div key={i} className="text-xs text-zinc-500 mb-1"><span className="font-mono text-[10px]">{formatDate(h.date)}</span>: {h.content}</div>)}
+            <div className="mt-2 p-3 rounded-xl animate-scale-in"
+              style={{ background: 'var(--bg-3)', border: '1px solid var(--line-2)' }}>
+              <p className="text-[10px] font-bold font-mono uppercase mb-2" style={{ color: 'var(--fg-4)' }}>Historia edycji</p>
+              {history.map((h, i) => (
+                <div key={i} className="text-xs mb-1" style={{ color: 'var(--fg-3)' }}>
+                  <span className="font-mono text-[10px]" style={{ color: 'var(--fg-4)' }}>{formatDate(h.date)}</span>: {h.content}
+                </div>
+              ))}
             </div>
           )}
+
           {!isEditing && !isDeleted && (
             <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-all">
-              <button onClick={() => onReply(c)} className="text-[11px] text-zinc-400 hover:text-violet-500 px-2 py-1 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-all flex items-center gap-1"><Reply className="w-3 h-3" /> Odpowiedz</button>
-              {(c.user_id === user?.id || isDev) && <button onClick={() => onStartEdit(c)} className="text-[11px] text-zinc-400 hover:text-amber-500 px-2 py-1 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-all flex items-center gap-1"><Pencil className="w-3 h-3" /> Edytuj</button>}
-              {canMod && <button onClick={() => onDelete(c.id)} className="text-[11px] text-zinc-400 hover:text-red-500 px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-all flex items-center gap-1"><Trash2 className="w-3 h-3" /> Usuń</button>}
+              {[
+                { action: () => onReply(c), label: 'Odpowiedz', icon: <Reply className="w-3 h-3" />, color: 'var(--ember)' },
+                ...(c.user_id === user?.id || isDev ? [{ action: () => onStartEdit(c), label: 'Edytuj', icon: <Pencil className="w-3 h-3" />, color: 'var(--warn)' }] : []),
+                ...(canMod ? [{ action: () => onDelete(c.id), label: 'Usuń', icon: <Trash2 className="w-3 h-3" />, color: 'var(--err)' }] : []),
+              ].map(({ action, label, icon, color }) => (
+                <button key={label} onClick={action}
+                  className="text-[11px] px-2 py-1 rounded-lg flex items-center gap-1 transition-all font-mono"
+                  style={{ color: 'var(--fg-4)' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = color; e.currentTarget.style.background = color + '15'; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--fg-4)'; e.currentTarget.style.background = ''; }}>
+                  {icon} {label}
+                </button>
+              ))}
             </div>
           )}
-          {isDeleted && isDev && <button onClick={() => onHardDelete(c.id)} className="text-[10px] text-red-400 hover:text-red-500 mt-1 transition-colors">Usuń całkowicie{replies.length > 0 ? ` (+ ${replies.length} odp.)` : ''}</button>}
+          {isDeleted && isDev && (
+            <button onClick={() => onHardDelete(c.id)}
+              className="text-[10px] font-mono mt-1 transition-colors"
+              style={{ color: 'var(--err)' }}>
+              Usuń całkowicie{replies.length > 0 ? ` (+ ${replies.length} odp.)` : ''}
+            </button>
+          )}
         </div>
       </div>
-      {replies.map(r => <CommentNode key={r.id} c={r} depth={depth + 1} replies={r._replies || []} user={user} editingId={editingId} editContent={editContent} setEditContent={setEditContent} silentEdit={silentEdit} setSilentEdit={setSilentEdit} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete} editHistoryId={editHistoryId} setEditHistoryId={setEditHistoryId} />)}
+      {replies.map(r => (
+        <CommentNode key={r.id} c={r} depth={depth + 1} replies={r._replies || []} user={user}
+          editingId={editingId} editContent={editContent} setEditContent={setEditContent}
+          silentEdit={silentEdit} setSilentEdit={setSilentEdit}
+          onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
+          onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete}
+          editHistoryId={editHistoryId} setEditHistoryId={setEditHistoryId} />
+      ))}
     </div>
   );
 }
 
+// ── Main page ───────────────────────────────────────────────────────────────
 export default function VideoPage() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
@@ -157,47 +197,41 @@ export default function VideoPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [video, setVideo] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [video, setVideo]             = useState(null);
+  const [loading, setLoading]         = useState(true);
   const [activeSource, setActiveSource] = useState('main');
-  const [error, setError] = useState(null);
-  const [isFav, setIsFav] = useState(false);
-  const [favCount, setFavCount] = useState(0);
-  const [favLoading, setFavLoading] = useState(false);
-  const [prevVideo, setPrevVideo] = useState(null);
-  const [nextVideo, setNextVideo] = useState(null);
-  const [canEdit, setCanEdit] = useState(false);
+  const [error, setError]             = useState(null);
+  const [isFav, setIsFav]             = useState(false);
+  const [favCount, setFavCount]       = useState(0);
+  const [favLoading, setFavLoading]   = useState(false);
+  const [prevVideo, setPrevVideo]     = useState(null);
+  const [nextVideo, setNextVideo]     = useState(null);
+  const [canEdit, setCanEdit]         = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editUsers, setEditUsers] = useState([]);
-
-  const [comments, setComments] = useState([]);
-  const [newComment, setNewComment] = useState('');
+  const [editUsers, setEditUsers]     = useState([]);
+  const [comments, setComments]       = useState([]);
+  const [newComment, setNewComment]   = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
-  const [replyTo, setReplyTo] = useState(null);
+  const [replyTo, setReplyTo]         = useState(null);
   const [editingComment, setEditingComment] = useState(null);
   const [editContent, setEditContent] = useState('');
-  const [silentEdit, setSilentEdit] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [silentEdit, setSilentEdit]   = useState(false);
+  const [deleteConfirm, setDeleteConfirm]     = useState(null);
   const [hardDeleteConfirm, setHardDeleteConfirm] = useState(null);
-  const [editHistoryPopup, setEditHistoryPopup] = useState(null);
-
-  // Continue Watching
+  const [editHistoryPopup, setEditHistoryPopup]   = useState(null);
   const playerControlRef = useRef(null);
   const progressStateRef = useRef({ id: null, position: 0, duration: 0, completed: false, lastSaved: 0 });
-  const [resumePosition, setResumePosition] = useState(null);
+  const [resumePosition, setResumePosition]     = useState(null);
   const [showResumeBanner, setShowResumeBanner] = useState(false);
-
-  const [devOpen, setDevOpen] = useState(false);
-  const [devUserId, setDevUserId] = useState('');
-  const [devContent, setDevContent] = useState('');
-  const [devDate, setDevDate] = useState('');
-  const [devParent, setDevParent] = useState('');
-  const [allUsers, setAllUsers] = useState([]);
-  
-  // Animation state machine: 'show' | 'exiting' | 'hidden' | 'entering'
-  const [phase, setPhase] = useState('show');
-  const [exitDir, setExitDir] = useState('');
-  const [pendingSlide, setPendingSlide] = useState(slideDir); // 'left' | 'right' | ''
+  const [devOpen, setDevOpen]         = useState(false);
+  const [devUserId, setDevUserId]     = useState('');
+  const [devContent, setDevContent]   = useState('');
+  const [devDate, setDevDate]         = useState('');
+  const [devParent, setDevParent]     = useState('');
+  const [allUsers, setAllUsers]       = useState([]);
+  const [phase, setPhase]             = useState('show');
+  const [exitDir, setExitDir]         = useState('');
+  const [pendingSlide, setPendingSlide] = useState(slideDir);
 
   useEffect(() => {
     setActiveSource('main');
@@ -206,23 +240,13 @@ export default function VideoPage() {
     setComments([]); setReplyTo(null);
     setResumePosition(null); setShowResumeBanner(false);
     const vid = Number(id);
-    const isSwitch = !!video;
-    
-    // If switching between videos, go to hidden phase (between exit and enter)
-    if (isSwitch) {
-      setPhase('hidden');
-    } else {
-      setLoading(true);
-    }
-    
+    if (video) setPhase('hidden'); else setLoading(true);
     Promise.all([
       api.getVideo(id),
       api.checkFavorite(id).catch(() => ({ isFavorite: false, count: 0 })),
     ]).then(([v, f]) => {
       setVideo(v); setIsFav(f.isFavorite); setFavCount(f.count || 0); setError(null);
-      // NEW data is now in state → trigger enter animation
-      setPendingSlide(slideDir);
-      setPhase('entering');
+      setPendingSlide(slideDir); setPhase('entering');
       const admin = user?.role === 'admin' || user?.role === 'dev';
       if (admin) setCanEdit(true);
       else if (v.category_id) api.getCategories().then(cats => setCanEdit(cats.find(c => c.id === v.category_id)?.canEdit || false)).catch(() => setCanEdit(false));
@@ -237,14 +261,12 @@ export default function VideoPage() {
       api.getComments(vid).then(setComments).catch(() => setComments([]));
       api.getProgress(vid).then(p => {
         if (p && p.duration > 0 && p.position > p.duration * 0.05 && p.position < p.duration * 0.90) {
-          setResumePosition(p.position);
-          setShowResumeBanner(true);
+          setResumePosition(p.position); setShowResumeBanner(true);
         }
       }).catch(() => {});
     }).catch(err => setError(err.message)).finally(() => setLoading(false));
   }, [id]);
 
-  // Save progress when navigating to a different video (id changes) or leaving the page entirely
   useEffect(() => {
     progressStateRef.current = { id, position: 0, duration: 0, completed: false, lastSaved: 0 };
     return () => {
@@ -252,13 +274,7 @@ export default function VideoPage() {
       if (!s.id || !s.duration || s.completed) return;
       const pct = s.position / s.duration;
       if (pct < 0.05 || pct >= 0.90) return;
-      fetch(`/api/progress/${s.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ position: s.position, duration: s.duration }),
-        credentials: 'include',
-        keepalive: true,
-      }).catch(() => {});
+      fetch(`/api/progress/${s.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ position: s.position, duration: s.duration }), credentials: 'include', keepalive: true }).catch(() => {});
     };
   }, [id]);
 
@@ -289,37 +305,27 @@ export default function VideoPage() {
     if (!devUserId || !devContent.trim()) return;
     try { const c = await api.addAdminComment({ video_id: Number(id), user_id: Number(devUserId), content: devContent.trim(), created_at: devDate || undefined, parent_id: devParent ? Number(devParent) : null }); setComments(p => [...p, c]); setDevContent(''); } catch (e) {}
   };
-  const onStartEdit = useCallback((c) => { setEditingComment(c.id); setEditContent(c.content); setSilentEdit(false); }, []);
-  const onSaveEdit = useCallback(async (cid) => { if (!editContent.trim()) return; try { const u = await api.editComment(cid, editContent.trim(), silentEdit); setComments(p => p.map(c => c.id === cid ? u : c)); setEditingComment(null); setEditContent(''); } catch (e) {} }, [editContent, silentEdit]);
+  const onStartEdit  = useCallback((c) => { setEditingComment(c.id); setEditContent(c.content); setSilentEdit(false); }, []);
+  const onSaveEdit   = useCallback(async (cid) => { if (!editContent.trim()) return; try { const u = await api.editComment(cid, editContent.trim(), silentEdit); setComments(p => p.map(c => c.id === cid ? u : c)); setEditingComment(null); setEditContent(''); } catch (e) {} }, [editContent, silentEdit]);
   const onCancelEdit = useCallback(() => { setEditingComment(null); setEditContent(''); }, []);
-  const onReply = useCallback((c) => { setReplyTo(c); setNewComment(''); }, []);
-  const onDelete = useCallback((cid) => setDeleteConfirm(cid), []);
+  const onReply      = useCallback((c) => { setReplyTo(c); setNewComment(''); }, []);
+  const onDelete     = useCallback((cid) => setDeleteConfirm(cid), []);
   const onHardDelete = useCallback((cid) => setHardDeleteConfirm(cid), []);
   const softDel = async () => { if (!deleteConfirm) return; try { await api.deleteComment(deleteConfirm); setComments(p => p.map(c => c.id === deleteConfirm ? { ...c, deleted: 1, content: '' } : c)); } catch (e) {} setDeleteConfirm(null); };
-  const hardDel = async () => { if (!hardDeleteConfirm) return; try { await api.hardDeleteComment(hardDeleteConfirm); const rm = new Set([hardDeleteConfirm]); const walk = pid => comments.filter(c => c.parent_id === pid).forEach(c => { rm.add(c.id); walk(c.id); }); walk(hardDeleteConfirm); setComments(p => p.filter(c => !rm.has(c.id))); } catch (e) {} setHardDeleteConfirm(null); };
-
+  const hardDel = async () => {
+    if (!hardDeleteConfirm) return;
+    try { await api.hardDeleteComment(hardDeleteConfirm); const rm = new Set([hardDeleteConfirm]); const walk = pid => comments.filter(c => c.parent_id === pid).forEach(c => { rm.add(c.id); walk(c.id); }); walk(hardDeleteConfirm); setComments(p => p.filter(c => !rm.has(c.id))); } catch (e) {}
+    setHardDeleteConfirm(null);
+  };
   const handleTimeUpdate = useCallback((currentTime, duration) => {
     if (!duration || duration <= 0) return;
     const pct = currentTime / duration;
     const s = progressStateRef.current;
-    s.position = currentTime;
-    s.duration = duration;
-
-    if (pct >= 0.90) {
-      if (!s.completed) {
-        s.completed = true;
-        api.clearProgress(id).catch(() => {});
-      }
-      return;
-    }
-    s.completed = false;
-    if (pct < 0.05) return;
-
+    s.position = currentTime; s.duration = duration;
+    if (pct >= 0.90) { if (!s.completed) { s.completed = true; api.clearProgress(id).catch(() => {}); } return; }
+    s.completed = false; if (pct < 0.05) return;
     const now = Date.now();
-    if (now - s.lastSaved > 10000) {
-      s.lastSaved = now;
-      api.saveProgress(id, currentTime, duration).catch(() => {});
-    }
+    if (now - s.lastSaved > 10000) { s.lastSaved = now; api.saveProgress(id, currentTime, duration).catch(() => {}); }
   }, [id]);
 
   const tree = useMemo(() => {
@@ -329,26 +335,37 @@ export default function VideoPage() {
     return roots;
   }, [comments]);
 
-  if (loading && !video) return <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-fade-in"><div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[32px] skeleton mb-6" /><div className="h-8 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-2/3 mb-4" /><div className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-1/3" /></div>;
-  if (error || !video) return <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-scale-in"><div className="card p-16 text-center"><p className="text-red-500 font-bold text-lg mb-2">Błąd</p><p className="text-zinc-500">{error || 'Film nie znaleziony.'}</p><Link to="/" className="btn-primary mt-6 inline-block">Wróć</Link></div></div>;
+  // ── Loading / error states ──
+  if (loading && !video) return (
+    <div className="px-8 sm:px-12 py-12 max-w-5xl mx-auto animate-fade-in">
+      <div className="skeleton rounded-[20px] mb-6" style={{ aspectRatio: '16/9' }} />
+      <div className="h-8 skeleton rounded-xl w-2/3 mb-4" />
+      <div className="h-4 skeleton rounded-xl w-1/3" />
+    </div>
+  );
+  if (error || !video) return (
+    <div className="px-8 sm:px-12 py-12 max-w-5xl mx-auto animate-scale-in">
+      <div className="p-16 text-center rounded-[20px]" style={{ background: 'var(--bg-2)', border: '1px solid var(--line-2)' }}>
+        <p className="font-bold text-lg mb-2" style={{ color: 'var(--err)' }}>Błąd</p>
+        <p className="text-sm" style={{ color: 'var(--fg-3)' }}>{error || 'Film nie znaleziony.'}</p>
+        <Link to="/" className="btn-primary mt-6 inline-block text-sm">Wróć</Link>
+      </div>
+    </div>
+  );
 
-  const src = activeSource === 'mirror1'
-    ? { url: video.mirror1_url, type: video.mirror1_type || (video.mirror1_is_embed ? 'embed' : 'link') }
-    : activeSource === 'mirror2'
-    ? { url: video.mirror2_url, type: video.mirror2_type || (video.mirror2_is_embed ? 'embed' : 'link') }
-    : activeSource === 'mirror3'
-    ? { url: video.mirror3_url, type: video.mirror3_type || 'link' }
-    : activeSource === 'mirror4'
-    ? { url: video.mirror4_url, type: video.mirror4_type || 'link' }
-    : activeSource === 'mirror5'
-    ? { url: video.mirror5_url, type: video.mirror5_type || 'link' }
+  const src = activeSource === 'mirror1' ? { url: video.mirror1_url, type: video.mirror1_type || (video.mirror1_is_embed ? 'embed' : 'link') }
+    : activeSource === 'mirror2' ? { url: video.mirror2_url, type: video.mirror2_type || (video.mirror2_is_embed ? 'embed' : 'link') }
+    : activeSource === 'mirror3' ? { url: video.mirror3_url, type: video.mirror3_type || 'link' }
+    : activeSource === 'mirror4' ? { url: video.mirror4_url, type: video.mirror4_type || 'link' }
+    : activeSource === 'mirror5' ? { url: video.mirror5_url, type: video.mirror5_type || 'link' }
     : { url: video.main_source, type: video.main_source_type };
+
   const isStreamer = src.type === 'streamer';
   const streamerVideoId = isStreamer ? src.url?.replace('self-hosted:', '') : null;
-  const isPlex = src.type === 'plex';
-  const isHtml = src.type === 'embed' || src.type === 'html';
-  const embedUrl = (isHtml || isPlex || isStreamer) ? null : youtubeToEmbed(src.url);
-  const sources = [
+  const isPlex    = src.type === 'plex';
+  const isHtml    = src.type === 'embed' || src.type === 'html';
+  const embedUrl  = (isHtml || isPlex || isStreamer) ? null : youtubeToEmbed(src.url);
+  const sources   = [
     { key: 'main', label: video.main_source_title || 'Główne źródło' },
     ...(video.mirror1_url ? [{ key: 'mirror1', label: video.mirror1_name || 'Mirror 1' }] : []),
     ...(video.mirror2_url ? [{ key: 'mirror2', label: video.mirror2_name || 'Mirror 2' }] : []),
@@ -356,71 +373,123 @@ export default function VideoPage() {
     ...(video.mirror4_url ? [{ key: 'mirror4', label: video.mirror4_name || 'Mirror 4' }] : []),
     ...(video.mirror5_url ? [{ key: 'mirror5', label: video.mirror5_name || 'Mirror 5' }] : []),
   ];
-  const isDev = user?.role === 'dev';
-  const activeCount = comments.filter(c => !c.deleted).length;
-  // Animation class based on phase
-  const enterAnim = pendingSlide === 'right' ? 'anim-enter-right' : pendingSlide === 'left' ? 'anim-enter-left' : 'anim-enter-up';
-  const wrapperClass = phase === 'exiting' ? exitDir : phase === 'entering' ? enterAnim : phase === 'hidden' ? 'opacity-0' : '';
+  const isDev         = user?.role === 'dev';
+  const activeCount   = comments.filter(c => !c.deleted).length;
+  const enterAnim     = pendingSlide === 'right' ? 'anim-enter-right' : pendingSlide === 'left' ? 'anim-enter-left' : 'anim-enter-up';
+  const wrapperClass  = phase === 'exiting' ? exitDir : phase === 'entering' ? enterAnim : phase === 'hidden' ? 'opacity-0' : '';
 
   return (
     <>
-      <div className={`p-6 sm:p-10 max-w-5xl mx-auto ${wrapperClass}`} onAnimationEnd={() => { if (phase === 'entering') setPhase('show'); }}>
-        <button onClick={() => navigate(fromCategory ? `/category/${fromCategory}` : '/')} className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white font-medium text-sm mb-6 hover:gap-3 transition-all active:scale-95">
-          <ArrowLeft className="w-4 h-4" /> {fromCategory ? 'Wróć do kategorii' : 'Wróć do bazy'}
+      <div className={`px-6 sm:px-10 py-10 max-w-5xl mx-auto ${wrapperClass}`}
+        onAnimationEnd={() => { if (phase === 'entering') setPhase('show'); }}>
+
+        {/* ── Back button ── */}
+        <button
+          onClick={() => navigate(fromCategory ? `/category/${fromCategory}` : '/')}
+          className="inline-flex items-center gap-2 mb-8 px-4 py-2 rounded-full text-sm font-mono font-bold uppercase tracking-[0.1em] transition-all group"
+          style={{ border: '1px solid var(--line-2)', color: 'var(--fg-3)' }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--ember)'; e.currentTarget.style.borderColor = 'rgba(255,91,46,0.30)'; e.currentTarget.style.background = 'rgba(255,91,46,0.05)'; }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--fg-3)'; e.currentTarget.style.borderColor = 'var(--line-2)'; e.currentTarget.style.background = ''; }}
+        >
+          <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
+          {fromCategory ? 'Wróć do kategorii' : 'Wróć do bazy'}
         </button>
 
-        <div className="flex flex-col sm:flex-row sm:items-start gap-4 mb-6 anim-stagger-1">
-          <div className="flex-1">
-            <div className="flex items-start gap-3 mb-3">
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display flex-1">{video.title}</h1>
-              {canEdit && <button onClick={openEditModal} className="shrink-0 p-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-500/20 transition-all hover:scale-110 active:scale-95"><Pencil className="w-5 h-5" /></button>}
-              <button onClick={toggleFav} disabled={favLoading} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl transition-all duration-300 hover:scale-105 active:scale-95 ${isFav ? 'bg-pink-50 dark:bg-pink-500/10 text-pink-500 shadow-lg shadow-pink-500/10' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-pink-500'}`}>
-                <Heart className={`w-5 h-5 transition-all ${isFav ? 'fill-current scale-110' : ''}`} />
-                {favCount > 0 && <span className="text-xs font-bold">{favCount}</span>}
+        {/* ── Header ── */}
+        <div className="mb-6 anim-stagger-1">
+          <div className="mb-1">
+            <span className="mono-label">{video.category_name || 'Alleria Filmy'}</span>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <h1 className="flex-1 font-bold leading-tight tracking-tight"
+              style={{ fontSize: 'clamp(22px, 3.5vw, 36px)', color: 'var(--fg)', letterSpacing: '-0.03em' }}>
+              {video.title}
+            </h1>
+
+            <div className="flex items-center gap-2 shrink-0 mt-1">
+              {canEdit && (
+                <button onClick={openEditModal}
+                  className="p-2.5 rounded-xl transition-all hover:scale-110 active:scale-95"
+                  style={{ background: 'rgba(255,91,46,0.08)', color: 'var(--ember-2)', border: '1px solid rgba(255,91,46,0.20)' }}>
+                  <Pencil className="w-4 h-4" />
+                </button>
+              )}
+              <button onClick={toggleFav} disabled={favLoading}
+                className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl transition-all hover:scale-105 active:scale-95"
+                style={isFav
+                  ? { background: 'rgba(255,91,46,0.12)', color: 'var(--ember)', border: '1px solid rgba(255,91,46,0.25)', boxShadow: '0 4px 20px rgba(255,91,46,0.20)' }
+                  : { background: 'rgba(246,246,250,0.05)', color: 'var(--fg-4)', border: '1px solid var(--line)' }
+                }>
+                <Heart className={`w-4 h-4 transition-all ${isFav ? 'fill-current' : ''}`} />
+                {favCount > 0 && <span className="text-xs font-bold font-mono">{favCount}</span>}
               </button>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <Link to={`/author/${video.author_id}`} className="text-sm font-bold text-violet-500 hover:text-violet-600 transition-colors">{video.author_display_name || video.author_name}</Link>
-              {video.tags?.length > 0 && <div className="flex flex-wrap gap-1.5">{video.tags.map(t => <Link key={t.id} to={`/?tags=${t.id}`} className="tag-chip hover:scale-105 active:scale-95">{t.name}</Link>)}</div>}
-            </div>
-            <div className="flex items-center gap-3 mt-2 text-xs text-zinc-400">
-              <span>{formatDate(video.publish_date)}</span>
-              {video.category_name && <><span>•</span><Link to={`/category/${video.category_slug}`} className="hover:text-violet-500 transition-colors">{video.category_name}</Link></>}
-            </div>
           </div>
+
+          {/* Meta row */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-3">
+            <Link to={`/author/${video.author_id}`}
+              className="text-sm font-bold no-underline transition-colors"
+              style={{ color: 'var(--ember-2)' }}
+              onMouseEnter={e => { e.currentTarget.style.color = 'var(--ember)'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'var(--ember-2)'; }}>
+              {video.author_display_name || video.author_name}
+            </Link>
+            <span className="text-[11px] font-mono" style={{ color: 'var(--fg-4)' }}>
+              {formatDate(video.publish_date)}
+            </span>
+            {video.category_name && (
+              <>
+                <span style={{ color: 'var(--line-2)' }}>·</span>
+                <Link to={`/category/${video.category_slug}`}
+                  className="text-[11px] font-mono no-underline transition-colors"
+                  style={{ color: 'var(--fg-4)' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--ember)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--fg-4)'; }}>
+                  {video.category_name}
+                </Link>
+              </>
+            )}
+          </div>
+
+          {/* Tags */}
+          {video.tags?.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {video.tags.map(t => (
+                <Link key={t.id} to={`/?tags=${t.id}`}
+                  className="text-[11px] font-bold font-mono px-2.5 py-1 rounded-full no-underline transition-all hover:scale-105"
+                  style={{ background: 'rgba(255,91,46,0.10)', color: 'var(--ember-2)', border: '1px solid rgba(255,91,46,0.22)' }}>
+                  {t.name}
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="mb-2 anim-stagger-2" key={`player-${activeSource}`}>
+        {/* ── Player ── */}
+        <div className="mb-3 anim-stagger-2 rounded-[20px] overflow-hidden"
+          style={{ border: '1px solid var(--line-2)', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}
+          key={`player-${activeSource}`}>
           {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
             <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} />
           ) : isStreamer && streamerVideoId ? (
             <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} />
           ) : isPlex && src.url ? (
-            <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in plex-container flex items-center justify-center">
-              {/* Floating particles */}
+            <div className="aspect-video plex-container flex items-center justify-center">
               <div className="plex-particle w-2 h-2 bg-amber-400/40 top-[20%] left-[15%]" style={{ animation: 'plexFloat1 6s ease-in-out infinite' }} />
               <div className="plex-particle w-1.5 h-1.5 bg-emerald-400/30 top-[60%] right-[20%]" style={{ animation: 'plexFloat2 8s ease-in-out infinite 1s' }} />
-              <div className="plex-particle w-1 h-1 bg-amber-300/20 bottom-[25%] left-[30%]" style={{ animation: 'plexFloat3 7s ease-in-out infinite 2s' }} />
               <div className="plex-particle w-2.5 h-2.5 bg-amber-500/20 top-[35%] right-[35%]" style={{ animation: 'plexFloat1 9s ease-in-out infinite 3s' }} />
-              <div className="plex-particle w-1 h-1 bg-emerald-300/15 top-[15%] right-[40%]" style={{ animation: 'plexFloat2 5s ease-in-out infinite 0.5s' }} />
-
               <div className="flex flex-col items-center gap-6 p-10 relative z-10">
-                {/* Plex logo */}
                 <img src="https://alleria.pl/image/plex-play.png" alt="Plex" className="plex-logo w-20 h-20 object-contain mb-1" />
-
-                {/* Primary — Oglądaj w Plex */}
                 <a href={src.url} target="_blank" rel="noopener noreferrer"
                   className="plex-btn-primary block w-[280px] text-center py-4 px-8 rounded-2xl font-bold text-lg text-zinc-900 no-underline tracking-wide">
                   ▶ Oglądaj w Plex
                 </a>
-
-                {/* Secondary — Uzyskaj dostęp */}
                 <a href="https://alleria.pl/plex/plex_access.php" target="_blank" rel="noopener noreferrer"
                   className="plex-btn-access block w-[280px] text-center py-3.5 px-8 rounded-2xl font-semibold text-base no-underline tracking-wide">
                   Uzyskaj dostęp do Plex
                 </a>
-
-                {/* Tertiary — Czym jest Plex */}
                 <a href="https://alleria.pl/plex/" target="_blank" rel="noopener noreferrer"
                   className="plex-btn-info block text-center py-2.5 px-6 rounded-xl text-sm no-underline">
                   Czym jest Plex?
@@ -428,84 +497,241 @@ export default function VideoPage() {
               </div>
             </div>
           ) : embedUrl ? (
-            <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in"><YouTubeTrackingPlayer videoId={extractYoutubeId(src.url)} onTimeUpdate={handleTimeUpdate} controlRef={playerControlRef} /></div>
+            <div className="aspect-video"><YouTubeTrackingPlayer videoId={extractYoutubeId(src.url)} onTimeUpdate={handleTimeUpdate} controlRef={playerControlRef} /></div>
           ) : isHtml && src.url ? (
-            <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in"><HtmlEmbed html={src.url} /></div>
-          ) : <div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[32px] flex items-center justify-center"><p className="text-zinc-400 text-sm">Brak źródła.</p></div>}
+            <div className="aspect-video"><HtmlEmbed html={src.url} /></div>
+          ) : (
+            <div className="aspect-video flex items-center justify-center" style={{ background: 'var(--bg-3)' }}>
+              <p className="text-sm" style={{ color: 'var(--fg-4)' }}>Brak źródła.</p>
+            </div>
+          )}
         </div>
 
+        {/* ── Resume banner ── */}
         {showResumeBanner && resumePosition !== null && (
-          <div className="mb-6 flex items-center gap-3 px-4 py-3 bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 rounded-2xl animate-scale-in">
-            <span className="text-sm text-violet-700 dark:text-violet-300 font-medium flex-1">Kontynuuj od {Math.floor(resumePosition / 60)}:{String(Math.floor(resumePosition % 60)).padStart(2, '0')}?</span>
-            <button onClick={() => { playerControlRef.current?.seek(resumePosition); setShowResumeBanner(false); }} className="px-4 py-1.5 bg-violet-500 text-white text-sm font-bold rounded-xl hover:bg-violet-600 transition-colors">Kontynuuj</button>
-            <button onClick={() => setShowResumeBanner(false)} className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-sm font-bold rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">Od początku</button>
+          <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-2xl animate-scale-in"
+            style={{ background: 'rgba(255,91,46,0.08)', border: '1px solid rgba(255,91,46,0.22)' }}>
+            <span className="text-sm font-medium flex-1" style={{ color: 'var(--ember-2)' }}>
+              Kontynuuj od {Math.floor(resumePosition / 60)}:{String(Math.floor(resumePosition % 60)).padStart(2, '0')}?
+            </span>
+            <button onClick={() => { playerControlRef.current?.seek(resumePosition); setShowResumeBanner(false); }}
+              className="px-4 py-1.5 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110"
+              style={{ background: 'var(--ember)' }}>
+              Kontynuuj
+            </button>
+            <button onClick={() => setShowResumeBanner(false)}
+              className="px-4 py-1.5 rounded-xl text-sm font-bold transition-all"
+              style={{ background: 'rgba(246,246,250,0.06)', color: 'var(--fg-3)', border: '1px solid var(--line-2)' }}>
+              Od początku
+            </button>
           </div>
         )}
 
+        {/* ── Source selector ── */}
         {sources.length > 1 && (
-          <div className="flex gap-2 mb-6 anim-stagger-3">
-            {sources.map(s => <button key={s.key} onClick={() => setActiveSource(s.key)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeSource === s.key ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>{s.label}</button>)}
+          <div className="flex gap-2 mb-5 flex-wrap anim-stagger-3">
+            {sources.map(s => (
+              <button key={s.key} onClick={() => setActiveSource(s.key)}
+                className="px-4 py-2 rounded-full text-xs font-bold font-mono uppercase tracking-wider transition-all hover:scale-105 active:scale-95"
+                style={activeSource === s.key
+                  ? { background: 'var(--ember)', color: '#fff', boxShadow: '0 4px 16px rgba(255,91,46,0.30)' }
+                  : { background: 'rgba(246,246,250,0.05)', color: 'var(--fg-3)', border: '1px solid var(--line-2)' }
+                }>
+                {s.label}
+              </button>
+            ))}
           </div>
         )}
 
+        {/* ── Prev / Next ── */}
         {(prevVideo || nextVideo) && (
-          <div className="flex items-stretch gap-3 sm:gap-4 mb-8 anim-stagger-4">
+          <div className="flex items-stretch gap-3 sm:gap-4 mb-6 anim-stagger-4">
             {prevVideo ? (
-              <button onClick={() => goToVideo(prevVideo.id, 'prev')} className="flex-1 min-w-0 max-w-[50%] card p-4 sm:p-5 group hover:shadow-lg hover:-translate-y-1 text-left transition-all">
-                <div className="flex items-center gap-1.5 text-violet-500 font-bold text-xs sm:text-sm mb-1"><ChevronLeft className="w-4 h-4 shrink-0 group-hover:-translate-x-1.5 transition-transform duration-300" /> poprzedni</div>
-                <p className="text-xs sm:text-sm text-zinc-900 dark:text-white font-medium truncate group-hover:text-violet-500 transition-colors">{prevVideo.title}</p>
+              <button onClick={() => goToVideo(prevVideo.id, 'prev')}
+                className="flex-1 min-w-0 max-w-[50%] p-4 text-left rounded-[20px] transition-all group"
+                style={{ background: 'rgba(246,246,250,0.03)', border: '1px solid var(--line-2)' }}
+                onMouseMove={e => { const r = e.currentTarget.getBoundingClientRect(); e.currentTarget.style.setProperty('--mx', `${((e.clientX - r.left) / r.width * 100)}%`); e.currentTarget.style.setProperty('--my', `${((e.clientY - r.top) / r.height * 100)}%`); }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,91,46,0.22)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--line-2)'; }}>
+                <div className="flex items-center gap-1.5 text-xs font-bold font-mono uppercase tracking-wider mb-1.5 transition-transform group-hover:-translate-x-0.5"
+                  style={{ color: 'var(--ember)' }}>
+                  <ChevronLeft className="w-3.5 h-3.5" /> poprzedni
+                </div>
+                <p className="text-sm font-medium truncate" style={{ color: 'var(--fg-2)' }}>{prevVideo.title}</p>
               </button>
             ) : <div className="flex-1" />}
+
             {nextVideo ? (
-              <button onClick={() => goToVideo(nextVideo.id, 'next')} className="flex-1 min-w-0 max-w-[50%] card p-4 sm:p-5 text-right group hover:shadow-lg hover:-translate-y-1 ml-auto transition-all">
-                <div className="flex items-center justify-end gap-1.5 text-violet-500 font-bold text-xs sm:text-sm mb-1">następny <ChevronRight className="w-4 h-4 shrink-0 group-hover:translate-x-1.5 transition-transform duration-300" /></div>
-                <p className="text-xs sm:text-sm text-zinc-900 dark:text-white font-medium truncate group-hover:text-violet-500 transition-colors">{nextVideo.title}</p>
+              <button onClick={() => goToVideo(nextVideo.id, 'next')}
+                className="flex-1 min-w-0 max-w-[50%] p-4 text-right ml-auto rounded-[20px] transition-all group"
+                style={{ background: 'rgba(246,246,250,0.03)', border: '1px solid var(--line-2)' }}
+                onMouseMove={e => { const r = e.currentTarget.getBoundingClientRect(); e.currentTarget.style.setProperty('--mx', `${((e.clientX - r.left) / r.width * 100)}%`); e.currentTarget.style.setProperty('--my', `${((e.clientY - r.top) / r.height * 100)}%`); }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,91,46,0.22)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--line-2)'; }}>
+                <div className="flex items-center justify-end gap-1.5 text-xs font-bold font-mono uppercase tracking-wider mb-1.5 transition-transform group-hover:translate-x-0.5"
+                  style={{ color: 'var(--ember)' }}>
+                  następny <ChevronRight className="w-3.5 h-3.5" />
+                </div>
+                <p className="text-sm font-medium truncate" style={{ color: 'var(--fg-2)' }}>{nextVideo.title}</p>
               </button>
             ) : <div className="flex-1" />}
           </div>
         )}
 
-        {video.description && <div className="card p-8 mb-6 anim-stagger-5"><h3 className="label-field">Opis</h3><div className="text-zinc-700 dark:text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">{video.description}</div></div>}
-
-        <div className="card p-8 anim-stagger-6">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2"><MessageCircle className="w-5 h-5 text-violet-500" /><h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Komentarze ({activeCount})</h3></div>
-            {isDev && <button onClick={() => setDevOpen(!devOpen)} className="text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-3 py-1.5 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-all">DEV: Dodaj jako...</button>}
+        {/* ── Description ── */}
+        {video.description && (
+          <div className="p-6 rounded-[20px] mb-5 anim-stagger-5"
+            style={{ background: 'rgba(246,246,250,0.03)', border: '1px solid var(--line-2)' }}>
+            <span className="mono-label block mb-3">Opis</span>
+            <div className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--fg-3)' }}>
+              {video.description}
+            </div>
           </div>
+        )}
+
+        {/* ── Comments ── */}
+        <div className="p-6 rounded-[20px] anim-stagger-6"
+          style={{ background: 'rgba(246,246,250,0.02)', border: '1px solid var(--line-2)' }}>
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6" style={{ borderBottom: '1px solid var(--line)', paddingBottom: '16px' }}>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ background: 'rgba(255,91,46,0.10)', border: '1px solid rgba(255,91,46,0.22)' }}>
+                <MessageCircle className="w-4 h-4" style={{ color: 'var(--ember)' }} />
+              </div>
+              <div>
+                <h3 className="font-bold text-base" style={{ color: 'var(--fg)' }}>Komentarze</h3>
+                <span className="text-[11px] font-mono" style={{ color: 'var(--fg-4)' }}>{activeCount} wpisów</span>
+              </div>
+            </div>
+            {isDev && (
+              <button onClick={() => setDevOpen(!devOpen)}
+                className="text-[10px] font-bold font-mono px-3 py-1.5 rounded-xl transition-all"
+                style={{ color: 'var(--warn)', background: 'rgba(245,185,88,0.08)', border: '1px solid rgba(245,185,88,0.20)' }}>
+                DEV: Dodaj jako…
+              </button>
+            )}
+          </div>
+
+          {/* Dev form */}
           {devOpen && isDev && (
-            <div className="mb-6 p-4 bg-amber-50/50 dark:bg-amber-500/5 rounded-2xl border border-amber-200 dark:border-amber-500/20 space-y-3 animate-scale-in">
+            <div className="mb-6 p-4 rounded-2xl space-y-3 animate-scale-in"
+              style={{ background: 'rgba(245,185,88,0.04)', border: '1px solid rgba(245,185,88,0.18)' }}>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <select value={devUserId} onChange={e => setDevUserId(e.target.value)} className="input-field !py-2 text-xs"><option value="">Użytkownik...</option>{allUsers.map(u => <option key={u.id} value={u.id}>{u.display_name || u.username}</option>)}</select>
-                <input type="datetime-local" value={devDate} onChange={e => setDevDate(e.target.value)} className="input-field !py-2 text-xs" />
-                <input type="text" value={devParent} onChange={e => setDevParent(e.target.value)} className="input-field !py-2 text-xs" placeholder="Parent ID" />
+                <select value={devUserId} onChange={e => setDevUserId(e.target.value)} className="glass-select !py-2 text-xs">
+                  <option value="">Użytkownik...</option>
+                  {allUsers.map(u => <option key={u.id} value={u.id}>{u.display_name || u.username}</option>)}
+                </select>
+                <input type="datetime-local" value={devDate} onChange={e => setDevDate(e.target.value)} className="glass-input !py-2 text-xs" />
+                <input type="text" value={devParent} onChange={e => setDevParent(e.target.value)} className="glass-input !py-2 text-xs" placeholder="Parent ID" />
                 <button onClick={submitDev} disabled={!devUserId || !devContent.trim()} className="btn-primary !py-2 text-xs">Dodaj</button>
               </div>
-              <textarea value={devContent} onChange={e => setDevContent(e.target.value)} className="input-field !py-2 text-sm resize-none" rows={2} placeholder="Treść..." />
+              <textarea value={devContent} onChange={e => setDevContent(e.target.value)} className="glass-input text-sm resize-none" rows={2} placeholder="Treść..." />
             </div>
           )}
+
+          {/* Reply to */}
           {replyTo && (
-            <div className="flex items-center gap-2 mb-3 p-2 bg-violet-50 dark:bg-violet-500/10 rounded-xl text-sm animate-scale-in">
-              <Reply className="w-4 h-4 text-violet-500" /><span className="text-violet-600 dark:text-violet-400">Odpowiedź do <strong>{replyTo.display_name || replyTo.username}</strong></span>
-              <button onClick={() => setReplyTo(null)} className="ml-auto p-1 hover:bg-violet-100 dark:hover:bg-violet-500/20 rounded-lg"><X className="w-3.5 h-3.5 text-violet-500" /></button>
+            <div className="flex items-center gap-2 mb-3 p-2 rounded-xl text-sm animate-scale-in"
+              style={{ background: 'rgba(255,91,46,0.06)', border: '1px solid rgba(255,91,46,0.18)' }}>
+              <Reply className="w-4 h-4" style={{ color: 'var(--ember)' }} />
+              <span style={{ color: 'var(--ember-2)' }}>
+                Odpowiedź do <strong>{replyTo.display_name || replyTo.username}</strong>
+              </span>
+              <button onClick={() => setReplyTo(null)} className="ml-auto p-1 rounded-lg transition-all hover:scale-110"
+                style={{ color: 'var(--ember)' }}>
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
+
+          {/* New comment */}
           <div className="flex gap-3 mb-6">
-            <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className="w-10 h-10 rounded-xl shrink-0 object-cover" />
+            <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=ff5b2e&color=fff&size=80`}
+              alt="" className="w-9 h-9 rounded-xl shrink-0 object-cover" style={{ border: '1px solid var(--line-2)' }} />
             <div className="flex-1 relative">
-              <textarea value={newComment} onChange={e => setNewComment(e.target.value)} placeholder={replyTo ? 'Odpowiedz...' : 'Napisz komentarz...'} className="input-field !py-3 !pr-12 resize-none text-sm min-h-[48px] max-h-[120px]" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment(); }}} rows={1} />
-              <button onClick={submitComment} disabled={!newComment.trim() || commentLoading} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-violet-500 hover:text-violet-600 disabled:text-zinc-300 dark:disabled:text-zinc-700 transition-all hover:scale-110 active:scale-90"><Send className="w-4 h-4" /></button>
+              <textarea value={newComment} onChange={e => setNewComment(e.target.value)}
+                placeholder={replyTo ? 'Odpowiedz…' : 'Napisz komentarz…'}
+                className="glass-input resize-none text-sm pr-12"
+                style={{ minHeight: '46px', maxHeight: '120px' }}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment(); } }}
+                rows={1} />
+              <button onClick={submitComment} disabled={!newComment.trim() || commentLoading}
+                className="absolute right-3 top-3 p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 disabled:opacity-30"
+                style={{ color: 'var(--ember)' }}>
+                <Send className="w-4 h-4" />
+              </button>
             </div>
           </div>
-          {tree.length === 0 ? <p className="text-sm text-zinc-400 text-center py-6">Brak komentarzy — bądź pierwszą osobą!</p> : (
-            <div className="space-y-1">{tree.map(c => <CommentNode key={c.id} c={c} depth={0} replies={c._replies} user={user} editingId={editingComment} editContent={editContent} setEditContent={setEditContent} silentEdit={silentEdit} setSilentEdit={setSilentEdit} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete} editHistoryId={editHistoryPopup} setEditHistoryId={setEditHistoryPopup} />)}</div>
-          )}
+
+          {/* Comments list */}
+          {tree.length === 0
+            ? <p className="text-sm text-center py-8 font-mono" style={{ color: 'var(--fg-4)' }}>
+                Brak komentarzy — bądź pierwszą osobą!
+              </p>
+            : <div className="space-y-1">
+                {tree.map(c => (
+                  <CommentNode key={c.id} c={c} depth={0} replies={c._replies} user={user}
+                    editingId={editingComment} editContent={editContent} setEditContent={setEditContent}
+                    silentEdit={silentEdit} setSilentEdit={setSilentEdit}
+                    onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
+                    onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete}
+                    editHistoryId={editHistoryPopup} setEditHistoryId={setEditHistoryPopup} />
+                ))}
+              </div>
+          }
         </div>
       </div>
 
-      {/* All modals via Portal — always centered in viewport */}
-      {deleteConfirm && <Portal><div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}><div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',backdropFilter:'blur(8px)'}} onClick={()=>setDeleteConfirm(null)}/><div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center" style={{position:'relative',zIndex:1,animation:'modalIn 0.35s cubic-bezier(0.16,1,0.3,1)'}}><Trash2 className="w-12 h-12 text-red-500 mx-auto mb-4"/><h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć komentarz?</h3><p className="text-sm text-zinc-500 mb-6">Treść zostanie ukryta, wątek zachowany.</p><div className="flex gap-3 justify-center"><button onClick={()=>setDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button><button onClick={softDel} className="btn-danger text-sm">Usuń</button></div></div></div></Portal>}
-      {hardDeleteConfirm && <Portal><div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}><div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',backdropFilter:'blur(8px)'}} onClick={()=>setHardDeleteConfirm(null)}/><div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center" style={{position:'relative',zIndex:1,animation:'modalIn 0.35s cubic-bezier(0.16,1,0.3,1)'}}><AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4"/><h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć permanentnie?</h3><p className="text-sm text-zinc-500 mb-6">Komentarz i odpowiedzi usunięte na zawsze.</p><div className="flex gap-3 justify-center"><button onClick={()=>setHardDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button><button onClick={hardDel} className="btn-danger text-sm">Usuń</button></div></div></div></Portal>}
-      {showEditModal && <Portal><VideoModal isOpen={showEditModal} onClose={()=>setShowEditModal(false)} video={video} users={editUsers} onSaved={()=>{setShowEditModal(false);api.getVideo(id).then(v=>setVideo(v)).catch(()=>{})}}/></Portal>}
+      {/* ── Modals ── */}
+      {deleteConfirm && (
+        <Portal>
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+            style={{ background: 'rgba(10,10,16,0.80)', backdropFilter: 'blur(14px)' }}>
+            <div onClick={() => setDeleteConfirm(null)} className="absolute inset-0" />
+            <div className="relative z-10 max-w-sm w-full p-8 text-center rounded-[28px] animate-scale-in"
+              style={{ background: 'var(--bg-3)', border: '1px solid var(--line-2)', boxShadow: '0 30px 80px rgba(0,0,0,0.6)' }}>
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                style={{ background: 'rgba(239,111,108,0.12)', border: '1px solid rgba(239,111,108,0.25)' }}>
+                <Trash2 className="w-6 h-6" style={{ color: 'var(--err)' }} />
+              </div>
+              <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--fg)' }}>Usunąć komentarz?</h3>
+              <p className="text-sm mb-6" style={{ color: 'var(--fg-3)' }}>Treść zostanie ukryta, wątek zachowany.</p>
+              <div className="flex gap-3 justify-center">
+                <button onClick={() => setDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button>
+                <button onClick={softDel} className="btn-danger text-sm">Usuń</button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+      {hardDeleteConfirm && (
+        <Portal>
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+            style={{ background: 'rgba(10,10,16,0.80)', backdropFilter: 'blur(14px)' }}>
+            <div onClick={() => setHardDeleteConfirm(null)} className="absolute inset-0" />
+            <div className="relative z-10 max-w-sm w-full p-8 text-center rounded-[28px] animate-scale-in"
+              style={{ background: 'var(--bg-3)', border: '1px solid var(--line-2)', boxShadow: '0 30px 80px rgba(0,0,0,0.6)' }}>
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                style={{ background: 'rgba(239,111,108,0.12)', border: '1px solid rgba(239,111,108,0.25)' }}>
+                <AlertTriangle className="w-6 h-6" style={{ color: 'var(--err)' }} />
+              </div>
+              <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--fg)' }}>Usunąć permanentnie?</h3>
+              <p className="text-sm mb-6" style={{ color: 'var(--fg-3)' }}>Komentarz i odpowiedzi usunięte na zawsze.</p>
+              <div className="flex gap-3 justify-center">
+                <button onClick={() => setHardDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button>
+                <button onClick={hardDel} className="btn-danger text-sm">Usuń</button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+      {showEditModal && (
+        <Portal>
+          <VideoModal isOpen={showEditModal} onClose={() => setShowEditModal(false)} video={video} users={editUsers}
+            onSaved={() => { setShowEditModal(false); api.getVideo(id).then(v => setVideo(v)).catch(() => {}); }} />
+        </Portal>
+      )}
     </>
   );
 }

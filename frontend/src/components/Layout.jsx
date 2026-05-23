@@ -56,10 +56,26 @@ export default function Layout({ children }) {
   const [categories, setCategories] = useState([]);
   const [catsExpanded, setCatsExpanded] = useState(true);
   const [versions, setVersions] = useState({ panel: '', stream: '', streamStatus: '' });
+  const [scrollPct, setScrollPct] = useState(0);
 
   useEffect(() => {
-    if (mainRef.current) mainRef.current.scrollTop = 0;
+    const el = mainRef.current;
+    if (!el) return;
+    el.scrollTop = 0;
+    setScrollPct(0);
   }, [location.pathname]);
+
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      const max = scrollHeight - clientHeight;
+      setScrollPct(max > 0 ? (scrollTop / max) * 100 : 0);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
 
   useEffect(() => {
     api.getCategories().then(setCategories).catch(() => {});
@@ -338,6 +354,10 @@ export default function Layout({ children }) {
 
       {/* Main */}
       <main ref={mainRef} className="flex-1 overflow-y-auto relative flex flex-col" style={{ zIndex: 4 }}>
+        {/* Scroll progress bar */}
+        <div className="scroll-progress">
+          <div className="scroll-progress-fill" style={{ width: `${scrollPct}%` }} />
+        </div>
         {/* Mobile header */}
         <div
           className="lg:hidden flex items-center justify-between p-4 sticky top-0 z-30"
