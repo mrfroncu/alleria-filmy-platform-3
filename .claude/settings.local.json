@@ -25,7 +25,16 @@
       "Bash(ls /usr/local/bin/node* /opt/homebrew/bin/node* ~/.nvm/versions/node/*/bin/node 2>/dev/null | head -5)",
       "Read(//usr/local/bin/**)",
       "Bash(find /Users/mfronc/.nvm /opt/homebrew /usr/local -name \"node\" -type f 2>/dev/null | head -5)",
-      "Read(//usr/local/**)"
+      "Read(//usr/local/**)",
+      "Bash(npm run *)",
+      "Bash(/usr/local/bin/npm run *)",
+      "Bash(find /opt /usr/local /Users/mfronc -name \"npm\" -type f 2>/dev/null | head -5)",
+      "Read(//opt/**)",
+      "Bash(find /usr /opt -name \"npm\" 2>/dev/null | head -10)",
+      "Read(//usr/**)",
+      "Bash(ls /Applications/ | grep -i node 2>/dev/null; ls ~/Applications/ | grep -i node 2>/dev/null; find /Library -name \"node\" -type f 2>/dev/null | head -5)",
+      "Read(//Applications/**)",
+      "Read(//Library/**)"
     ]
   }
 }
