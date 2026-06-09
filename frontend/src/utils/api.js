@@ -3,7 +3,9 @@ const API = '/api';
 async function request(url, options = {}) {
   const res = await fetch(API + url, {
     ...options,
-    headers: { ...options.headers },
+    // X-Requested-With marks the request as same-origin XHR — required by the
+    // backend CSRF guard on all state-changing requests.
+    headers: { 'X-Requested-With': 'XMLHttpRequest', ...options.headers },
     credentials: 'include',
   });
   if (res.status === 401) {
@@ -113,6 +115,7 @@ export const api = {
   }),
   streamUploadChunk: (formData) => fetch('/api/stream/upload/chunk', {
     method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
     body: formData,
     credentials: 'include',
   }).then(r => r.json()),
@@ -166,6 +169,12 @@ export const api = {
     body: JSON.stringify(data),
   }),
   clearDB: () => request('/debug/clear', { method: 'POST' }),
+  getSettings: () => request('/debug/settings'),
+  setSettings: (data) => request('/debug/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }),
   execSQL: (query) => request('/debug/sql', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

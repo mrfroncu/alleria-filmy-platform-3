@@ -25,7 +25,13 @@
       "Bash(ls /usr/local/bin/node* /opt/homebrew/bin/node* ~/.nvm/versions/node/*/bin/node 2>/dev/null | head -5)",
       "Read(//usr/local/bin/**)",
       "Bash(find /Users/mfronc/.nvm /opt/homebrew /usr/local -name \"node\" -type f 2>/dev/null | head -5)",
-      "Read(//usr/local/**)"
+      "Read(//usr/local/**)",
+      "Bash(grep -iE '\\\\.env|secret|\\\\.db$')",
+      "PowerShell(Get-ChildItem backend, frontend\\\\src, streaming -Recurse -File | Where-Object { $_.FullName -notmatch 'node_modules' } | Select-Object -ExpandProperty FullName | ForEach-Object { $_.Replace\\('c:\\\\Users\\\\Matthew\\\\Documents\\\\#Github\\\\alleria-filmy-platform-3\\\\',''\\) })",
+      "PowerShell(Get-ChildItem backend\\\\server.js, backend\\\\watchParty.js, backend\\\\database.js, streaming\\\\server.js, frontend\\\\src\\\\utils\\\\api.js | ForEach-Object { \"$\\($_.Name\\): $\\(\\(Get-Content $_.FullName | Measure-Object -Line\\).Lines\\) lines\" })",
+      "Bash(node --check backend/server.js)",
+      "Bash(node --check backend/database.js)",
+      "PowerShell($node = \\(Get-Command node -ErrorAction SilentlyContinue\\).Source; if \\($node\\) { & node --check backend/server.js; if \\($?\\) { \"server.js OK\" }; & node --check backend/database.js; if \\($?\\) { \"database.js OK\" } } else { \"node not on PATH\" })"
     ]
   }
 }

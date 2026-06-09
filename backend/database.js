@@ -230,6 +230,12 @@ function initDB() {
     FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
   )`);
 
+  // Application settings (key/value store for runtime-configurable options)
+  db.exec(`CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  )`);
+
   // App ranks (application-level ranks, independent of Discord roles)
   db.exec(`CREATE TABLE IF NOT EXISTS app_ranks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

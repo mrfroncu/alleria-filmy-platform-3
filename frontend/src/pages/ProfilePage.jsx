@@ -11,6 +11,9 @@ export default function ProfilePage() {
   const [editBio, setEditBio] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [config, setConfig] = useState({ limitDisplayName: 50, limitBio: 1000 });
+
+  useEffect(() => { api.getConfig().then(c => setConfig(prev => ({ ...prev, ...c }))).catch(() => {}); }, []);
 
   const load = () => {
     setLoading(true);
@@ -82,12 +85,12 @@ export default function ProfilePage() {
             {editing ? (
               <div className="space-y-4">
                 <div>
-                  <label className="label-field">Wyświetlana nazwa</label>
-                  <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="input-field" />
+                  <label className="label-field">Wyświetlana nazwa <span className="text-zinc-400 font-normal">({editName.length}/{config.limitDisplayName})</span></label>
+                  <input type="text" maxLength={config.limitDisplayName} value={editName} onChange={e => setEditName(e.target.value)} className="input-field" />
                 </div>
                 <div>
-                  <label className="label-field">O mnie</label>
-                  <textarea value={editBio} onChange={e => setEditBio(e.target.value)} className="input-field resize-none h-24" placeholder="Napisz coś o sobie..." />
+                  <label className="label-field">O mnie <span className="text-zinc-400 font-normal">({editBio.length}/{config.limitBio})</span></label>
+                  <textarea maxLength={config.limitBio} value={editBio} onChange={e => setEditBio(e.target.value)} className="input-field resize-none h-24" placeholder="Napisz coś o sobie..." />
                 </div>
                 <div className="flex gap-3">
                   <button onClick={handleSave} disabled={saving} className="btn-primary text-sm flex items-center gap-2">

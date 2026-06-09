@@ -20,7 +20,7 @@ const rateLimit = require('express-rate-limit');
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: 80,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Zbyt wiele prób logowania. Spróbuj ponownie za 15 minut.' },
@@ -152,6 +152,21 @@ app.use(cors({
 // Global API rate limit
 app.use(apiLimiter);
 
+// === CSRF protection ===
+// Require a custom header on all state-changing API requests. Browsers do not allow
+// setting custom headers on cross-origin requests without a CORS preflight, and our
+// CORS policy does not whitelist other origins — so a malicious site cannot forge
+// these requests with the victim's cookies. Safe (GET/HEAD/OPTIONS) methods and the
+// GET-based Discord OAuth redirects are unaffected.
+app.use((req, res, next) => {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+  if (!req.path.startsWith('/api/')) return next();
+  if (req.get('X-Requested-With') !== 'XMLHttpRequest') {
+    return res.status(403).json({ error: 'Brak nagłówka X-Requested-With (ochrona CSRF).' });
+  }
+  next();
+});
+
 // Serve uploaded thumbnails
 app.use('/api/uploads', express.static(uploadsDir));
 
@@ -175,6 +190,9 @@ app.get('/api/config', requireAuth, (req, res) => {
     videosPerPage: parseInt(process.env.VIDEOS_PER_PAGE) || 12,
     gridColumns: parseInt(process.env.GRID_COLUMNS) || 3,
     logsPerPage: parseInt(process.env.LOGS_PER_PAGE) || 50,
+    limitDisplayName: getLimit('limit_display_name'),
+    limitBio: getLimit('limit_bio'),
+    limitComment: getLimit('limit_comment'),
   });
 });
 
@@ -1765,12 +1783,19 @@ app.get('/api/profile', requireAuth, (req, res) => {
 app.put('/api/profile', requireAuth, (req, res) => {
   try {
     const { display_name, bio } = req.body;
+    const maxName = getLimit('limit_display_name');
+    const maxBio = getLimit('limit_bio');
     if (display_name !== undefined) {
-      db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(display_name.trim(), req.session.user.id);
-      req.session.user.display_name = display_name.trim();
+      const dn = String(display_name).trim();
+      if (dn.length > maxName) return res.status(400).json({ error: `Wyświetlana nazwa może mieć maksymalnie ${maxName} znaków.` });
+      const safeDn = dn.slice(0, maxName);
+      db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(safeDn, req.session.user.id);
+      req.session.user.display_name = safeDn;
     }
     if (bio !== undefined) {
-      db.prepare('UPDATE users SET bio = ? WHERE id = ?').run(bio, req.session.user.id);
+      const b = String(bio);
+      if (b.length > maxBio) return res.status(400).json({ error: `Bio może mieć maksymalnie ${maxBio} znaków.` });
+      db.prepare('UPDATE users SET bio = ? WHERE id = ?').run(b.slice(0, maxBio), req.session.user.id);
     }
     req.session.save(() => {});
     res.json({ success: true });
@@ -1933,6 +1958,42 @@ app.post('/api/debug/sql', requireDev, (req, res) => {
   } catch (err) {
     res.json({ success: false, error: err.message });
   }
+});
+
+// ============ APP SETTINGS API (dev only) ============
+function settingsPayload() {
+  return {
+    webhook_domain_restriction: getSetting('webhook_domain_restriction', '1') === '1',
+    webhook_allowed_hosts: WEBHOOK_ALLOWED_HOSTS,
+    limit_display_name: getLimit('limit_display_name'),
+    limit_bio: getLimit('limit_bio'),
+    limit_comment: getLimit('limit_comment'),
+  };
+}
+
+app.get('/api/debug/settings', requireDev, (req, res) => {
+  res.json(settingsPayload());
+});
+
+app.post('/api/debug/settings', requireDev, (req, res) => {
+  const { webhook_domain_restriction } = req.body;
+  if (webhook_domain_restriction !== undefined) {
+    setSetting('webhook_domain_restriction', webhook_domain_restriction ? '1' : '0');
+    audit(req.session.user.id, 'edit', 'settings', null,
+      `webhook_domain_restriction → ${webhook_domain_restriction ? 'ON' : 'OFF'}`);
+  }
+  // Content length limits
+  for (const key of Object.keys(LIMIT_DEFAULTS)) {
+    if (req.body[key] !== undefined) {
+      const n = parseInt(req.body[key], 10);
+      if (!Number.isInteger(n) || n < 1 || n > 100000) {
+        return res.status(400).json({ error: `Nieprawidłowa wartość dla ${key} (dozwolone 1–100000).` });
+      }
+      setSetting(key, n);
+      audit(req.session.user.id, 'edit', 'settings', null, `${key} → ${n}`);
+    }
+  }
+  res.json({ success: true, ...settingsPayload() });
 });
 
 // ============ WATCH PARTY MANAGEMENT (admin) ============
@@ -2397,7 +2458,10 @@ app.post('/api/videos/:id/comments', requireAuth, (req, res) => {
   try {
     const { content, parent_id } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: 'Treść wymagana.' });
-    const result = db.prepare('INSERT INTO comments (video_id, user_id, content, parent_id) VALUES (?, ?, ?, ?)').run(req.params.id, req.session.user.id, content.trim(), parent_id || null);
+    const maxComment = getLimit('limit_comment');
+    const trimmed = content.trim();
+    if (trimmed.length > maxComment) return res.status(400).json({ error: `Komentarz może mieć maksymalnie ${maxComment} znaków.` });
+    const result = db.prepare('INSERT INTO comments (video_id, user_id, content, parent_id) VALUES (?, ?, ?, ?)').run(req.params.id, req.session.user.id, trimmed.slice(0, maxComment), parent_id || null);
     const comment = db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(result.lastInsertRowid);
     res.json(comment);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2413,14 +2477,18 @@ app.put('/api/comments/:id', requireAuth, (req, res) => {
     if (!isOwner && !isDev) return res.status(403).json({ error: 'Brak uprawnień.' });
     const { content, silent } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: 'Treść wymagana.' });
+    const maxComment = getLimit('limit_comment');
+    const trimmed = content.trim();
+    if (trimmed.length > maxComment) return res.status(400).json({ error: `Komentarz może mieć maksymalnie ${maxComment} znaków.` });
+    const newContent = trimmed.slice(0, maxComment);
     const oldText = comment.content;
     if (silent && isDev) {
-      db.prepare('UPDATE comments SET content = ? WHERE id = ?').run(content.trim(), req.params.id);
+      db.prepare('UPDATE comments SET content = ? WHERE id = ?').run(newContent, req.params.id);
     } else {
       let editHistory = []; try { editHistory = JSON.parse(comment.edit_history || '[]'); } catch (e) {}
       editHistory.push({ content: comment.content, date: new Date().toISOString() });
       if (editHistory.length > 20) editHistory = editHistory.slice(-20);
-      db.prepare('UPDATE comments SET content = ?, edited = 1, edit_history = ? WHERE id = ?').run(content.trim(), JSON.stringify(editHistory), req.params.id);
+      db.prepare('UPDATE comments SET content = ?, edited = 1, edit_history = ? WHERE id = ?').run(newContent, JSON.stringify(editHistory), req.params.id);
     }
     const updated = db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(req.params.id);
     audit(req.session.user.id, "edit", "comment", parseInt(req.params.id), `${silent?'[cicha] ':''}"${oldText.slice(0,50)}" → "${content.trim().slice(0,50)}"`);
@@ -2493,6 +2561,40 @@ function audit(userId, action, entityType, entityId, details) {
     db.prepare('INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)')
       .run(userId, action, entityType, entityId || null, typeof details === 'string' ? details : JSON.stringify(details || ''));
   } catch (e) {}
+}
+
+// ============ APP SETTINGS (key/value) ============
+function getSetting(key, defaultVal = null) {
+  try {
+    const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key);
+    return row ? row.value : defaultVal;
+  } catch (_) { return defaultVal; }
+}
+
+function setSetting(key, value) {
+  db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run(key, String(value));
+}
+
+// Content length limits — configurable via Debug Tools, with defaults.
+const LIMIT_DEFAULTS = { limit_display_name: 50, limit_bio: 1000, limit_comment: 3000 };
+
+function getLimit(key) {
+  const v = parseInt(getSetting(key, ''), 10);
+  return Number.isInteger(v) && v > 0 ? v : LIMIT_DEFAULTS[key];
+}
+
+// Webhook SSRF guard — when domain restriction is enabled, only these hosts (and
+// their subdomains) may be targeted by server-side webhook requests.
+const WEBHOOK_ALLOWED_HOSTS = ['discord.com', 'discordapp.com'];
+
+function isWebhookUrlAllowed(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') return false;
+    const host = u.hostname.toLowerCase();
+    return WEBHOOK_ALLOWED_HOSTS.some(h => host === h || host.endsWith('.' + h));
+  } catch (_) { return false; }
 }
 
 // ============ WATCH PROGRESS ============
@@ -2697,6 +2799,13 @@ httpServer.listen(PORT, '0.0.0.0', () => {
 // ============ DISCORD WEBHOOK ============
 async function sendDiscordWebhook(video) {
   if (!video.webhook_url) return;
+
+  // SSRF guard — block non-Discord targets when domain restriction is enabled (default: on)
+  const restrictDomains = getSetting('webhook_domain_restriction', '1') === '1';
+  if (restrictDomains && !isWebhookUrlAllowed(video.webhook_url)) {
+    console.warn(`[WEBHOOK] Blocked — URL not on Discord allow-list (domain restriction ON): ${video.webhook_url}`);
+    return;
+  }
 
   // Default template if none set
   const defaultTemplate = '🎬 **Nowy film:** {title}\n👤 Autor: {author}\n📁 Kategoria: {category}\n🔗 {url}';

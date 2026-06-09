@@ -174,6 +174,52 @@ export default function DebugPage() {
 
   const [creatingUser, setCreatingUser] = useState(false);
 
+  // App settings (webhook domain restriction + content limits)
+  const [settings, setSettingsState] = useState(null);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [limitForm, setLimitForm] = useState({ limit_display_name: '', limit_bio: '', limit_comment: '' });
+
+  useEffect(() => {
+    api.getSettings().then(s => {
+      setSettingsState(s);
+      setLimitForm({
+        limit_display_name: s.limit_display_name,
+        limit_bio: s.limit_bio,
+        limit_comment: s.limit_comment,
+      });
+    }).catch(() => {});
+  }, []);
+
+  const saveLimits = async () => {
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({
+        limit_display_name: parseInt(limitForm.limit_display_name, 10),
+        limit_bio: parseInt(limitForm.limit_bio, 10),
+        limit_comment: parseInt(limitForm.limit_comment, 10),
+      });
+      setSettingsState(r);
+      setLimitForm({ limit_display_name: r.limit_display_name, limit_bio: r.limit_bio, limit_comment: r.limit_comment });
+      setStatus({ type: 'success', msg: 'Limity treści zapisane.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const toggleWebhookRestriction = async () => {
+    if (!settings) return;
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ webhook_domain_restriction: !settings.webhook_domain_restriction });
+      setSettingsState(s => ({ ...s, webhook_domain_restriction: r.webhook_domain_restriction }));
+      setStatus({ type: 'success', msg: `Ograniczenie domen webhooków: ${r.webhook_domain_restriction ? 'WŁĄCZONE' : 'WYŁĄCZONE'}` });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
   const handleExport = async () => {
     setLoading(true);
     try {
@@ -902,6 +948,72 @@ export default function DebugPage() {
                   Wyczyść logi logowania
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Webhook security settings */}
+        <div className="card p-8 h-full flex flex-col">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-6 h-6 text-blue-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Bezpieczeństwo webhooków</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                Gdy włączone, serwer wysyła powiadomienia tylko do domen Discord
+                ({settings?.webhook_allowed_hosts?.join(', ') || 'discord.com, discordapp.com'}).
+                Chroni przed SSRF — wskazaniem webhooka na adres wewnętrzny.
+              </p>
+              <button
+                type="button"
+                onClick={toggleWebhookRestriction}
+                disabled={!settings || savingSettings}
+                className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-sm font-semibold text-zinc-700 dark:text-zinc-300 disabled:opacity-50"
+              >
+                {settings?.webhook_domain_restriction
+                  ? <CheckSquare className="w-5 h-5 text-emerald-500" />
+                  : <Square className="w-5 h-5 text-zinc-400" />}
+                {settings == null ? 'Ładowanie...' : (settings.webhook_domain_restriction ? 'Ograniczenie domen: WŁĄCZONE' : 'Ograniczenie domen: WYŁĄCZONE')}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Content length limits */}
+        <div className="card p-8 h-full flex flex-col">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <Terminal className="w-6 h-6 text-violet-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Limity treści</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                Maksymalna długość pól (w znakach). Egzekwowane po stronie serwera.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="label-field">Nazwa wyświetlana</label>
+                  <input type="number" min="1" max="100000" value={limitForm.limit_display_name}
+                    onChange={e => setLimitForm(f => ({ ...f, limit_display_name: e.target.value }))}
+                    className="input-field !py-3 text-sm" />
+                </div>
+                <div>
+                  <label className="label-field">Bio</label>
+                  <input type="number" min="1" max="100000" value={limitForm.limit_bio}
+                    onChange={e => setLimitForm(f => ({ ...f, limit_bio: e.target.value }))}
+                    className="input-field !py-3 text-sm" />
+                </div>
+                <div>
+                  <label className="label-field">Komentarz</label>
+                  <input type="number" min="1" max="100000" value={limitForm.limit_comment}
+                    onChange={e => setLimitForm(f => ({ ...f, limit_comment: e.target.value }))}
+                    className="input-field !py-3 text-sm" />
+                </div>
+              </div>
+              <button onClick={saveLimits} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
+                {savingSettings ? 'Zapisywanie...' : 'Zapisz limity'}
+              </button>
             </div>
           </div>
         </div>

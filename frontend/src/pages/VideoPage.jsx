@@ -172,6 +172,7 @@ export default function VideoPage() {
 
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
+  const [commentLimit, setCommentLimit] = useState(3000);
   const [commentLoading, setCommentLoading] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
   const [editingComment, setEditingComment] = useState(null);
@@ -254,7 +255,7 @@ export default function VideoPage() {
       if (pct < 0.05 || pct >= 0.90) return;
       fetch(`/api/progress/${s.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ position: s.position, duration: s.duration }),
         credentials: 'include',
         keepalive: true,
@@ -293,6 +294,8 @@ export default function VideoPage() {
   const onSaveEdit = useCallback(async (cid) => { if (!editContent.trim()) return; try { const u = await api.editComment(cid, editContent.trim(), silentEdit); setComments(p => p.map(c => c.id === cid ? u : c)); setEditingComment(null); setEditContent(''); } catch (e) {} }, [editContent, silentEdit]);
   const onCancelEdit = useCallback(() => { setEditingComment(null); setEditContent(''); }, []);
   const onReply = useCallback((c) => { setReplyTo(c); setNewComment(''); }, []);
+
+  useEffect(() => { api.getConfig().then(c => { if (c.limitComment) setCommentLimit(c.limitComment); }).catch(() => {}); }, []);
   const onDelete = useCallback((cid) => setDeleteConfirm(cid), []);
   const onHardDelete = useCallback((cid) => setHardDeleteConfirm(cid), []);
   const softDel = async () => { if (!deleteConfirm) return; try { await api.deleteComment(deleteConfirm); setComments(p => p.map(c => c.id === deleteConfirm ? { ...c, deleted: 1, content: '' } : c)); } catch (e) {} setDeleteConfirm(null); };
@@ -492,7 +495,7 @@ export default function VideoPage() {
           <div className="flex gap-3 mb-6">
             <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className="w-10 h-10 rounded-xl shrink-0 object-cover" />
             <div className="flex-1 relative">
-              <textarea value={newComment} onChange={e => setNewComment(e.target.value)} placeholder={replyTo ? 'Odpowiedz...' : 'Napisz komentarz...'} className="input-field !py-3 !pr-12 resize-none text-sm min-h-[48px] max-h-[120px]" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment(); }}} rows={1} />
+              <textarea value={newComment} maxLength={commentLimit} onChange={e => setNewComment(e.target.value)} placeholder={replyTo ? 'Odpowiedz...' : 'Napisz komentarz...'} className="input-field !py-3 !pr-12 resize-none text-sm min-h-[48px] max-h-[120px]" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment(); }}} rows={1} />
               <button onClick={submitComment} disabled={!newComment.trim() || commentLoading} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-violet-500 hover:text-violet-600 disabled:text-zinc-300 dark:disabled:text-zinc-700 transition-all hover:scale-110 active:scale-90"><Send className="w-4 h-4" /></button>
             </div>
           </div>
