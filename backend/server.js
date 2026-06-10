@@ -965,11 +965,20 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
     const { id: challengeId, code } = createTsChallenge({
       method: 'teamspeak3', clientIp, cleanIp, tsNickname, tsUid, role,
     });
+    const delivery = getSetting('ts3_code_delivery', 'pm'); // 'pm' | 'poke' | 'both'
     let codeSent = false;
-    try {
-      await ts3.send(`sendtextmessage targetmode=1 target=${matched.clid} msg=${ts3Escape(challengeMessage(code))}`);
-      codeSent = true;
-    } catch (e) { console.log(`[TS3] sendtextmessage failed: ${e.message}`); }
+    if (delivery === 'pm' || delivery === 'both') {
+      try {
+        await ts3.send(`sendtextmessage targetmode=1 target=${matched.clid} msg=${ts3Escape(challengeMessage(code))}`);
+        codeSent = true;
+      } catch (e) { console.log(`[TS3] sendtextmessage failed: ${e.message}`); }
+    }
+    if (delivery === 'poke' || delivery === 'both') {
+      try {
+        await ts3.send(`clientpoke clid=${matched.clid} msg=${ts3Escape('Kod logowania: ' + code)}`);
+        codeSent = true;
+      } catch (e) { console.log(`[TS3] clientpoke failed: ${e.message}`); }
+    }
     ts3.close(); ts3 = null;
 
     if (!codeSent) {
@@ -2070,6 +2079,8 @@ app.post('/api/debug/sql', requireDev, (req, res) => {
 });
 
 // ============ APP SETTINGS API (dev only) ============
+const TS3_DELIVERY_VALUES = ['pm', 'poke', 'both'];
+
 function settingsPayload() {
   return {
     webhook_domain_restriction: getSetting('webhook_domain_restriction', '1') === '1',
@@ -2077,6 +2088,7 @@ function settingsPayload() {
     limit_display_name: getLimit('limit_display_name'),
     limit_bio: getLimit('limit_bio'),
     limit_comment: getLimit('limit_comment'),
+    ts3_code_delivery: getSetting('ts3_code_delivery', 'pm'),
   };
 }
 
@@ -2101,6 +2113,15 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
       setSetting(key, n);
       audit(req.session.user.id, 'edit', 'settings', null, `${key} → ${n}`);
     }
+  }
+  // TS3 login code delivery method
+  if (req.body.ts3_code_delivery !== undefined) {
+    const v = String(req.body.ts3_code_delivery);
+    if (!TS3_DELIVERY_VALUES.includes(v)) {
+      return res.status(400).json({ error: 'Nieprawidłowa wartość ts3_code_delivery (pm | poke | both).' });
+    }
+    setSetting('ts3_code_delivery', v);
+    audit(req.session.user.id, 'edit', 'settings', null, `ts3_code_delivery → ${v}`);
   }
   res.json({ success: true, ...settingsPayload() });
 });

@@ -235,6 +235,20 @@ export default function DebugPage() {
     setSavingSettings(false);
   };
 
+  const setTs3Delivery = async (value) => {
+    if (!settings || settings.ts3_code_delivery === value) return;
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ ts3_code_delivery: value });
+      setSettingsState(s => ({ ...s, ts3_code_delivery: r.ts3_code_delivery }));
+      const label = value === 'pm' ? 'prywatna wiadomość' : value === 'poke' ? 'poke' : 'wiadomość + poke';
+      setStatus({ type: 'success', msg: `Wysyłka kodu TS3: ${label}` });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
   const handleExport = async () => {
     setLoading(true);
     try {
@@ -995,6 +1009,38 @@ export default function DebugPage() {
                   : <Square className="w-5 h-5 text-zinc-400" />}
                 {settings == null ? 'Ładowanie...' : (settings.webhook_domain_restriction ? 'Ograniczenie domen: WŁĄCZONE' : 'Ograniczenie domen: WYŁĄCZONE')}
               </button>
+            </div>
+          </div>
+        </div>
+
+        {/* TS3 login code delivery */}
+        <div className="card p-8 h-full flex flex-col">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-6 h-6 text-violet-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Wysyłka kodu logowania (TS3)</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                Jak bot ServerQuery dostarcza 6-znakowy kod logowania na TeamSpeak 3.
+              </p>
+              <div className="flex rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 w-full max-w-xs">
+                {[['pm', 'Wiadomość'], ['poke', 'Poke'], ['both', 'Oba']].map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setTs3Delivery(val)}
+                    disabled={!settings || savingSettings}
+                    className={`flex-1 px-3 py-2.5 text-xs font-bold transition-colors disabled:opacity-50 ${
+                      settings?.ts3_code_delivery === val
+                        ? 'bg-violet-500 text-white'
+                        : 'bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
