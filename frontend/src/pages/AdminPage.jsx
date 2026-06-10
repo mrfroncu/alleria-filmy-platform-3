@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square } from 'lucide-react';
+import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import VideoModal from '../components/VideoModal';
@@ -21,6 +21,8 @@ export default function AdminPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
   const [bulkValue, setBulkValue] = useState('');
+
+  const [expandedTag, setExpandedTag] = useState(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -267,19 +269,55 @@ export default function AdminPage() {
       {tab === 'tags' && (
         <div>
           <h2 className="text-xl font-bold text-zinc-900 dark:text-white font-display mb-4">Zarządzanie tagami</h2>
-          <div className="card p-6">
+          <div className="card overflow-hidden">
             {tags.length === 0 ? (
               <p className="text-zinc-400 text-sm text-center py-8">Brak tagów</p>
             ) : (
-              <div className="flex flex-wrap gap-2">
-                {tags.map(tag => (
-                  <div key={tag.id} className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-50 dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700">
-                    <span className="text-sm font-bold text-zinc-700 dark:text-zinc-300">{tag.name}</span>
-                    <button onClick={() => handleDeleteTag(tag.id)} className="p-0.5 hover:bg-red-100 dark:hover:bg-red-500/20 rounded transition-colors text-zinc-400 hover:text-red-600 dark:hover:text-red-400">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
+              <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                {tags.map(tag => {
+                  const hasVideos = tag.video_count > 0;
+                  const isExpanded = expandedTag === tag.id;
+                  return (
+                    <div key={tag.id}>
+                      <div className="flex items-center gap-3 px-5 py-3 hover:bg-zinc-50 dark:hover:bg-white/[0.02] transition-colors">
+                        <Tag className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
+                        <span className="text-sm font-bold text-zinc-900 dark:text-white flex-1">{tag.name}</span>
+                        {hasVideos ? (
+                          <>
+                            <button
+                              onClick={() => setExpandedTag(isExpanded ? null : tag.id)}
+                              className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-all"
+                            >
+                              <Film className="w-3 h-3" />
+                              {tag.video_count} {tag.video_count === 1 ? 'film' : 'filmów'}
+                              {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            </button>
+                            <div className="w-7 h-7 flex items-center justify-center text-zinc-300 dark:text-zinc-600" title="Nie można usunąć — tag jest przypisany do filmów">
+                              <Lock className="w-3.5 h-3.5" />
+                            </div>
+                          </>
+                        ) : (
+                          <button onClick={() => handleDeleteTag(tag.id)} className="p-1.5 hover:bg-red-100 dark:hover:bg-red-500/20 rounded-lg transition-colors text-zinc-400 hover:text-red-500">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      {isExpanded && (
+                        <div className="mx-5 mb-3 p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl">
+                          <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider mb-2">Nie można usunąć — tag przypisany do filmów:</p>
+                          <div className="space-y-1">
+                            {tag.videos.map(v => (
+                              <p key={v.id} className="text-xs text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                                <span className="text-zinc-400 font-mono text-[10px]">#{v.id}</span>
+                                {v.title}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
