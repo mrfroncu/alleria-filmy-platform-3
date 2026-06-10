@@ -21,6 +21,8 @@ jobs:
             --exclude='.git' \
             --exclude='.github' \
             --exclude='.env' \
+            --exclude='tests' \
+            --exclude='node_modules' \
             -e "ssh -o StrictHostKeyChecking=no" \
             ./ deploy@${{ secrets.SSH_HOST }}:/home/deploy/video-platform/
 

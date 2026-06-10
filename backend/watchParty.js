@@ -72,7 +72,7 @@ const wsTokens = new Map();
 function createWsToken(user) {
   const token = uuidv4();
   wsTokens.set(token, { user, expires: Date.now() + 30000 });
-  setTimeout(() => wsTokens.delete(token), 30000);
+  setTimeout(() => wsTokens.delete(token), 30000).unref();
   return token;
 }
 
@@ -155,7 +155,7 @@ setInterval(() => {
       parties.delete(code);
     }
   }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 
 function setupWatchPartyWS(server, db) {
   _db = db;

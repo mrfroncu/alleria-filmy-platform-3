@@ -1,11 +1,12 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, 'data', 'alleria.db');
+// DB_PATH env override is used by the API test suite (tests/) to point at a throwaway database
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'alleria.db');
 
 function initDB() {
   const fs = require('fs');
-  const dir = path.join(__dirname, 'data');
+  const dir = path.dirname(DB_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   const db = new Database(DB_PATH);

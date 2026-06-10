@@ -8,7 +8,7 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "~12.4.1",
     "connect-sqlite3": "^0.9.15",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

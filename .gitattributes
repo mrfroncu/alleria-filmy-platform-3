@@ -1,0 +1,7 @@
+# Skrypty shellowe muszą mieć LF (macOS/Linux), batch CRLF (cmd.exe wymaga
+# CRLF do poprawnego działania goto/etykiet) — niezależnie od ustawień
+# core.autocrlf na maszynie.
+*.sh text eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf

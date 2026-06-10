@@ -19,12 +19,17 @@ const { initDB } = require('./database');
 const { createParty, getParty, deleteParty, listParties, createWsToken, setupWatchPartyWS } = require('./watchParty');
 const rateLimit = require('express-rate-limit');
 
+// Test mode (set by the API test suite in tests/): disables rate limits and the
+// SQLite session store so tests are deterministic and leave no files behind.
+const IS_TEST = process.env.NODE_ENV === 'test';
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 80,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Zbyt wiele prób logowania. Spróbuj ponownie za 15 minut.' },
+  skip: () => IS_TEST,
 });
 
 const apiLimiter = rateLimit({
@@ -33,7 +38,7 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Zbyt wiele żądań. Zwolnij.' },
-  skip: (req) => req.path.startsWith('/api/watch-party') || req.path.startsWith('/api/logs/watch-party'),
+  skip: (req) => IS_TEST || req.path.startsWith('/api/watch-party') || req.path.startsWith('/api/logs/watch-party'),
 });
 
 const app = express();
@@ -132,7 +137,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 const behindHttps = (process.env.DISCORD_REDIRECT_URI || '').startsWith('https://');
 
 app.use(session({
-  store: new SQLiteStore({ dir: path.join(__dirname, 'data'), db: 'sessions.db' }),
+  // In test mode the default in-memory store is used (no sessions.db on disk)
+  store: IS_TEST ? undefined : new SQLiteStore({ dir: path.join(__dirname, 'data'), db: 'sessions.db' }),
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
@@ -2841,7 +2847,11 @@ app.get('*', (req, res) => {
 const httpServer = http.createServer(app);
 setupWatchPartyWS(httpServer, db);
 
-httpServer.listen(PORT, '0.0.0.0', () => {
+// Export for the API test suite (tests/) — supertest drives `app` directly.
+// The server only starts listening when this file is run directly (node server.js).
+module.exports = { app, db, httpServer };
+
+if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
   const rUri = process.env.DISCORD_REDIRECT_URI || '';
   const rUriOk = rUri.includes('/auth/discord/callback');
   console.log('\n========================================');

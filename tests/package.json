@@ -1,0 +1,15 @@
+{
+  "name": "alleria-filmy-tests",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Testy API platformy ALLERIA FILMY (node --test + supertest)",
+  "scripts": {
+    "test": "node --test",
+    "test:watch": "node --test --watch"
+  },
+  "devDependencies": {
+    "expect": "^29.7.0",
+    "supertest": "^7.0.0"
+  }
+}

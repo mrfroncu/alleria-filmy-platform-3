@@ -1,0 +1,9 @@
+**/node_modules
+tests
+.git
+.github
+.env
+backend/data
+*.db
+*.db-journal
+*.db-wal
