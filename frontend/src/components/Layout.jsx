@@ -23,14 +23,14 @@ function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlu
         <Link
           to={`/category/${cat.slug}`}
           onClick={() => setSidebarOpen(false)}
-          className={`w-full flex items-center ${pl} pr-4 py-2 rounded-xl transition-all duration-300 group ${
+          className={`sidebar-link w-full flex items-center ${pl} pr-4 py-2 rounded-xl group ${
             active
-              ? 'bg-violet-500/10 text-violet-500 dark:text-violet-400'
+              ? 'active bg-violet-500/10 text-violet-500 dark:text-violet-400'
               : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white'
           }`}
         >
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-violet-500' : hasKids ? 'bg-zinc-400 dark:bg-zinc-500' : 'bg-zinc-300 dark:bg-zinc-600'}`} />
+            <div className={`w-1.5 h-1.5 rounded-full shrink-0 transition-all duration-300 ${active ? 'bg-violet-500 shadow-glow-sm scale-125' : hasKids ? 'bg-zinc-400 dark:bg-zinc-500' : 'bg-zinc-300 dark:bg-zinc-600'} group-hover:bg-violet-400 group-hover:scale-125`} />
             <span className="font-semibold text-[13px] truncate">{cat.name}</span>
             <span className="text-[10px] text-zinc-400 shrink-0">{cat.videoCount || 0}</span>
           </div>
@@ -45,6 +45,7 @@ export default function Layout({ children }) {
   const { user, logout, isAdmin, isDev } = useAuth();
   const location = useLocation();
   const mainRef = useRef(null);
+  const shellRef = useRef(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [categories, setCategories] = useState([]);
   const [catsExpanded, setCatsExpanded] = useState(true);
@@ -54,6 +55,23 @@ export default function Layout({ children }) {
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [location.pathname]);
+
+  // Mouse-tracking spotlight — updates CSS vars consumed by .spotlight-layer
+  useEffect(() => {
+    const el = shellRef.current;
+    if (!el) return;
+    let raf = 0;
+    const onMove = (e) => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        el.style.setProperty('--mx', `${e.clientX}px`);
+        el.style.setProperty('--my', `${e.clientY}px`);
+        raf = 0;
+      });
+    };
+    window.addEventListener('mousemove', onMove, { passive: true });
+    return () => { window.removeEventListener('mousemove', onMove); if (raf) cancelAnimationFrame(raf); };
+  }, []);
 
   // Refresh categories on route change
   useEffect(() => {
@@ -81,22 +99,24 @@ export default function Layout({ children }) {
       onClick={() => setSidebarOpen(false)}
       className={`sidebar-link w-full flex items-center justify-between ${indent ? 'pl-9 pr-4' : 'px-4'} py-2.5 rounded-xl group ${
         active
-          ? indent ? 'active bg-violet-500/10 text-violet-500 dark:text-violet-400' : 'active bg-violet-500 text-white shadow-lg shadow-violet-500/20'
+          ? indent ? 'active bg-violet-500/10 text-violet-500 dark:text-violet-400' : 'active text-white shadow-lg shadow-violet-500/30'
           : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
       }`}
+      style={active && !indent ? { background: 'linear-gradient(120deg, #8b5cf6, #a855f7, #d946ef, #8b5cf6)', backgroundSize: '300% 300%', animation: 'gradientFlow 6s ease infinite' } : undefined}
     >
       <div className="flex items-center gap-3">
-        {Icon && <Icon className="w-[18px] h-[18px]" />}
+        {Icon && <Icon className="nav-icon w-[18px] h-[18px]" />}
         {!Icon && indent && <div className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-violet-500' : 'bg-zinc-400 dark:bg-zinc-600'}`} />}
         <span className="font-semibold text-[13px] truncate">{label}</span>
       </div>
-      {active && !indent && <ChevronRight className="w-3.5 h-3.5 opacity-70" />}
+      {active && !indent && <ChevronRight className="w-3.5 h-3.5 opacity-70 animate-pulse-soft" />}
     </Link>
   );
 
   const SectionLabel = ({ label }) => (
-    <div className="px-4 mb-2 mt-5 first:mt-0">
-      <span className="text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-400 dark:text-zinc-600">{label}</span>
+    <div className="px-4 mb-2 mt-5 first:mt-0 flex items-center gap-2">
+      <span className="text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-400 dark:text-zinc-600 shrink-0">{label}</span>
+      <div className="h-px flex-1 bg-gradient-to-r from-zinc-200 dark:from-white/10 to-transparent" />
     </div>
   );
 
@@ -108,33 +128,44 @@ export default function Layout({ children }) {
   const allFilmsActive = (location.pathname === '/' || location.pathname.startsWith('/video') || location.pathname.startsWith('/author') || location.pathname.startsWith('/tag')) && !anyCatActive;
 
   return (
-    <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950 font-sans selection:bg-violet-100 selection:text-violet-900 relative overflow-hidden transition-colors duration-300">
+    <div ref={shellRef} className="flex h-screen bg-zinc-50 dark:bg-zinc-950 font-sans selection:bg-violet-100 selection:text-violet-900 relative overflow-hidden transition-colors duration-300">
+
+      {/* ── Global ambient aurora background ── */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+        <div className="aurora-blob aurora-1 -top-40 -left-40 w-[560px] h-[560px] bg-violet-600/15 dark:bg-violet-600/20 blur-[140px]" />
+        <div className="aurora-blob aurora-2 top-1/3 -right-48 w-[520px] h-[520px] bg-fuchsia-600/10 dark:bg-fuchsia-600/15 blur-[150px]" />
+        <div className="aurora-blob aurora-3 -bottom-48 left-1/3 w-[480px] h-[480px] bg-indigo-600/10 dark:bg-indigo-600/15 blur-[140px]" />
+        <div className="noise-overlay" />
+      </div>
+      {/* Mouse spotlight */}
+      <div className="spotlight-layer hidden lg:block" aria-hidden="true" />
+
       {sidebarOpen && (
         <div className="fixed inset-0 bg-zinc-950/60 backdrop-blur-sm z-40 lg:hidden animate-fade-in" onClick={() => setSidebarOpen(false)} />
       )}
 
       <aside className={`
-        fixed lg:static inset-y-0 left-0 w-[272px] bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-white/5 flex flex-col z-50 lg:z-10 transition-all duration-300 ease-in-out overflow-hidden
+        fixed lg:static inset-y-0 left-0 w-[272px] bg-white/80 dark:bg-zinc-950/70 backdrop-blur-2xl border-r border-zinc-200 dark:border-white/5 flex flex-col z-50 lg:z-10 transition-all duration-300 ease-in-out overflow-hidden
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none opacity-10 dark:opacity-20">
-          <div className="absolute -top-24 -left-24 w-64 h-64 bg-violet-500 rounded-full blur-[100px]" />
-          <div className="absolute top-1/2 -right-32 w-64 h-64 bg-fuchsia-600 rounded-full blur-[100px]" />
+          <div className="aurora-blob aurora-1 -top-24 -left-24 w-64 h-64 bg-violet-500 blur-[100px]" />
+          <div className="aurora-blob aurora-2 top-1/2 -right-32 w-64 h-64 bg-fuchsia-600 blur-[100px]" />
         </div>
 
         {/* Logo */}
         <div className="px-6 pt-7 pb-2 relative z-10 shrink-0">
           <div className="flex items-center justify-between mb-7">
             <Link to="/" className="flex items-center gap-3 group" onClick={() => setSidebarOpen(false)}>
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden shadow-lg shadow-violet-500/10 group-hover:shadow-violet-500/30 transition-shadow bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10 border border-white/10">
-                <img src={LOGO_URL} alt="Alleria" className="w-9 h-9 object-contain" />
+              <div className="border-beam logo-glow w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10 border border-white/10 group-hover:scale-110 transition-transform duration-300">
+                <img src={LOGO_URL} alt="Alleria" className="w-9 h-9 object-contain group-hover:rotate-[8deg] transition-transform duration-300" />
               </div>
               <div>
                 <span className="text-[15px] font-bold tracking-tight text-zinc-900 dark:text-white font-display block leading-tight">ALLERIA</span>
-                <span className="text-[9px] font-bold uppercase tracking-[0.35em] text-violet-500 font-display">FILMY</span>
+                <span className="text-gradient text-[9px] font-bold uppercase tracking-[0.35em] font-display">FILMY</span>
               </div>
             </Link>
-            <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white rounded-lg hover:bg-zinc-100 dark:hover:bg-white/5 transition-colors">
+            <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white rounded-lg hover:bg-zinc-100 dark:hover:bg-white/5 transition-colors hover:rotate-90 duration-300">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -143,7 +174,7 @@ export default function Layout({ children }) {
         {/* Nav */}
         <div className="flex-1 overflow-y-auto px-4 pb-4 relative z-10">
           <SectionLabel label="Przeglądaj" />
-          <nav className="space-y-0.5">
+          <nav className="space-y-0.5 nav-stagger">
             {/* Baza Filmów with categories */}
             <NavLink to="/" icon={Film} label="Wszystkie filmy" active={allFilmsActive && !anyCatActive} />
 
@@ -151,16 +182,16 @@ export default function Layout({ children }) {
               <>
                 <button
                   onClick={() => setCatsExpanded(!catsExpanded)}
-                  className="w-full flex items-center justify-between px-4 py-2 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white transition-all"
+                  className="sidebar-link w-full flex items-center justify-between px-4 py-2 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white"
                 >
                   <div className="flex items-center gap-3">
-                    <FolderOpen className="w-[18px] h-[18px]" />
+                    <FolderOpen className="nav-icon w-[18px] h-[18px]" />
                     <span className="font-semibold text-[13px]">Kategorie</span>
                   </div>
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${catsExpanded ? '' : '-rotate-90'}`} />
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${catsExpanded ? '' : '-rotate-90'}`} />
                 </button>
                 {catsExpanded && (
-                  <div className="space-y-0.5 animate-fade-in">
+                  <div className="space-y-0.5 stagger-children">
                     <CatTree cats={categories} parentId={null} depth={0} location={location} setSidebarOpen={setSidebarOpen} activeCatSlug={activeCatSlug} />
                   </div>
                 )}
@@ -172,14 +203,14 @@ export default function Layout({ children }) {
           </nav>
 
           <SectionLabel label="Konto" />
-          <nav className="space-y-0.5">
+          <nav className="space-y-0.5 nav-stagger">
             <NavLink to="/profile" icon={User} label="Mój profil" active={isActive('/profile')} />
           </nav>
 
           {(isAdmin || isDev) && (
             <>
               <SectionLabel label="Administracja" />
-              <nav className="space-y-0.5">
+              <nav className="space-y-0.5 nav-stagger">
                 {isAdmin && <NavLink to="/admin" icon={Shield} label="Panel Redaktora" active={isActive('/admin')} />}
                 {isAdmin && <NavLink to="/stats" icon={BarChart3} label="Statystyki" active={isActive('/stats')} />}
                 {isDev && <NavLink to="/manage" icon={FolderOpen} label="Zarządzanie" active={isActive('/manage')} />}
@@ -194,9 +225,9 @@ export default function Layout({ children }) {
               href="https://github.com/mrfroncu/alleria-filmy-platform-3/issues"
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white transition-all duration-300 font-semibold text-[13px]"
+              className="sidebar-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white font-semibold text-[13px]"
             >
-              <MessageSquarePlus className="w-[18px] h-[18px] shrink-0" />
+              <MessageSquarePlus className="nav-icon w-[18px] h-[18px] shrink-0" />
               Report Issue / Request Feature
             </a>
           </div>
@@ -204,17 +235,17 @@ export default function Layout({ children }) {
 
         {/* User card */}
         <div className="p-4 relative z-10 shrink-0">
-          <div className="p-3 bg-zinc-50 dark:bg-white/5 rounded-2xl border border-zinc-200 dark:border-white/10 backdrop-blur-md">
+          <div className="glow-ring p-3 bg-zinc-50/80 dark:bg-white/5 rounded-2xl border border-zinc-200 dark:border-white/10 backdrop-blur-md transition-all duration-300 hover:border-violet-300 dark:hover:border-violet-500/30">
             <div className="flex items-center gap-3">
-              <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=6366f1&color=fff&size=80`} alt="" className="w-9 h-9 rounded-xl shadow-sm border border-zinc-200 dark:border-white/10 object-cover" />
+              <div className="relative shrink-0">
+                <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=6366f1&color=fff&size=80`} alt="" className="w-9 h-9 rounded-xl shadow-sm border border-zinc-200 dark:border-white/10 object-cover" />
+                <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-zinc-900 animate-pulse-soft ${user?.role === 'dev' ? 'bg-red-400' : user?.role === 'admin' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+              </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-bold text-zinc-900 dark:text-white truncate">{user?.display_name || user?.username}</p>
-                <p className="text-[10px] text-zinc-500 truncate font-mono flex items-center gap-1">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${user?.role === 'dev' ? 'bg-red-400' : user?.role === 'admin' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                  {user?.role?.toUpperCase()}
-                </p>
+                <p className="text-[10px] text-zinc-500 truncate font-mono">{user?.role?.toUpperCase()}</p>
               </div>
-              <button onClick={logout} className="p-1.5 rounded-lg text-zinc-400 hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 transition-all duration-300 shrink-0" title="Wyloguj">
+              <button onClick={logout} className="p-1.5 rounded-lg text-zinc-400 hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 transition-all duration-300 shrink-0 hover:scale-110 active:scale-90" title="Wyloguj">
                 <LogOut className="w-4 h-4" />
               </button>
             </div>
@@ -232,23 +263,25 @@ export default function Layout({ children }) {
         </div>
       </aside>
 
-      <main ref={mainRef} className="flex-1 overflow-y-auto relative flex flex-col">
-        <div className="lg:hidden flex items-center justify-between p-4 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
+      <main ref={mainRef} className="flex-1 overflow-y-auto relative flex flex-col z-[5]">
+        <div className="lg:hidden flex items-center justify-between p-4 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
           <div className="flex items-center gap-2.5">
-            <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain" />
+            <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain animate-float" />
             <span className="font-bold text-zinc-900 dark:text-white font-display text-sm">ALLERIA FILMY</span>
           </div>
-          <button onClick={() => setSidebarOpen(true)} className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white">
+          <button onClick={() => setSidebarOpen(true)} className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:scale-110 active:scale-90 transition-transform">
             <Menu className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex-1">{children}</div>
+        {/* Re-key on route change so every page animates in */}
+        <div key={location.pathname} className="flex-1 page-enter">{children}</div>
 
-        <footer className="px-10 py-5 border-t border-zinc-200 dark:border-white/5 text-center">
+        <footer className="px-10 py-5 border-t border-zinc-200 dark:border-white/5 text-center relative">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-px bg-gradient-to-r from-transparent via-violet-500/40 to-transparent" />
           <p className="text-[11px] text-zinc-400 dark:text-zinc-600">
             © 2025 - {getCurrentYear()} Alleria.pl | built by{' '}
-            <a href="https://github.com/mrfroncu" target="_blank" rel="noopener noreferrer" className="text-violet-500 hover:text-violet-400 transition-colors">Matthew</a>
+            <a href="https://github.com/mrfroncu" target="_blank" rel="noopener noreferrer" className="link-underline text-violet-500 hover:text-violet-400 transition-colors">Matthew</a>
           </p>
         </footer>
       </main>

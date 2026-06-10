@@ -153,9 +153,10 @@ export default function LoginPage() {
 
         {/* Layered background */}
         <div className="absolute inset-0 bg-gradient-to-br from-violet-950 via-zinc-950 to-zinc-950" />
-        <div className="absolute -top-48 -left-48 w-[600px] h-[600px] bg-violet-600/25 rounded-full blur-[130px] pointer-events-none" />
-        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-fuchsia-700/20 rounded-full blur-[110px] pointer-events-none" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-violet-500/5 rounded-full blur-[80px] pointer-events-none" />
+        <div className="aurora-blob aurora-1 -top-48 -left-48 w-[600px] h-[600px] bg-violet-600/25 blur-[130px]" />
+        <div className="aurora-blob aurora-2 bottom-0 right-0 w-[400px] h-[400px] bg-fuchsia-700/20 blur-[110px]" />
+        <div className="aurora-blob aurora-3 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-violet-500/5 blur-[80px]" />
+        <div className="noise-overlay" />
 
         {/* Subtle dot grid */}
         <div
@@ -185,9 +186,9 @@ export default function LoginPage() {
               Prywatna platforma wideo
             </p>
 
-            <h1 className="text-5xl xl:text-6xl 2xl:text-7xl font-black text-white leading-[1.05] tracking-tight mb-6">
+            <h1 className="text-5xl xl:text-6xl 2xl:text-7xl font-black text-white leading-[1.05] tracking-tight mb-6 animate-blur-in">
               Filmy<br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400">
+              <span className="text-gradient">
                 społeczności.
               </span>
             </h1>

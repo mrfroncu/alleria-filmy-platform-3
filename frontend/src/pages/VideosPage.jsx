@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, X, ChevronDown, Film, RotateCcw } from 'lucide-react';
+import { Search, SlidersHorizontal, X, ChevronDown, Film, RotateCcw, Play, Sparkles } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
 
@@ -84,13 +84,21 @@ export default function VideosPage() {
   );
 
   return (
-    <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
+    <div className="p-6 sm:p-10 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-10">
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">
-          {categorySlug
-            ? (categories.find(c => c.slug === categorySlug)?.name || categorySlug)
-            : 'Baza Filmów'}
+      <div className="mb-10 anim-stagger-1">
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles className="w-4 h-4 text-violet-500 animate-pulse-soft" />
+          <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-violet-500 font-display">
+            {categorySlug ? 'Kategoria' : 'Biblioteka'}
+          </span>
+        </div>
+        <h1 className="text-4xl sm:text-5xl font-black tracking-tight font-display mb-3">
+          <span className="text-gradient">
+            {categorySlug
+              ? (categories.find(c => c.slug === categorySlug)?.name || categorySlug)
+              : 'Baza Filmów'}
+          </span>
         </h1>
         <div className="flex items-center justify-between gap-4">
           <p className="text-zinc-500 dark:text-zinc-400 text-base sm:text-lg">
@@ -112,7 +120,7 @@ export default function VideosPage() {
       </div>
 
       {/* Search & Filters Bar */}
-      <div className="mb-8 space-y-4">
+      <div className="mb-8 space-y-4 anim-stagger-3">
         <div className="flex flex-col sm:flex-row gap-4">
           {/* Search */}
           <div className="relative flex-1">
@@ -237,9 +245,9 @@ export default function VideosPage() {
           ))}
         </div>
       ) : videos.length === 0 ? (
-        <div className="card p-16 text-center">
-          <div className="w-20 h-20 bg-zinc-100 dark:bg-zinc-800 rounded-3xl flex items-center justify-center mx-auto mb-6">
-            <Film className="w-10 h-10 text-zinc-400" />
+        <div className="card p-16 text-center animate-scale-in">
+          <div className="w-20 h-20 bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10 border border-violet-500/20 rounded-3xl flex items-center justify-center mx-auto mb-6 animate-float">
+            <Film className="w-10 h-10 text-violet-400" />
           </div>
           <h3 className="text-xl font-bold text-zinc-900 dark:text-white mb-2 font-display">Brak wyników</h3>
           <p className="text-zinc-500 text-sm">Nie znaleziono filmów spełniających kryteria wyszukiwania.</p>
@@ -257,7 +265,7 @@ export default function VideosPage() {
               className="video-card card overflow-hidden group"
               style={{ animationDelay: `${idx * 50}ms` }}
             >
-              <div className="relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+              <div className="thumb-shine relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
                 {video.thumbnail ? (
                   <img
                     src={video.thumbnail}
@@ -270,16 +278,22 @@ export default function VideosPage() {
                     <Film className="w-12 h-12 text-zinc-300 dark:text-zinc-700" />
                   </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                {/* Play badge — pops in on hover */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="play-badge w-14 h-14 rounded-full bg-white/15 border border-white/30 flex items-center justify-center shadow-2xl shadow-black/40">
+                    <Play className="w-6 h-6 text-white fill-white ml-0.5" />
+                  </div>
+                </div>
                 {progressMap[video.id] && (() => {
                   const p = progressMap[video.id];
                   const pct = p.duration > 0 ? Math.min(100, (p.position / p.duration) * 100) : 0;
                   return (
                     <>
                       <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
-                        <div className="h-full bg-violet-500" style={{ width: `${pct}%` }} />
+                        <div className="progress-fill h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 shadow-glow-sm" style={{ width: `${pct}%` }} />
                       </div>
-                      <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded backdrop-blur-sm">
+                      <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded backdrop-blur-sm border border-white/10">
                         Kontynuuj oglądanie
                       </div>
                     </>
@@ -334,7 +348,7 @@ export default function VideosPage() {
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="px-4 py-2 rounded-xl text-sm font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30 transition-all"
+                  className="page-btn px-4 py-2 rounded-xl text-sm font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30"
                 >
                   ← Poprzednia
                 </button>
@@ -353,7 +367,7 @@ export default function VideosPage() {
                         <button
                           key={p}
                           onClick={() => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                          className={`w-10 h-10 rounded-xl text-sm font-bold transition-all ${p === page ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}
+                          className={`page-btn w-10 h-10 rounded-xl text-sm font-bold ${p === page ? 'bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}
                         >
                           {p}
                         </button>
@@ -363,7 +377,7 @@ export default function VideosPage() {
                 <button
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="px-4 py-2 rounded-xl text-sm font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30 transition-all"
+                  className="page-btn px-4 py-2 rounded-xl text-sm font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30"
                 >
                   Następna →
                 </button>
