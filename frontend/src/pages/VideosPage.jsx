@@ -1,8 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, X, ChevronDown, Film, RotateCcw, Play, Sparkles } from 'lucide-react';
+import { Search, SlidersHorizontal, X, ChevronDown, Film, RotateCcw, Play, Flame } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
+
+// Marks the clicked thumbnail as the morph source — the View Transition
+// then grows it into the player on the video page.
+const armHeroMorph = (e) => {
+  const thumb = e.currentTarget.querySelector('[data-vt-thumb]');
+  if (thumb) thumb.style.viewTransitionName = 'video-hero';
+};
 
 export default function VideosPage() {
   const { authorId, tagId, categorySlug } = useParams();
@@ -85,15 +92,15 @@ export default function VideosPage() {
 
   return (
     <div className="p-6 sm:p-10 max-w-7xl mx-auto">
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="mb-10 anim-stagger-1">
         <div className="flex items-center gap-2 mb-3">
-          <Sparkles className="w-4 h-4 text-violet-500 animate-pulse-soft" />
-          <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-violet-500 font-display">
+          <Flame className="w-4 h-4 text-ember-500 animate-pulse-soft" />
+          <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-ember-500 font-display">
             {categorySlug ? 'Kategoria' : 'Biblioteka'}
           </span>
         </div>
-        <h1 className="text-4xl sm:text-5xl font-black tracking-tight font-display mb-3">
+        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight font-display mb-3">
           <span className="text-gradient">
             {categorySlug
               ? (categories.find(c => c.slug === categorySlug)?.name || categorySlug)
@@ -110,21 +117,21 @@ export default function VideosPage() {
             <button
               onClick={handleResetProgress}
               disabled={resetting}
-              className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-xs text-zinc-400 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 font-medium transition-all disabled:opacity-50"
+              className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-xs text-zinc-400 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 font-medium transition-all active:scale-95 disabled:opacity-50 group"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw className="w-3.5 h-3.5 group-hover:-rotate-180 transition-transform duration-500" />
               Resetuj postęp oglądania
             </button>
           )}
         </div>
       </div>
 
-      {/* Search & Filters Bar */}
+      {/* ── Search & Filters Bar ── */}
       <div className="mb-8 space-y-4 anim-stagger-3">
         <div className="flex flex-col sm:flex-row gap-4">
           {/* Search */}
-          <div className="relative flex-1">
-            <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
+          <div className="relative flex-1 group">
+            <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400 group-focus-within:text-ember-500 group-focus-within:scale-110 transition-all" />
             <input
               type="text"
               value={search}
@@ -133,7 +140,7 @@ export default function VideosPage() {
               className="input-field pl-14"
             />
             {search && (
-              <button onClick={() => setSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors">
+              <button onClick={() => setSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full hover:rotate-90 transition-all duration-300 animate-spring-in">
                 <X className="w-4 h-4 text-zinc-400" />
               </button>
             )}
@@ -172,36 +179,38 @@ export default function VideosPage() {
           {/* Filter toggle */}
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`px-5 py-4 rounded-2xl font-bold text-sm flex items-center gap-2 transition-all ${
+            className={`px-6 py-3.5 rounded-full font-bold text-sm flex items-center gap-2 transition-all active:scale-95 hover:-translate-y-0.5 ${
               showFilters || selectedTags.length > 0
-                ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20'
-                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                ? 'bg-gradient-to-r from-ember-500 to-curtain-600 text-white shadow-ember'
+                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-white/10 hover:border-ember-300 dark:hover:border-ember-500/40'
             }`}
           >
-            <SlidersHorizontal className="w-4 h-4" />
-            Tagi {selectedTags.length > 0 && `(${selectedTags.length})`}
+            <SlidersHorizontal className={`w-4 h-4 transition-transform duration-300 ${showFilters ? 'rotate-90' : ''}`} />
+            Tagi {selectedTags.length > 0 && (
+              <span className="animate-spring-in inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-white/20 text-[11px]">{selectedTags.length}</span>
+            )}
           </button>
         </div>
 
-        {/* Tags checkboxes */}
-        {showFilters && (
-          <div className="card p-6 animate-slide-up">
+        {/* Tags — smooth accordion */}
+        <div className={`reveal-y ${showFilters ? 'open' : ''}`}>
+          <div className="card p-6">
             <div className="flex items-center justify-between mb-4">
               <span className="label-field mb-0">Filtruj po tagach</span>
               {selectedTags.length > 0 && (
-                <button onClick={() => setSelectedTags([])} className="text-xs text-violet-500 font-bold hover:text-violet-400">
+                <button onClick={() => setSelectedTags([])} className="text-xs text-ember-500 font-bold hover:text-ember-400 active:scale-90 transition-all">
                   Wyczyść
                 </button>
               )}
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 stagger-children">
               {tags.map(tag => (
                 <label
                   key={tag.id}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold cursor-pointer transition-all border ${
+                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold cursor-pointer transition-all duration-200 border active:scale-90 hover:-translate-y-0.5 ${
                     selectedTags.includes(tag.id)
-                      ? 'bg-violet-500 text-white border-violet-500 shadow-lg shadow-violet-500/20'
-                      : 'bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-violet-300 dark:hover:border-violet-500'
+                      ? 'bg-gradient-to-r from-ember-500 to-curtain-600 text-white border-transparent shadow-ember scale-105'
+                      : 'bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-ember-300 dark:hover:border-ember-500'
                   }`}
                 >
                   <input
@@ -218,20 +227,20 @@ export default function VideosPage() {
               )}
             </div>
           </div>
-        )}
+        </div>
 
         {/* Active filters indicator */}
         {hasActiveFilters && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 animate-slide-up">
             <span className="text-xs text-zinc-500 font-medium">Aktywne filtry:</span>
-            <button onClick={clearFilters} className="text-xs text-red-500 font-bold hover:text-red-400 transition-colors">
+            <button onClick={clearFilters} className="text-xs text-red-500 font-bold hover:text-red-400 active:scale-90 transition-all">
               Wyczyść wszystkie
             </button>
           </div>
         )}
       </div>
 
-      {/* Videos Grid */}
+      {/* ── Videos Grid ── */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {[1,2,3,4,5,6].map(i => (
@@ -245,9 +254,9 @@ export default function VideosPage() {
           ))}
         </div>
       ) : videos.length === 0 ? (
-        <div className="card p-16 text-center animate-scale-in">
-          <div className="w-20 h-20 bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10 border border-violet-500/20 rounded-3xl flex items-center justify-center mx-auto mb-6 animate-float">
-            <Film className="w-10 h-10 text-violet-400" />
+        <div className="card p-16 text-center animate-spring-in">
+          <div className="w-20 h-20 bg-gradient-to-br from-ember-500/10 to-curtain-500/10 border border-ember-500/20 rounded-3xl flex items-center justify-center mx-auto mb-6 animate-float">
+            <Film className="w-10 h-10 text-ember-400" />
           </div>
           <h3 className="text-xl font-bold text-zinc-900 dark:text-white mb-2 font-display">Brak wyników</h3>
           <p className="text-zinc-500 text-sm">Nie znaleziono filmów spełniających kryteria wyszukiwania.</p>
@@ -262,10 +271,12 @@ export default function VideosPage() {
             <Link
               key={video.id}
               to={`/video/${video.id}${categorySlug ? `?from=${categorySlug}` : ''}`}
+              viewTransition
+              onClick={armHeroMorph}
               className="video-card card overflow-hidden group"
               style={{ animationDelay: `${idx * 50}ms` }}
             >
-              <div className="thumb-shine relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+              <div data-vt-thumb className="thumb-shine relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden rounded-t-3xl">
                 {video.thumbnail ? (
                   <img
                     src={video.thumbnail}
@@ -279,7 +290,7 @@ export default function VideosPage() {
                   </div>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                {/* Play badge — pops in on hover */}
+                {/* Play badge — springs in on hover */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="play-badge w-14 h-14 rounded-full bg-white/15 border border-white/30 flex items-center justify-center shadow-2xl shadow-black/40">
                     <Play className="w-6 h-6 text-white fill-white ml-0.5" />
@@ -291,9 +302,9 @@ export default function VideosPage() {
                   return (
                     <>
                       <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
-                        <div className="progress-fill h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 shadow-glow-sm" style={{ width: `${pct}%` }} />
+                        <div className="progress-fill h-full bg-gradient-to-r from-ember-500 to-curtain-500 shadow-glow-sm" style={{ width: `${pct}%` }} />
                       </div>
-                      <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded backdrop-blur-sm border border-white/10">
+                      <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded-full backdrop-blur-sm border border-white/10">
                         Kontynuuj oglądanie
                       </div>
                     </>
@@ -301,14 +312,15 @@ export default function VideosPage() {
                 })()}
               </div>
               <div className="p-6">
-                <h3 className="font-bold text-zinc-900 dark:text-white mb-2 line-clamp-2 group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors">
+                <h3 className="font-bold text-zinc-900 dark:text-white mb-2 line-clamp-2 group-hover:text-ember-500 dark:group-hover:text-ember-400 transition-colors font-display">
                   {video.title}
                 </h3>
                 <div className="flex items-center justify-between mb-3">
                   <Link
                     to={`/author/${video.author_id}`}
+                    viewTransition
                     onClick={e => e.stopPropagation()}
-                    className="text-sm text-zinc-500 font-medium hover:text-violet-500 transition-colors no-underline"
+                    className="text-sm text-zinc-500 font-medium hover:text-ember-500 transition-colors no-underline"
                   >
                     {video.author_display_name || video.author_name}
                   </Link>
@@ -318,7 +330,7 @@ export default function VideosPage() {
                 </div>
                 {video.category_name && (
                   <div className="mb-2">
-                    <span className="inline-flex px-2 py-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 rounded-lg text-[10px] font-bold">
+                    <span className="inline-flex px-2.5 py-0.5 bg-ember-50 dark:bg-ember-500/10 text-ember-600 dark:text-ember-300 rounded-full text-[10px] font-bold border border-ember-100 dark:border-ember-500/20">
                       {video.category_name}
                     </span>
                   </div>
@@ -326,7 +338,7 @@ export default function VideosPage() {
                 {video.tags && video.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {video.tags.slice(0, 4).map(tag => (
-                      <span key={tag.id} className="inline-flex px-2 py-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-500 dark:text-violet-300 rounded-lg text-[10px] font-bold">
+                      <span key={tag.id} className="inline-flex px-2.5 py-0.5 bg-zinc-100 dark:bg-white/5 text-zinc-500 dark:text-zinc-400 rounded-full text-[10px] font-bold">
                         {tag.name}
                       </span>
                     ))}
@@ -340,7 +352,7 @@ export default function VideosPage() {
             ))}
           </div>
 
-          {/* Pagination */}
+          {/* ── Pagination ── */}
           {videos.length > config.videosPerPage && (() => {
             const totalPages = Math.ceil(videos.length / config.videosPerPage);
             return (
@@ -348,7 +360,7 @@ export default function VideosPage() {
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="page-btn px-4 py-2 rounded-xl text-sm font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30"
+                  className="page-btn px-5 py-2.5 rounded-full text-sm font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-white/10 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30"
                 >
                   ← Poprzednia
                 </button>
@@ -367,7 +379,7 @@ export default function VideosPage() {
                         <button
                           key={p}
                           onClick={() => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                          className={`page-btn w-10 h-10 rounded-xl text-sm font-bold ${p === page ? 'bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}
+                          className={`page-btn w-10 h-10 rounded-full text-sm font-bold ${p === page ? 'bg-gradient-to-br from-ember-500 to-curtain-600 text-white shadow-ember scale-110' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-white/10 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}
                         >
                           {p}
                         </button>
@@ -377,7 +389,7 @@ export default function VideosPage() {
                 <button
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="page-btn px-4 py-2 rounded-xl text-sm font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30"
+                  className="page-btn px-5 py-2.5 rounded-full text-sm font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-white/10 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30"
                 >
                   Następna →
                 </button>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FolderOpen, Plus, Pencil, Trash2, Users, Shield } from 'lucide-react';
 import { api } from '../utils/api';
+import { morph } from '../utils/fx';
 import { buildCategoryTreeOptions, formatDate } from '../utils/helpers';
 
 export default function ManagePage() {
@@ -178,21 +179,20 @@ export default function ManagePage() {
   };
 
   return (
-    <div className="p-6 sm:p-10 max-w-5xl mx-auto page-enter">
-      <div className="mb-8">
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">Zarządzanie</h1>
+    <div className="p-6 sm:p-10 max-w-5xl mx-auto">
+      <div className="mb-8 anim-stagger-1">
+        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight font-display mb-3">
+          <span className="text-gradient">Zarządzanie</span>
+        </h1>
         <p className="text-zinc-500 dark:text-zinc-400">Zarządzaj kategoriami, uprawnieniami i użytkownikami.</p>
       </div>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-1 mb-6 border-b border-zinc-200 dark:border-zinc-800">
+      {/* Tabs — the pill MORPHS between tabs via view transitions */}
+      <div className="seg-tabs mb-6 anim-stagger-2">
         {[['categories', 'Kategorie', FolderOpen], ['users', 'Użytkownicy', Users]].map(([key, label, Icon]) => (
-          <button key={key} onClick={() => setTab(key)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap transition-colors ${
-              tab === key
-                ? 'border-violet-500 text-violet-600 dark:text-violet-400'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
-            }`}>
+          <button key={key} onClick={() => morph(() => setTab(key))}
+            className={`seg-tab ${tab === key ? 'active' : ''}`}>
+            {tab === key && <span className="seg-pill" style={{ viewTransitionName: 'tab-pill' }} aria-hidden="true" />}
             <Icon className="w-4 h-4" />
             {label}
           </button>
@@ -506,7 +506,7 @@ export default function ManagePage() {
                     <tr key={u.id} className="border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-white/[0.02] transition-colors">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
-                          <img src={u.avatar || `https://ui-avatars.com/api/?name=${u.display_name || u.username}&background=6366f1&color=fff`} alt="" className="w-7 h-7 rounded-lg object-cover border border-zinc-200 dark:border-zinc-700" />
+                          <img src={u.avatar || `https://ui-avatars.com/api/?name=${u.display_name || u.username}&background=dd5f02&color=fff`} alt="" className="w-7 h-7 rounded-lg object-cover border border-zinc-200 dark:border-zinc-700" />
                           <div>
                             <p className="text-sm font-bold text-zinc-900 dark:text-white">{u.display_name || u.username}</p>
                             <p className="text-[10px] text-zinc-500 font-mono">@{u.username} • ID:{u.id}</p>

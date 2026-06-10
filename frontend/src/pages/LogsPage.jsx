@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Eye, LogIn, Shield, Users, Search, Trash2 } from 'lucide-react';
 import { api } from '../utils/api';
+import { morph } from '../utils/fx';
 import { formatDate } from '../utils/helpers';
 
 const WP_ACTIONS = [
@@ -93,13 +94,16 @@ export default function LogsPage() {
   );
 
   return (
-    <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
-      <div className="mb-8">
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">Logi systemowe</h1>
+    <div className="p-6 sm:p-10 max-w-7xl mx-auto">
+      <div className="mb-8 anim-stagger-1">
+        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight font-display mb-3">
+          <span className="text-gradient">Logi systemowe</span>
+        </h1>
         <p className="text-zinc-500 dark:text-zinc-400">Przeglądanie logów wyświetleń, logowania, audytu i Watch Party.</p>
       </div>
 
-      <div className="flex flex-wrap gap-1 mb-6 border-b border-zinc-200 dark:border-zinc-800">
+      {/* Tabs — the pill MORPHS between tabs via view transitions */}
+      <div className="seg-tabs mb-6 anim-stagger-2 flex-wrap">
         {[
           { key: 'audit', label: 'Audit Log', icon: Shield },
           { key: 'watchparty', label: 'Watch Party', icon: Users },
@@ -108,13 +112,10 @@ export default function LogsPage() {
         ].map(t => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap transition-colors ${
-              tab === t.key
-                ? 'border-violet-500 text-violet-600 dark:text-violet-400'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
-            }`}
+            onClick={() => morph(() => setTab(t.key))}
+            className={`seg-tab ${tab === t.key ? 'active' : ''}`}
           >
+            {tab === t.key && <span className="seg-pill" style={{ viewTransitionName: 'tab-pill' }} aria-hidden="true" />}
             <t.icon className="w-4 h-4" />{t.label}
           </button>
         ))}

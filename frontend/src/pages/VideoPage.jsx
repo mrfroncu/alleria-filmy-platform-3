@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle } from 'lucide-react';
 import { api } from '../utils/api';
+import { morph } from '../utils/fx';
 import { formatDate, youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
 import SecurePlayer from '../components/SecurePlayer';
@@ -110,7 +111,7 @@ function CommentNode({ c, depth, replies, user, editingId, editContent, setEditC
   return (
     <div className={depth > 0 ? 'ml-6 sm:ml-10 border-l-2 border-violet-200/50 dark:border-violet-800/30 pl-4' : ''}>
       <div className="flex gap-3 group py-2 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 -mx-2 px-2 rounded-xl transition-colors">
-        <img src={c.avatar || `https://ui-avatars.com/api/?name=${c.display_name || c.username || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className={`w-8 h-8 rounded-xl shrink-0 object-cover mt-0.5 ${isDeleted ? 'opacity-40 grayscale' : ''}`} />
+        <img src={c.avatar || `https://ui-avatars.com/api/?name=${c.display_name || c.username || 'U'}&background=dd5f02&color=fff&size=80`} alt="" className={`w-8 h-8 rounded-xl shrink-0 object-cover mt-0.5 ${isDeleted ? 'opacity-40 grayscale' : ''}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
             <span className={`text-sm font-bold ${isDeleted ? 'text-zinc-400' : 'text-zinc-900 dark:text-white'}`}>{c.display_name || c.username}</span>
@@ -332,7 +333,9 @@ export default function VideoPage() {
     return roots;
   }, [comments]);
 
-  if (loading && !video) return <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-fade-in"><div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[32px] skeleton mb-6" /><div className="h-8 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-2/3 mb-4" /><div className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-1/3" /></div>;
+  // The skeleton player box carries the video-hero name so the clicked
+  // thumbnail morphs into it while the video loads.
+  if (loading && !video) return <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-fade-in"><div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-3xl skeleton mb-6" style={{ viewTransitionName: 'video-hero' }} /><div className="h-8 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-2/3 mb-4" /><div className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-1/3" /></div>;
   if (error || !video) return <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-scale-in"><div className="card p-16 text-center"><p className="text-red-500 font-bold text-lg mb-2">Błąd</p><p className="text-zinc-500">{error || 'Film nie znaleziony.'}</p><Link to="/" className="btn-primary mt-6 inline-block">Wróć</Link></div></div>;
 
   const src = activeSource === 'mirror1'
@@ -368,7 +371,7 @@ export default function VideoPage() {
   return (
     <>
       <div className={`p-6 sm:p-10 max-w-5xl mx-auto ${wrapperClass}`} onAnimationEnd={() => { if (phase === 'entering') setPhase('show'); }}>
-        <button onClick={() => navigate(fromCategory ? `/category/${fromCategory}` : '/')} className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white font-medium text-sm mb-6 hover:gap-3 transition-all active:scale-95">
+        <button onClick={() => navigate(fromCategory ? `/category/${fromCategory}` : '/', { viewTransition: true })} className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white font-medium text-sm mb-6 hover:gap-3 transition-all active:scale-95">
           <ArrowLeft className="w-4 h-4" /> {fromCategory ? 'Wróć do kategorii' : 'Wróć do bazy'}
         </button>
 
@@ -377,8 +380,8 @@ export default function VideoPage() {
             <div className="flex items-start gap-3 mb-3">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display flex-1">{video.title}</h1>
               {canEdit && <button onClick={openEditModal} className="shrink-0 p-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-500/20 transition-all hover:scale-110 active:scale-95"><Pencil className="w-5 h-5" /></button>}
-              <button onClick={toggleFav} disabled={favLoading} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl transition-all duration-300 hover:scale-105 active:scale-95 ${isFav ? 'bg-pink-50 dark:bg-pink-500/10 text-pink-500 shadow-lg shadow-pink-500/10' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-pink-500'}`}>
-                <Heart className={`w-5 h-5 transition-all ${isFav ? 'fill-current scale-110' : ''}`} />
+              <button onClick={toggleFav} disabled={favLoading} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-full transition-all duration-300 hover:scale-105 active:scale-90 ${isFav ? 'heart-ring bg-curtain-50 dark:bg-curtain-500/10 text-curtain-500 shadow-lg shadow-curtain-500/10' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-curtain-500'}`}>
+                <Heart className={`w-5 h-5 transition-all ${isFav ? 'heart-pop fill-current scale-110' : ''}`} />
                 {favCount > 0 && <span className="text-xs font-bold">{favCount}</span>}
               </button>
             </div>
@@ -393,7 +396,7 @@ export default function VideoPage() {
           </div>
         </div>
 
-        <div className="mb-2 anim-stagger-2" key={`player-${activeSource}`}>
+        <div className="mb-2 anim-stagger-2" key={`player-${activeSource}`} style={{ viewTransitionName: 'video-hero' }}>
           {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
             <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} />
           ) : isStreamer && streamerVideoId ? (
@@ -446,8 +449,17 @@ export default function VideoPage() {
         )}
 
         {sources.length > 1 && (
-          <div className="flex gap-2 mb-6 anim-stagger-3">
-            {sources.map(s => <button key={s.key} onClick={() => setActiveSource(s.key)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeSource === s.key ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>{s.label}</button>)}
+          <div className="flex flex-wrap gap-1 mb-6 anim-stagger-3 seg-tabs">
+            {sources.map(s => (
+              <button
+                key={s.key}
+                onClick={() => morph(() => setActiveSource(s.key))}
+                className={`seg-tab ${activeSource === s.key ? 'active' : ''}`}
+              >
+                {activeSource === s.key && <span className="seg-pill" style={{ viewTransitionName: 'tab-pill' }} aria-hidden="true" />}
+                {s.label}
+              </button>
+            ))}
           </div>
         )}
 
@@ -493,7 +505,7 @@ export default function VideoPage() {
             </div>
           )}
           <div className="flex gap-3 mb-6">
-            <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className="w-10 h-10 rounded-xl shrink-0 object-cover" />
+            <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=dd5f02&color=fff&size=80`} alt="" className="w-10 h-10 rounded-xl shrink-0 object-cover" />
             <div className="flex-1 relative">
               <textarea value={newComment} maxLength={commentLimit} onChange={e => setNewComment(e.target.value)} placeholder={replyTo ? 'Odpowiedz...' : 'Napisz komentarz...'} className="input-field !py-3 !pr-12 resize-none text-sm min-h-[48px] max-h-[120px]" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment(); }}} rows={1} />
               <button onClick={submitComment} disabled={!newComment.trim() || commentLoading} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-violet-500 hover:text-violet-600 disabled:text-zinc-300 dark:disabled:text-zinc-700 transition-all hover:scale-110 active:scale-90"><Send className="w-4 h-4" /></button>
