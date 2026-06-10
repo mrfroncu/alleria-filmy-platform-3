@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import {
-  Film, Shield, LogOut, Menu, X, Bug, ChevronRight, ChevronDown,
+  Film, Shield, LogOut, Menu, X, Wrench, ChevronRight, ChevronDown,
   Heart, Clock, BarChart3, User, FolderOpen, FileText, MessageSquarePlus
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
@@ -184,7 +184,7 @@ export default function Layout({ children }) {
                 {isAdmin && <NavLink to="/stats" icon={BarChart3} label="Statystyki" active={isActive('/stats')} />}
                 {isDev && <NavLink to="/manage" icon={FolderOpen} label="Zarządzanie" active={isActive('/manage')} />}
                 {isDev && <NavLink to="/logs" icon={FileText} label="Logi systemowe" active={isActive('/logs')} />}
-                {isDev && <NavLink to="/debug" icon={Bug} label="Debug Tools" active={isActive('/debug')} />}
+                {isDev && <NavLink to="/debug" icon={Wrench} label="Dev Tools" active={isActive('/debug')} />}
               </nav>
             </>
           )}

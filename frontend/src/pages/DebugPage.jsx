@@ -1,6 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, Upload, Trash2, AlertTriangle, Database, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck } from 'lucide-react';
+import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug } from 'lucide-react';
 import { api } from '../utils/api';
+
+// Section header — groups the tiles below it under a labelled heading
+function SectionHeader({ icon: Icon, title, desc }) {
+  return (
+    <div className="flex items-center gap-3 mb-4 mt-10">
+      <div className="w-8 h-8 bg-zinc-100 dark:bg-zinc-800 rounded-lg flex items-center justify-center shrink-0">
+        <Icon className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+      </div>
+      <div>
+        <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display leading-tight">{title}</h2>
+        {desc && <p className="text-xs text-zinc-500">{desc}</p>}
+      </div>
+    </div>
+  );
+}
 
 export default function DebugPage() {
   const [status, setStatus] = useState(null);
@@ -20,6 +35,11 @@ export default function DebugPage() {
   const [newAvatar, setNewAvatar] = useState('');
 
   const [cleanupLog, setCleanupLog] = useState([]);
+
+  // Clear DB confirmation modal
+  const [clearDbOpen, setClearDbOpen] = useState(false);
+  const [clearDbText, setClearDbText] = useState('');
+  const CLEAR_DB_PHRASE = 'WYCZYŚĆ WSZYSTKO';
 
   // Watch Party management
   const [watchParties, setWatchParties] = useState([]);
@@ -254,13 +274,14 @@ export default function DebugPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleClear = async () => {
-    if (!confirm('UWAGA: To usunie WSZYSTKIE dane (filmy, tagi, logi). Kontynuować?')) return;
-    if (!confirm('Naprawdę usunąć wszystko? Ta operacja jest nieodwracalna!')) return;
+  const performClear = async () => {
+    if (clearDbText !== CLEAR_DB_PHRASE) return;
     setLoading(true);
     try {
       await api.clearDB();
       setStatus({ type: 'success', msg: 'Baza danych wyczyszczona.' });
+      setClearDbOpen(false);
+      setClearDbText('');
     } catch (err) {
       setStatus({ type: 'error', msg: 'Błąd: ' + err.message });
     }
@@ -309,11 +330,11 @@ export default function DebugPage() {
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 bg-red-50 dark:bg-red-500/10 rounded-xl flex items-center justify-center">
-            <Database className="w-5 h-5 text-red-500" />
+            <Wrench className="w-5 h-5 text-red-500" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Debug Tools</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Dev Tools</h1>
         </div>
-        <p className="text-zinc-500 dark:text-zinc-400">Narzędzia deweloperskie do zarządzania bazą danych.</p>
+        <p className="text-zinc-500 dark:text-zinc-400">Narzędzia deweloperskie do zarządzania platformą i bazą danych.</p>
       </div>
 
       {status && (
@@ -326,7 +347,10 @@ export default function DebugPage() {
         </div>
       )}
 
-      {/* Stats row — full width */}
+      {/* ============ STREAMING ============ */}
+      <SectionHeader icon={HardDrive} title="Streaming" desc="Statystyki, transkodowanie i pliki serwera streamingu" />
+
+      {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <div className="card p-5 text-center">
           <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{dbStats?.videos ?? '—'}</p>
@@ -403,98 +427,6 @@ export default function DebugPage() {
                 </div>
               </div>
             ))}
-          </div>
-        )}
-      </div>
-
-      {/* Watch Party manager */}
-      <div className="card p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center">
-              <Users className="w-5 h-5 text-violet-500" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">
-                Aktywne Watch Parties ({watchParties.length})
-              </h3>
-              <p className="text-xs text-zinc-500">Party w pamięci serwera — usuwane automatycznie 30 min po opustoszeniu</p>
-            </div>
-          </div>
-          <button
-            onClick={loadWatchParties}
-            disabled={wpLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl transition-all font-semibold"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${wpLoading ? 'animate-spin' : ''}`} />
-            Odśwież
-          </button>
-        </div>
-
-        {watchParties.length === 0 ? (
-          <p className="text-zinc-400 text-sm text-center py-4">Brak aktywnych party</p>
-        ) : (
-          <div className="space-y-2">
-            {watchParties.map(p => {
-              const isEmpty = p.memberCount === 0;
-              const emptyMins = p.emptyAt ? Math.floor((Date.now() - p.emptyAt) / 60000) : null;
-              return (
-                <div key={p.code} className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${isEmpty ? 'border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/5' : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50'}`}>
-                  {/* Code + status */}
-                  <div className="shrink-0 text-center min-w-[72px]">
-                    <span className="font-mono text-base font-bold text-violet-600 dark:text-violet-400 tracking-widest">{p.code}</span>
-                    <div className="mt-0.5">
-                      {isEmpty ? (
-                        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
-                          puste {emptyMins != null ? `${emptyMins}m` : ''}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">aktywne</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Details */}
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-zinc-600 dark:text-zinc-400">
-                      <span><span className="font-semibold text-zinc-800 dark:text-zinc-200">{p.memberCount}</span> uczestników</span>
-                      <span><span className="font-semibold text-zinc-800 dark:text-zinc-200">{p.queueLength}</span> w kolejce</span>
-                      {p.currentTitle && (
-                        <span className="truncate max-w-[200px]">▶ <span className="font-semibold text-zinc-800 dark:text-zinc-200">{p.currentTitle}</span></span>
-                      )}
-                      {!isEmpty && (
-                        <span>{p.playing ? '▶ gra' : '⏸ pauza'} @ {Math.floor(p.position / 60)}:{String(p.position % 60).padStart(2, '0')}</span>
-                      )}
-                    </div>
-                    {p.members.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {p.members.map(m => (
-                          <span key={m.id} className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${m.canControl ? 'bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400'}`}>
-                            {m.name}{m.canControl ? ' ★' : ''}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <p className="text-[10px] text-zinc-400">
-                      ID: <span className="font-mono">{p.id}</span> · utworzono: {new Date(p.createdAt).toLocaleString('pl')}
-                    </p>
-                  </div>
-
-                  {/* Delete button */}
-                  <button
-                    onClick={async () => {
-                      if (!confirm(`Usunąć party ${p.code}? Wszyscy uczestnicy zostaną rozłączeni.`)) return;
-                      await api.forceDeleteWatchParty(p.code).catch(() => {});
-                      loadWatchParties();
-                    }}
-                    className="shrink-0 p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all"
-                    title="Usuń party"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              );
-            })}
           </div>
         )}
       </div>
@@ -660,8 +592,217 @@ export default function DebugPage() {
         })()}
       </div>
 
+      {/* Streaming Cleanup — full width */}
+      <div className="card p-8">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
+            <Trash2 className="w-6 h-6 text-violet-500" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Czyszczenie streamingu</h3>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">Usuń osierocone, uszkodzone i zfailowane pliki transkodowania z serwera streaming.</p>
+            <div className="flex flex-wrap gap-3 mb-3">
+              <button
+                onClick={async () => {
+                  setCleanupLog(prev => [...prev, '🔍 Skanowanie serwera streaming...']);
+                  try {
+                    const data = await api.streamCleanupList();
+                    const orphanCount = data.orphans?.length || 0;
+                    const dbCount = data.dbOrphans?.length || 0;
+                    setCleanupLog(prev => [
+                      ...prev,
+                      `📊 Znaleziono: ${orphanCount} osieroconych plików, ${dbCount} błędnych rekordów DB`,
+                      ...(data.orphans || []).map(o => `  📁 ${o.video_id} — status: ${o.status}`),
+                      ...(data.dbOrphans || []).map(o => `  🗃️ DB#${o.id}: ${o.title} (${o.stream_status})`),
+                    ]);
+                    if (orphanCount + dbCount === 0) {
+                      setCleanupLog(prev => [...prev, '✅ Brak osieroconych plików — czysto!']);
+                      return;
+                    }
+                    setCleanupLog(prev => [...prev, '🗑️ Usuwanie...']);
+                    const result = await api.streamCleanupPurge({ clean_db: true });
+                    setCleanupLog(prev => [
+                      ...prev,
+                      `✅ Usunięto ${result.deleted} plików ze streamingu`,
+                      result.dbCleaned ? `✅ Wyczyszczono ${result.dbCleaned} rekordów z bazy danych` : null,
+                      '🏁 Czyszczenie zakończone',
+                    ].filter(Boolean));
+                  } catch (e) {
+                    setCleanupLog(prev => [...prev, `❌ Błąd: ${e.message}`]);
+                  }
+                }}
+                className="btn-danger text-sm"
+              >
+                Skanuj i wyczyść
+              </button>
+              {cleanupLog.length > 0 && (
+                <button onClick={() => setCleanupLog([])} className="text-xs font-bold text-zinc-500 hover:text-zinc-900 dark:hover:text-white">
+                  Wyczyść logi
+                </button>
+              )}
+            </div>
+            {cleanupLog.length > 0 && (
+              <div className="bg-zinc-950 dark:bg-zinc-950 rounded-xl p-4 font-mono text-xs max-h-[250px] overflow-y-auto space-y-1">
+                {cleanupLog.map((line, i) => (
+                  <div key={i} className={`${line.startsWith('❌') ? 'text-red-400' : line.startsWith('✅') ? 'text-emerald-400' : 'text-zinc-400'}`}>{line}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ============ ADMINISTRACYJNE ============ */}
+      <SectionHeader icon={Users} title="Administracyjne" desc="Zarządzanie watch party i użytkownikami" />
+
+      {/* Watch Party manager */}
+      <div className="card p-6 mb-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center">
+              <Users className="w-5 h-5 text-violet-500" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">
+                Aktywne Watch Parties ({watchParties.length})
+              </h3>
+              <p className="text-xs text-zinc-500">Party w pamięci serwera — usuwane automatycznie 30 min po opustoszeniu</p>
+            </div>
+          </div>
+          <button
+            onClick={loadWatchParties}
+            disabled={wpLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl transition-all font-semibold"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${wpLoading ? 'animate-spin' : ''}`} />
+            Odśwież
+          </button>
+        </div>
+
+        {watchParties.length === 0 ? (
+          <p className="text-zinc-400 text-sm text-center py-4">Brak aktywnych party</p>
+        ) : (
+          <div className="space-y-2">
+            {watchParties.map(p => {
+              const isEmpty = p.memberCount === 0;
+              const emptyMins = p.emptyAt ? Math.floor((Date.now() - p.emptyAt) / 60000) : null;
+              return (
+                <div key={p.code} className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${isEmpty ? 'border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/5' : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50'}`}>
+                  {/* Code + status */}
+                  <div className="shrink-0 text-center min-w-[72px]">
+                    <span className="font-mono text-base font-bold text-violet-600 dark:text-violet-400 tracking-widest">{p.code}</span>
+                    <div className="mt-0.5">
+                      {isEmpty ? (
+                        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                          puste {emptyMins != null ? `${emptyMins}m` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">aktywne</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Details */}
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-zinc-600 dark:text-zinc-400">
+                      <span><span className="font-semibold text-zinc-800 dark:text-zinc-200">{p.memberCount}</span> uczestników</span>
+                      <span><span className="font-semibold text-zinc-800 dark:text-zinc-200">{p.queueLength}</span> w kolejce</span>
+                      {p.currentTitle && (
+                        <span className="truncate max-w-[200px]">▶ <span className="font-semibold text-zinc-800 dark:text-zinc-200">{p.currentTitle}</span></span>
+                      )}
+                      {!isEmpty && (
+                        <span>{p.playing ? '▶ gra' : '⏸ pauza'} @ {Math.floor(p.position / 60)}:{String(p.position % 60).padStart(2, '0')}</span>
+                      )}
+                    </div>
+                    {p.members.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {p.members.map(m => (
+                          <span key={m.id} className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${m.canControl ? 'bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400'}`}>
+                            {m.name}{m.canControl ? ' ★' : ''}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[10px] text-zinc-400">
+                      ID: <span className="font-mono">{p.id}</span> · utworzono: {new Date(p.createdAt).toLocaleString('pl')}
+                    </p>
+                  </div>
+
+                  {/* Delete button */}
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Usunąć party ${p.code}? Wszyscy uczestnicy zostaną rozłączeni.`)) return;
+                      await api.forceDeleteWatchParty(p.code).catch(() => {});
+                      loadWatchParties();
+                    }}
+                    className="shrink-0 p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all"
+                    title="Usuń party"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Create User */}
+      <div className="card p-8">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center shrink-0">
+            <UserPlus className="w-6 h-6 text-emerald-500" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Dodaj użytkownika</h3>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+              Utwórz konto ręcznie dla osoby, która jeszcze się nie zalogowała. Będzie widoczna jako autor filmów.
+            </p>
+            <form onSubmit={handleCreateUser} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="label-field">Username</label>
+                  <input type="text" value={newUsername} onChange={e => setNewUsername(e.target.value)} className="input-field !py-3 text-sm" placeholder="np. jan_kowalski" required />
+                </div>
+                <div>
+                  <label className="label-field">Wyświetlana nazwa</label>
+                  <input type="text" value={newDisplayName} onChange={e => setNewDisplayName(e.target.value)} className="input-field !py-3 text-sm" placeholder="np. Jan Kowalski" required />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="label-field">Rola</label>
+                  <div className="relative">
+                    <select value={newRole} onChange={e => setNewRole(e.target.value)} className="input-field !py-3 text-sm appearance-none cursor-pointer">
+                      <option value="member">Member</option>
+                      <option value="admin">Admin</option>
+                      <option value="dev">Dev</option>
+                    </select>
+                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+                  </div>
+                </div>
+                <div>
+                  <label className="label-field">Discord ID (opcjonalnie)</label>
+                  <input type="text" value={newDiscordId} onChange={e => setNewDiscordId(e.target.value)} className="input-field !py-3 text-sm font-mono" placeholder="np. 248804732787884033" />
+                </div>
+              </div>
+              <div>
+                <label className="label-field">Avatar URL (opcjonalnie)</label>
+                <input type="text" value={newAvatar} onChange={e => setNewAvatar(e.target.value)} className="input-field !py-3 text-sm" placeholder="https://cdn.discordapp.com/avatars/..." />
+              </div>
+              <button type="submit" disabled={creatingUser} className="btn-primary text-sm">
+                {creatingUser ? 'Tworzenie...' : 'Utwórz użytkownika'}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      {/* ============ KATEGORIE ============ */}
+      <SectionHeader icon={ShieldCheck} title="Kategorie" desc="Weryfikacja uprawnień dostępu" />
+
       {/* Access Checker */}
-      <div className="card p-6 mb-6">
+      <div className="card p-6">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-9 h-9 bg-blue-50 dark:bg-blue-500/10 rounded-xl flex items-center justify-center">
             <ShieldCheck className="w-5 h-5 text-blue-500" />
@@ -764,59 +905,81 @@ export default function DebugPage() {
         })()}
       </div>
 
-      {/* 2-column grid for tools */}
+      {/* ============ USTAWIENIA ============ */}
+      <SectionHeader icon={Settings} title="Ustawienia" desc="Limity treści i bezpieczeństwo webhooków" />
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {/* Create User */}
-        <div className="card p-8 xl:row-span-2" >
+        {/* Content length limits */}
+        <div className="card p-8 h-full flex flex-col">
           <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <UserPlus className="w-6 h-6 text-emerald-500" />
+            <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <Settings className="w-6 h-6 text-violet-500" />
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Dodaj użytkownika</h3>
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Limity treści</h3>
               <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Utwórz konto ręcznie dla osoby, która jeszcze się nie zalogowała. Będzie widoczna jako autor filmów.
+                Maksymalna długość pól (w znakach). Egzekwowane po stronie serwera.
               </p>
-              <form onSubmit={handleCreateUser} className="space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="label-field">Username</label>
-                    <input type="text" value={newUsername} onChange={e => setNewUsername(e.target.value)} className="input-field !py-3 text-sm" placeholder="np. jan_kowalski" required />
-                  </div>
-                  <div>
-                    <label className="label-field">Wyświetlana nazwa</label>
-                    <input type="text" value={newDisplayName} onChange={e => setNewDisplayName(e.target.value)} className="input-field !py-3 text-sm" placeholder="np. Jan Kowalski" required />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="label-field">Rola</label>
-                    <div className="relative">
-                      <select value={newRole} onChange={e => setNewRole(e.target.value)} className="input-field !py-3 text-sm appearance-none cursor-pointer">
-                        <option value="member">Member</option>
-                        <option value="admin">Admin</option>
-                        <option value="dev">Dev</option>
-                      </select>
-                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="label-field">Discord ID (opcjonalnie)</label>
-                    <input type="text" value={newDiscordId} onChange={e => setNewDiscordId(e.target.value)} className="input-field !py-3 text-sm font-mono" placeholder="np. 248804732787884033" />
-                  </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="label-field">Nazwa wyświetlana</label>
+                  <input type="number" min="1" max="100000" value={limitForm.limit_display_name}
+                    onChange={e => setLimitForm(f => ({ ...f, limit_display_name: e.target.value }))}
+                    className="input-field !py-3 text-sm" />
                 </div>
                 <div>
-                  <label className="label-field">Avatar URL (opcjonalnie)</label>
-                  <input type="text" value={newAvatar} onChange={e => setNewAvatar(e.target.value)} className="input-field !py-3 text-sm" placeholder="https://cdn.discordapp.com/avatars/..." />
+                  <label className="label-field">Bio</label>
+                  <input type="number" min="1" max="100000" value={limitForm.limit_bio}
+                    onChange={e => setLimitForm(f => ({ ...f, limit_bio: e.target.value }))}
+                    className="input-field !py-3 text-sm" />
                 </div>
-                <button type="submit" disabled={creatingUser} className="btn-primary text-sm">
-                  {creatingUser ? 'Tworzenie...' : 'Utwórz użytkownika'}
-                </button>
-              </form>
+                <div>
+                  <label className="label-field">Komentarz</label>
+                  <input type="number" min="1" max="100000" value={limitForm.limit_comment}
+                    onChange={e => setLimitForm(f => ({ ...f, limit_comment: e.target.value }))}
+                    className="input-field !py-3 text-sm" />
+                </div>
+              </div>
+              <button onClick={saveLimits} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
+                {savingSettings ? 'Zapisywanie...' : 'Zapisz limity'}
+              </button>
             </div>
           </div>
         </div>
 
+        {/* Webhook domain restriction */}
+        <div className="card p-8 h-full flex flex-col">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-6 h-6 text-blue-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Ograniczenie domen webhooków</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                Gdy włączone, serwer wysyła powiadomienia tylko do domen Discord
+                ({settings?.webhook_allowed_hosts?.join(', ') || 'discord.com, discordapp.com'}).
+                Chroni przed SSRF — wskazaniem webhooka na adres wewnętrzny.
+              </p>
+              <button
+                type="button"
+                onClick={toggleWebhookRestriction}
+                disabled={!settings || savingSettings}
+                className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-sm font-semibold text-zinc-700 dark:text-zinc-300 disabled:opacity-50"
+              >
+                {settings?.webhook_domain_restriction
+                  ? <CheckSquare className="w-5 h-5 text-emerald-500" />
+                  : <Square className="w-5 h-5 text-zinc-400" />}
+                {settings == null ? 'Ładowanie...' : (settings.webhook_domain_restriction ? 'Ograniczenie domen: WŁĄCZONE' : 'Ograniczenie domen: WYŁĄCZONE')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ============ DEBUG ============ */}
+      <SectionHeader icon={Bug} title="Debug" desc="Eksport/import bazy, logi i konsola SQL" />
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {/* Export */}
         <div className="card p-8 h-full flex flex-col">
           <div className="flex items-start gap-4">
@@ -825,7 +988,7 @@ export default function DebugPage() {
             </div>
             <div className="flex-1">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Eksportuj bazę danych</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">Pobierz plik JSON ze wszystkimi danymi platformy.</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">Pobierz plik JSON ze wszystkimi danymi platformy (wszystkie tabele oprócz sesji logowania).</p>
               <button onClick={handleExport} disabled={loading} className="btn-primary text-sm">
                 {loading ? 'Eksportowanie...' : 'Eksportuj JSON'}
               </button>
@@ -849,66 +1012,6 @@ export default function DebugPage() {
                 <Upload className="w-4 h-4" /> Wybierz plik JSON
                 <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} className="hidden" />
               </label>
-            </div>
-          </div>
-        </div>
-
-        {/* Streaming Cleanup */}
-        <div className="card p-8 h-full flex flex-col">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <Trash2 className="w-6 h-6 text-violet-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Czyszczenie streamingu</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">Usuń osierocone, uszkodzone i zfailowane pliki transkodowania z serwera streaming.</p>
-              <div className="flex flex-wrap gap-3 mb-3">
-                <button
-                  onClick={async () => {
-                    setCleanupLog(prev => [...prev, '🔍 Skanowanie serwera streaming...']);
-                    try {
-                      const data = await api.streamCleanupList();
-                      const orphanCount = data.orphans?.length || 0;
-                      const dbCount = data.dbOrphans?.length || 0;
-                      setCleanupLog(prev => [
-                        ...prev,
-                        `📊 Znaleziono: ${orphanCount} osieroconych plików, ${dbCount} błędnych rekordów DB`,
-                        ...(data.orphans || []).map(o => `  📁 ${o.video_id} — status: ${o.status}`),
-                        ...(data.dbOrphans || []).map(o => `  🗃️ DB#${o.id}: ${o.title} (${o.stream_status})`),
-                      ]);
-                      if (orphanCount + dbCount === 0) {
-                        setCleanupLog(prev => [...prev, '✅ Brak osieroconych plików — czysto!']);
-                        return;
-                      }
-                      setCleanupLog(prev => [...prev, '🗑️ Usuwanie...']);
-                      const result = await api.streamCleanupPurge({ clean_db: true });
-                      setCleanupLog(prev => [
-                        ...prev,
-                        `✅ Usunięto ${result.deleted} plików ze streamingu`,
-                        result.dbCleaned ? `✅ Wyczyszczono ${result.dbCleaned} rekordów z bazy danych` : null,
-                        '🏁 Czyszczenie zakończone',
-                      ].filter(Boolean));
-                    } catch (e) {
-                      setCleanupLog(prev => [...prev, `❌ Błąd: ${e.message}`]);
-                    }
-                  }}
-                  className="btn-danger text-sm"
-                >
-                  Skanuj i wyczyść
-                </button>
-                {cleanupLog.length > 0 && (
-                  <button onClick={() => setCleanupLog([])} className="text-xs font-bold text-zinc-500 hover:text-zinc-900 dark:hover:text-white">
-                    Wyczyść logi
-                  </button>
-                )}
-              </div>
-              {cleanupLog.length > 0 && (
-                <div className="bg-zinc-950 dark:bg-zinc-950 rounded-xl p-4 font-mono text-xs max-h-[250px] overflow-y-auto space-y-1">
-                  {cleanupLog.map((line, i) => (
-                    <div key={i} className={`${line.startsWith('❌') ? 'text-red-400' : line.startsWith('✅') ? 'text-emerald-400' : 'text-zinc-400'}`}>{line}</div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -952,72 +1055,6 @@ export default function DebugPage() {
           </div>
         </div>
 
-        {/* Webhook security settings */}
-        <div className="card p-8 h-full flex flex-col">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-6 h-6 text-blue-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Bezpieczeństwo webhooków</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Gdy włączone, serwer wysyła powiadomienia tylko do domen Discord
-                ({settings?.webhook_allowed_hosts?.join(', ') || 'discord.com, discordapp.com'}).
-                Chroni przed SSRF — wskazaniem webhooka na adres wewnętrzny.
-              </p>
-              <button
-                type="button"
-                onClick={toggleWebhookRestriction}
-                disabled={!settings || savingSettings}
-                className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-sm font-semibold text-zinc-700 dark:text-zinc-300 disabled:opacity-50"
-              >
-                {settings?.webhook_domain_restriction
-                  ? <CheckSquare className="w-5 h-5 text-emerald-500" />
-                  : <Square className="w-5 h-5 text-zinc-400" />}
-                {settings == null ? 'Ładowanie...' : (settings.webhook_domain_restriction ? 'Ograniczenie domen: WŁĄCZONE' : 'Ograniczenie domen: WYŁĄCZONE')}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Content length limits */}
-        <div className="card p-8 h-full flex flex-col">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <Terminal className="w-6 h-6 text-violet-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Limity treści</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Maksymalna długość pól (w znakach). Egzekwowane po stronie serwera.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="label-field">Nazwa wyświetlana</label>
-                  <input type="number" min="1" max="100000" value={limitForm.limit_display_name}
-                    onChange={e => setLimitForm(f => ({ ...f, limit_display_name: e.target.value }))}
-                    className="input-field !py-3 text-sm" />
-                </div>
-                <div>
-                  <label className="label-field">Bio</label>
-                  <input type="number" min="1" max="100000" value={limitForm.limit_bio}
-                    onChange={e => setLimitForm(f => ({ ...f, limit_bio: e.target.value }))}
-                    className="input-field !py-3 text-sm" />
-                </div>
-                <div>
-                  <label className="label-field">Komentarz</label>
-                  <input type="number" min="1" max="100000" value={limitForm.limit_comment}
-                    onChange={e => setLimitForm(f => ({ ...f, limit_comment: e.target.value }))}
-                    className="input-field !py-3 text-sm" />
-                </div>
-              </div>
-              <button onClick={saveLimits} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
-                {savingSettings ? 'Zapisywanie...' : 'Zapisz limity'}
-              </button>
-            </div>
-          </div>
-        </div>
-
         {/* Clear DB */}
         <div className="card p-8 h-full flex flex-col border-red-200 dark:border-red-500/20">
           <div className="flex items-start gap-4">
@@ -1030,14 +1067,12 @@ export default function DebugPage() {
               <p className="text-xs text-red-600 dark:text-red-400 font-bold mb-4 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" /> Ta operacja jest nieodwracalna!
               </p>
-              <button onClick={handleClear} disabled={loading} className="btn-danger text-sm">
-                {loading ? 'Czyszczenie...' : 'Wyczyść wszystko'}
+              <button onClick={() => { setClearDbText(''); setClearDbOpen(true); }} disabled={loading} className="btn-danger text-sm">
+                Wyczyść wszystko
               </button>
             </div>
           </div>
         </div>
-
-        {/* End of 2-column grid */}
       </div>
 
       {/* SQL Executor — full width below the grid */}
@@ -1119,6 +1154,52 @@ export default function DebugPage() {
             </div>
           </div>
         </div>
-      </div>
-    );
-  }
+
+      {/* Clear DB confirmation modal */}
+      {clearDbOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+          onClick={() => { if (!loading) { setClearDbOpen(false); setClearDbText(''); } }}
+        >
+          <div className="card w-full max-w-md p-6 border-red-300 dark:border-red-500/30" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-red-50 dark:bg-red-500/10 rounded-xl flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+              </div>
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Wyczyść bazę danych</h3>
+            </div>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+              Ta operacja usunie wszystkie filmy, tagi i logi i jest <strong className="text-red-600 dark:text-red-400">nieodwracalna</strong>.
+              Aby potwierdzić, wpisz poniżej dokładnie <span className="font-mono font-bold text-red-600 dark:text-red-400">{CLEAR_DB_PHRASE}</span>.
+            </p>
+            <input
+              type="text"
+              value={clearDbText}
+              onChange={e => setClearDbText(e.target.value)}
+              placeholder={CLEAR_DB_PHRASE}
+              autoFocus
+              className="input-field !py-3 text-sm mb-4"
+              onKeyDown={e => { if (e.key === 'Enter' && clearDbText === CLEAR_DB_PHRASE) performClear(); }}
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => { setClearDbOpen(false); setClearDbText(''); }}
+                disabled={loading}
+                className="btn-secondary text-sm"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={performClear}
+                disabled={loading || clearDbText !== CLEAR_DB_PHRASE}
+                className="btn-danger text-sm"
+              >
+                {loading ? 'Czyszczenie...' : 'Wyczyść wszystko'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
