@@ -15,7 +15,7 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const crypto = require('crypto');
-const { initDB } = require('./database');
+const { initDB, DB_PATH } = require('./database');
 const { createParty, getParty, deleteParty, listParties, createWsToken, setupWatchPartyWS } = require('./watchParty');
 const rateLimit = require('express-rate-limit');
 
@@ -1997,15 +1997,50 @@ app.get('/api/debug/export', requireDev, (req, res) => {
   try {
     const tables = db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
-    ).all();
-    const data = {};
-    for (const { name } of tables) {
-      if (EXPORT_SKIP_TABLES.has(name)) continue;
-      data[name] = db.prepare(`SELECT * FROM "${name}"`).all();
-    }
-    res.json(data);
+    ).all().map(t => t.name).filter(n => !EXPORT_SKIP_TABLES.has(n));
+
+    // Stream the JSON row-by-row instead of buffering the whole DB in memory.
+    // Avoids large memory spikes and keeps the connection active so a reverse
+    // proxy doesn't time out (the cause of intermittent 502s on big exports).
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition',
+      `attachment; filename="alleria-filmy-export-${new Date().toISOString().slice(0, 10)}.json"`);
+
+    res.write('{');
+    tables.forEach((name, ti) => {
+      if (ti > 0) res.write(',');
+      res.write(JSON.stringify(name) + ':[');
+      let ri = 0;
+      for (const row of db.prepare(`SELECT * FROM "${name}"`).iterate()) {
+        res.write((ri++ > 0 ? ',' : '') + JSON.stringify(row));
+      }
+      res.write(']');
+    });
+    res.write('}');
+    res.end();
   } catch (err) {
-    res.status(500).json({ error: 'Export failed: ' + err.message });
+    console.error('[EXPORT] failed:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'Export failed: ' + err.message });
+    else res.end();
+  }
+});
+
+// Database file size + row stats
+app.get('/api/debug/db-stats', requireDev, (req, res) => {
+  try {
+    const parts = {};
+    let sizeBytes = 0, mainBytes = 0;
+    for (const f of [DB_PATH, `${DB_PATH}-wal`, `${DB_PATH}-shm`]) {
+      try { const s = fs.statSync(f); parts[path.basename(f)] = s.size; sizeBytes += s.size; if (f === DB_PATH) mainBytes = s.size; } catch (_) {}
+    }
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
+    let rowCount = 0;
+    for (const t of tables) {
+      try { rowCount += db.prepare(`SELECT COUNT(*) AS c FROM "${t.name}"`).get().c; } catch (_) {}
+    }
+    res.json({ sizeBytes, mainBytes, parts, tableCount: tables.length, rowCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

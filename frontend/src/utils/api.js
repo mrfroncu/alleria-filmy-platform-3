@@ -175,6 +175,7 @@ export const api = {
     body: JSON.stringify(data),
   }),
   clearDB: () => request('/debug/clear', { method: 'POST' }),
+  dbStats: () => request('/debug/db-stats'),
   getSettings: () => request('/debug/settings'),
   setSettings: (data) => request('/debug/settings', {
     method: 'POST',

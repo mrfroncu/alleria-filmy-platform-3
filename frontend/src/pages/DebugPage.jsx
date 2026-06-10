@@ -11,6 +11,14 @@ const TABS = [
   { id: 'debug', label: 'Debug', icon: Bug },
 ];
 
+function formatBytes(bytes) {
+  if (bytes == null) return '—';
+  if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + ' GB';
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+  if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB';
+  return bytes + ' B';
+}
+
 export default function DebugPage() {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -48,7 +56,10 @@ export default function DebugPage() {
   // Admin stats
   const [streamStats, setStreamStats] = useState(null);
   const [dbStats, setDbStats] = useState(null);
+  const [dbSize, setDbSize] = useState(null);
   const [transcodingVideos, setTranscodingVideos] = useState([]);
+
+  const loadDbSize = () => api.dbStats().then(setDbSize).catch(() => {});
 
   // Live transcoding from streaming server
   const [liveTranscoding, setLiveTranscoding] = useState(null); // null = not yet loaded
@@ -111,6 +122,7 @@ export default function DebugPage() {
     // Load transcoding videos
     loadTranscoding();
     loadLiveTranscoding();
+    loadDbSize();
   }, []);
 
   // Poll live transcoding every 5s
@@ -1051,6 +1063,26 @@ export default function DebugPage() {
       {/* ============ DEBUG ============ */}
       {activeTab === 'debug' && (
       <div className="animate-fade-in">
+      {/* Database stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+        <div className="card p-5 text-center">
+          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{dbSize ? formatBytes(dbSize.sizeBytes) : '—'}</p>
+          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Rozmiar bazy</p>
+        </div>
+        <div className="card p-5 text-center">
+          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{dbSize ? formatBytes(dbSize.mainBytes ?? 0) : '—'}</p>
+          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Plik główny</p>
+        </div>
+        <div className="card p-5 text-center">
+          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{dbSize?.rowCount?.toLocaleString('pl') ?? '—'}</p>
+          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Rekordów</p>
+        </div>
+        <div className="card p-5 text-center">
+          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{dbSize?.tableCount ?? '—'}</p>
+          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Tabel</p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {/* Export */}
         <div className="card p-8 h-full flex flex-col">
