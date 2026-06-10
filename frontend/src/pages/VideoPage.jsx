@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, User, CalendarDays, FolderOpen } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle } from 'lucide-react';
 import { api } from '../utils/api';
-import { morph, burst } from '../utils/fx';
 import { formatDate, youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
 import SecurePlayer from '../components/SecurePlayer';
@@ -109,14 +108,14 @@ function CommentNode({ c, depth, replies, user, editingId, editContent, setEditC
   let history = []; try { history = JSON.parse(c.edit_history || '[]'); } catch (e) {}
 
   return (
-    <div className={depth > 0 ? 'ml-6 sm:ml-10 border-l-2 border-ember-200/50 dark:border-ember-800/30 pl-4' : ''}>
+    <div className={depth > 0 ? 'ml-6 sm:ml-10 border-l-2 border-violet-200/50 dark:border-violet-800/30 pl-4' : ''}>
       <div className="flex gap-3 group py-2 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 -mx-2 px-2 rounded-xl transition-colors">
-        <img src={c.avatar || `https://ui-avatars.com/api/?name=${c.display_name || c.username || 'U'}&background=dd5f02&color=fff&size=80`} alt="" className={`w-8 h-8 rounded-xl shrink-0 object-cover mt-0.5 ${isDeleted ? 'opacity-40 grayscale' : ''}`} />
+        <img src={c.avatar || `https://ui-avatars.com/api/?name=${c.display_name || c.username || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className={`w-8 h-8 rounded-xl shrink-0 object-cover mt-0.5 ${isDeleted ? 'opacity-40 grayscale' : ''}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
             <span className={`text-sm font-bold ${isDeleted ? 'text-zinc-400' : 'text-zinc-900 dark:text-white'}`}>{c.display_name || c.username}</span>
             <span className="text-[10px] text-zinc-400 font-mono">{formatDate(c.created_at)}</span>
-            {c.edited === 1 && !isDeleted && <button onClick={() => setEditHistoryId(editHistoryId === c.id ? null : c.id)} className="text-[9px] text-zinc-400 hover:text-ember-500 transition-colors">(edytowano)</button>}
+            {c.edited === 1 && !isDeleted && <button onClick={() => setEditHistoryId(editHistoryId === c.id ? null : c.id)} className="text-[9px] text-zinc-400 hover:text-violet-500 transition-colors">(edytowano)</button>}
           </div>
           {isDeleted ? <p className="text-sm text-zinc-400 italic">(komentarz usunięty)</p>
           : isEditing ? (
@@ -137,7 +136,7 @@ function CommentNode({ c, depth, replies, user, editingId, editContent, setEditC
           )}
           {!isEditing && !isDeleted && (
             <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-all">
-              <button onClick={() => onReply(c)} className="text-[11px] text-zinc-400 hover:text-ember-500 px-2 py-1 rounded-lg hover:bg-ember-50 dark:hover:bg-ember-500/10 transition-all flex items-center gap-1"><Reply className="w-3 h-3" /> Odpowiedz</button>
+              <button onClick={() => onReply(c)} className="text-[11px] text-zinc-400 hover:text-violet-500 px-2 py-1 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-all flex items-center gap-1"><Reply className="w-3 h-3" /> Odpowiedz</button>
               {(c.user_id === user?.id || isDev) && <button onClick={() => onStartEdit(c)} className="text-[11px] text-zinc-400 hover:text-amber-500 px-2 py-1 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-all flex items-center gap-1"><Pencil className="w-3 h-3" /> Edytuj</button>}
               {canMod && <button onClick={() => onDelete(c.id)} className="text-[11px] text-zinc-400 hover:text-red-500 px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-all flex items-center gap-1"><Trash2 className="w-3 h-3" /> Usuń</button>}
             </div>
@@ -195,7 +194,7 @@ export default function VideoPage() {
   const [devDate, setDevDate] = useState('');
   const [devParent, setDevParent] = useState('');
   const [allUsers, setAllUsers] = useState([]);
-
+  
   // Animation state machine: 'show' | 'exiting' | 'hidden' | 'entering'
   const [phase, setPhase] = useState('show');
   const [exitDir, setExitDir] = useState('');
@@ -209,14 +208,14 @@ export default function VideoPage() {
     setResumePosition(null); setShowResumeBanner(false);
     const vid = Number(id);
     const isSwitch = !!video;
-
+    
     // If switching between videos, go to hidden phase (between exit and enter)
     if (isSwitch) {
       setPhase('hidden');
     } else {
       setLoading(true);
     }
-
+    
     Promise.all([
       api.getVideo(id),
       api.checkFavorite(id).catch(() => ({ isFavorite: false, count: 0 })),
@@ -276,13 +275,9 @@ export default function VideoPage() {
     setTimeout(() => navigate(`/video/${videoId}?${p.toString()}`), 350);
   };
 
-  const toggleFav = async (e) => {
-    const el = e?.currentTarget;
+  const toggleFav = async () => {
     setFavLoading(true);
-    try {
-      if (isFav) { await api.removeFavorite(id); setIsFav(false); setFavCount(c => Math.max(0, c - 1)); }
-      else { await api.addFavorite(id); setIsFav(true); setFavCount(c => c + 1); burst(el); }
-    } catch (e) {}
+    try { if (isFav) { await api.removeFavorite(id); setIsFav(false); setFavCount(c => Math.max(0, c - 1)); } else { await api.addFavorite(id); setIsFav(true); setFavCount(c => c + 1); } } catch (e) {}
     setFavLoading(false);
   };
   const openEditModal = async () => { try { setEditUsers(await api.getAllUsers()); } catch (e) { setEditUsers([]); } setShowEditModal(true); };
@@ -337,10 +332,8 @@ export default function VideoPage() {
     return roots;
   }, [comments]);
 
-  // The skeleton player box carries the video-hero name so the clicked
-  // thumbnail morphs into it while the video loads.
-  if (loading && !video) return <div className="p-5 sm:px-10 sm:py-6 max-w-7xl mx-auto animate-fade-in"><div className="aspect-video max-w-5xl mx-auto bg-zinc-100 dark:bg-zinc-800 rounded-3xl skeleton mb-6" style={{ viewTransitionName: 'video-hero' }} /><div className="h-8 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-2/3 mb-4" /><div className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-1/3" /></div>;
-  if (error || !video) return <div className="p-5 sm:px-10 sm:py-6 max-w-5xl mx-auto animate-spring-in"><div className="card p-16 text-center"><p className="text-red-500 font-bold text-lg mb-2">Błąd</p><p className="text-zinc-500">{error || 'Film nie znaleziony.'}</p><Link to="/" viewTransition className="btn-primary mt-6 inline-block">Wróć</Link></div></div>;
+  if (loading && !video) return <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-fade-in"><div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[32px] skeleton mb-6" /><div className="h-8 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-2/3 mb-4" /><div className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-1/3" /></div>;
+  if (error || !video) return <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-scale-in"><div className="card p-16 text-center"><p className="text-red-500 font-bold text-lg mb-2">Błąd</p><p className="text-zinc-500">{error || 'Film nie znaleziony.'}</p><Link to="/" className="btn-primary mt-6 inline-block">Wróć</Link></div></div>;
 
   const src = activeSource === 'mirror1'
     ? { url: video.mirror1_url, type: video.mirror1_type || (video.mirror1_is_embed ? 'embed' : 'link') }
@@ -374,205 +367,147 @@ export default function VideoPage() {
 
   return (
     <>
-      <div className={`relative ${wrapperClass}`} onAnimationEnd={() => { if (phase === 'entering') setPhase('show'); }}>
+      <div className={`p-6 sm:p-10 max-w-5xl mx-auto ${wrapperClass}`} onAnimationEnd={() => { if (phase === 'entering') setPhase('show'); }}>
+        <button onClick={() => navigate(fromCategory ? `/category/${fromCategory}` : '/')} className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white font-medium text-sm mb-6 hover:gap-3 transition-all active:scale-95">
+          <ArrowLeft className="w-4 h-4" /> {fromCategory ? 'Wróć do kategorii' : 'Wróć do bazy'}
+        </button>
 
-        {/* ── Ambient cinema backdrop — the artwork glows behind the player ── */}
-        {video.thumbnail && (
-          <div className="cinema-backdrop" aria-hidden="true">
-            <img src={video.thumbnail} alt="" className="w-full h-full object-cover" />
+        <div className="flex flex-col sm:flex-row sm:items-start gap-4 mb-6 anim-stagger-1">
+          <div className="flex-1">
+            <div className="flex items-start gap-3 mb-3">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display flex-1">{video.title}</h1>
+              {canEdit && <button onClick={openEditModal} className="shrink-0 p-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-500/20 transition-all hover:scale-110 active:scale-95"><Pencil className="w-5 h-5" /></button>}
+              <button onClick={toggleFav} disabled={favLoading} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl transition-all duration-300 hover:scale-105 active:scale-95 ${isFav ? 'bg-pink-50 dark:bg-pink-500/10 text-pink-500 shadow-lg shadow-pink-500/10' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-pink-500'}`}>
+                <Heart className={`w-5 h-5 transition-all ${isFav ? 'fill-current scale-110' : ''}`} />
+                {favCount > 0 && <span className="text-xs font-bold">{favCount}</span>}
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link to={`/author/${video.author_id}`} className="text-sm font-bold text-violet-500 hover:text-violet-600 transition-colors">{video.author_display_name || video.author_name}</Link>
+              {video.tags?.length > 0 && <div className="flex flex-wrap gap-1.5">{video.tags.map(t => <Link key={t.id} to={`/?tags=${t.id}`} className="tag-chip hover:scale-105 active:scale-95">{t.name}</Link>)}</div>}
+            </div>
+            <div className="flex items-center gap-3 mt-2 text-xs text-zinc-400">
+              <span>{formatDate(video.publish_date)}</span>
+              {video.category_name && <><span>•</span><Link to={`/category/${video.category_slug}`} className="hover:text-violet-500 transition-colors">{video.category_name}</Link></>}
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-2 anim-stagger-2" key={`player-${activeSource}`}>
+          {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
+            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} />
+          ) : isStreamer && streamerVideoId ? (
+            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} />
+          ) : isPlex && src.url ? (
+            <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in plex-container flex items-center justify-center">
+              {/* Floating particles */}
+              <div className="plex-particle w-2 h-2 bg-amber-400/40 top-[20%] left-[15%]" style={{ animation: 'plexFloat1 6s ease-in-out infinite' }} />
+              <div className="plex-particle w-1.5 h-1.5 bg-emerald-400/30 top-[60%] right-[20%]" style={{ animation: 'plexFloat2 8s ease-in-out infinite 1s' }} />
+              <div className="plex-particle w-1 h-1 bg-amber-300/20 bottom-[25%] left-[30%]" style={{ animation: 'plexFloat3 7s ease-in-out infinite 2s' }} />
+              <div className="plex-particle w-2.5 h-2.5 bg-amber-500/20 top-[35%] right-[35%]" style={{ animation: 'plexFloat1 9s ease-in-out infinite 3s' }} />
+              <div className="plex-particle w-1 h-1 bg-emerald-300/15 top-[15%] right-[40%]" style={{ animation: 'plexFloat2 5s ease-in-out infinite 0.5s' }} />
+
+              <div className="flex flex-col items-center gap-6 p-10 relative z-10">
+                {/* Plex logo */}
+                <img src="https://alleria.pl/image/plex-play.png" alt="Plex" className="plex-logo w-20 h-20 object-contain mb-1" />
+
+                {/* Primary — Oglądaj w Plex */}
+                <a href={src.url} target="_blank" rel="noopener noreferrer"
+                  className="plex-btn-primary block w-[280px] text-center py-4 px-8 rounded-2xl font-bold text-lg text-zinc-900 no-underline tracking-wide">
+                  ▶ Oglądaj w Plex
+                </a>
+
+                {/* Secondary — Uzyskaj dostęp */}
+                <a href="https://alleria.pl/plex/plex_access.php" target="_blank" rel="noopener noreferrer"
+                  className="plex-btn-access block w-[280px] text-center py-3.5 px-8 rounded-2xl font-semibold text-base no-underline tracking-wide">
+                  Uzyskaj dostęp do Plex
+                </a>
+
+                {/* Tertiary — Czym jest Plex */}
+                <a href="https://alleria.pl/plex/" target="_blank" rel="noopener noreferrer"
+                  className="plex-btn-info block text-center py-2.5 px-6 rounded-xl text-sm no-underline">
+                  Czym jest Plex?
+                </a>
+              </div>
+            </div>
+          ) : embedUrl ? (
+            <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in"><YouTubeTrackingPlayer videoId={extractYoutubeId(src.url)} onTimeUpdate={handleTimeUpdate} controlRef={playerControlRef} /></div>
+          ) : isHtml && src.url ? (
+            <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in"><HtmlEmbed html={src.url} /></div>
+          ) : <div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[32px] flex items-center justify-center"><p className="text-zinc-400 text-sm">Brak źródła.</p></div>}
+        </div>
+
+        {showResumeBanner && resumePosition !== null && (
+          <div className="mb-6 flex items-center gap-3 px-4 py-3 bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 rounded-2xl animate-scale-in">
+            <span className="text-sm text-violet-700 dark:text-violet-300 font-medium flex-1">Kontynuuj od {Math.floor(resumePosition / 60)}:{String(Math.floor(resumePosition % 60)).padStart(2, '0')}?</span>
+            <button onClick={() => { playerControlRef.current?.seek(resumePosition); setShowResumeBanner(false); }} className="px-4 py-1.5 bg-violet-500 text-white text-sm font-bold rounded-xl hover:bg-violet-600 transition-colors">Kontynuuj</button>
+            <button onClick={() => setShowResumeBanner(false)} className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-sm font-bold rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">Od początku</button>
           </div>
         )}
 
-        <div className="relative z-10 p-5 sm:px-10 sm:py-4 max-w-7xl mx-auto">
-          <button onClick={() => navigate(fromCategory ? `/category/${fromCategory}` : '/', { viewTransition: true })} className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white font-medium text-sm mb-4 hover:gap-3 transition-all active:scale-95">
-            <ArrowLeft className="w-4 h-4" /> {fromCategory ? 'Wróć do kategorii' : 'Wróć do bazy'}
-          </button>
-
-          {/* ════ PLAYER — the morph target of every clicked tile ════ */}
-          <div className="max-w-5xl mx-auto mb-3 anim-stagger-1" key={`player-${activeSource}`} style={{ viewTransitionName: 'video-hero' }}>
-            {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
-              <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} />
-            ) : isStreamer && streamerVideoId ? (
-              <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} />
-            ) : isPlex && src.url ? (
-              <div className="aspect-video rounded-[28px] overflow-hidden shadow-2xl animate-scale-in plex-container flex items-center justify-center">
-                <div className="plex-particle w-2 h-2 bg-amber-400/40 top-[20%] left-[15%]" style={{ animation: 'plexFloat1 6s ease-in-out infinite' }} />
-                <div className="plex-particle w-1.5 h-1.5 bg-emerald-400/30 top-[60%] right-[20%]" style={{ animation: 'plexFloat2 8s ease-in-out infinite 1s' }} />
-                <div className="plex-particle w-1 h-1 bg-amber-300/20 bottom-[25%] left-[30%]" style={{ animation: 'plexFloat3 7s ease-in-out infinite 2s' }} />
-                <div className="plex-particle w-2.5 h-2.5 bg-amber-500/20 top-[35%] right-[35%]" style={{ animation: 'plexFloat1 9s ease-in-out infinite 3s' }} />
-                <div className="plex-particle w-1 h-1 bg-emerald-300/15 top-[15%] right-[40%]" style={{ animation: 'plexFloat2 5s ease-in-out infinite 0.5s' }} />
-
-                <div className="flex flex-col items-center gap-6 p-10 relative z-10">
-                  <img src="https://alleria.pl/image/plex-play.png" alt="Plex" className="plex-logo w-20 h-20 object-contain mb-1" />
-                  <a href={src.url} target="_blank" rel="noopener noreferrer"
-                    className="plex-btn-primary block w-[280px] text-center py-4 px-8 rounded-2xl font-bold text-lg text-zinc-900 no-underline tracking-wide">
-                    ▶ Oglądaj w Plex
-                  </a>
-                  <a href="https://alleria.pl/plex/plex_access.php" target="_blank" rel="noopener noreferrer"
-                    className="plex-btn-access block w-[280px] text-center py-3.5 px-8 rounded-2xl font-semibold text-base no-underline tracking-wide">
-                    Uzyskaj dostęp do Plex
-                  </a>
-                  <a href="https://alleria.pl/plex/" target="_blank" rel="noopener noreferrer"
-                    className="plex-btn-info block text-center py-2.5 px-6 rounded-xl text-sm no-underline">
-                    Czym jest Plex?
-                  </a>
-                </div>
-              </div>
-            ) : embedUrl ? (
-              <div className="aspect-video rounded-[28px] overflow-hidden shadow-2xl animate-scale-in"><YouTubeTrackingPlayer videoId={extractYoutubeId(src.url)} onTimeUpdate={handleTimeUpdate} controlRef={playerControlRef} /></div>
-            ) : isHtml && src.url ? (
-              <div className="aspect-video rounded-[28px] overflow-hidden shadow-2xl animate-scale-in"><HtmlEmbed html={src.url} /></div>
-            ) : <div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[28px] flex items-center justify-center"><p className="text-zinc-400 text-sm">Brak źródła.</p></div>}
+        {sources.length > 1 && (
+          <div className="flex gap-2 mb-6 anim-stagger-3">
+            {sources.map(s => <button key={s.key} onClick={() => setActiveSource(s.key)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeSource === s.key ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>{s.label}</button>)}
           </div>
+        )}
 
-          {/* Resume banner */}
-          {showResumeBanner && resumePosition !== null && (
-            <div className="max-w-5xl mx-auto mb-4 flex items-center gap-3 px-4 py-3 bg-ember-50 dark:bg-ember-500/10 border border-ember-200 dark:border-ember-500/20 rounded-2xl animate-spring-in">
-              <span className="text-sm text-ember-700 dark:text-ember-300 font-medium flex-1">Kontynuuj od {Math.floor(resumePosition / 60)}:{String(Math.floor(resumePosition % 60)).padStart(2, '0')}?</span>
-              <button onClick={() => { playerControlRef.current?.seek(resumePosition); setShowResumeBanner(false); }} className="px-4 py-1.5 bg-gradient-to-r from-ember-500 to-curtain-600 text-white text-sm font-bold rounded-full hover:shadow-ember active:scale-95 transition-all">Kontynuuj</button>
-              <button onClick={() => setShowResumeBanner(false)} className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-sm font-bold rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 active:scale-95 transition-all">Od początku</button>
-            </div>
-          )}
-
-          {/* Sources — pill morphs between tabs */}
-          {sources.length > 1 && (
-            <div className="max-w-5xl mx-auto flex justify-center mb-5 anim-stagger-2">
-              <div className="seg-tabs flex-wrap">
-                {sources.map(s => (
-                  <button
-                    key={s.key}
-                    onClick={() => morph(() => setActiveSource(s.key))}
-                    className={`seg-tab ${activeSource === s.key ? 'active' : ''}`}
-                  >
-                    {activeSource === s.key && <span className="seg-pill" style={{ viewTransitionName: 'tab-pill' }} aria-hidden="true" />}
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Prev / next */}
-          {(prevVideo || nextVideo) && (
-            <div className="max-w-5xl mx-auto flex items-stretch gap-3 sm:gap-4 mb-8 anim-stagger-3">
-              {prevVideo ? (
-                <button onClick={() => goToVideo(prevVideo.id, 'prev')} className="flex-1 min-w-0 max-w-[50%] card p-4 group hover:shadow-lg hover:-translate-y-1 text-left transition-all active:scale-[0.98]">
-                  <div className="flex items-center gap-1.5 text-ember-500 font-bold text-xs sm:text-sm mb-1"><ChevronLeft className="w-4 h-4 shrink-0 group-hover:-translate-x-1.5 transition-transform duration-300" /> poprzedni</div>
-                  <p className="text-xs sm:text-sm text-zinc-900 dark:text-white font-medium truncate group-hover:text-ember-500 transition-colors">{prevVideo.title}</p>
-                </button>
-              ) : <div className="flex-1" />}
-              {nextVideo ? (
-                <button onClick={() => goToVideo(nextVideo.id, 'next')} className="flex-1 min-w-0 max-w-[50%] card p-4 text-right group hover:shadow-lg hover:-translate-y-1 ml-auto transition-all active:scale-[0.98]">
-                  <div className="flex items-center justify-end gap-1.5 text-ember-500 font-bold text-xs sm:text-sm mb-1">następny <ChevronRight className="w-4 h-4 shrink-0 group-hover:translate-x-1.5 transition-transform duration-300" /></div>
-                  <p className="text-xs sm:text-sm text-zinc-900 dark:text-white font-medium truncate group-hover:text-ember-500 transition-colors">{nextVideo.title}</p>
-                </button>
-              ) : <div className="flex-1" />}
-            </div>
-          )}
-
-          {/* ════ TWO-COLUMN CINEMA LAYOUT ════ */}
-          <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-8 items-start">
-
-            {/* ── Main column ── */}
-            <div className="min-w-0">
-              {/* Title block */}
-              <div className="flex items-start gap-3 mb-5 anim-stagger-3">
-                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-900 dark:text-white font-display flex-1">{video.title}</h1>
-                {canEdit && <button onClick={openEditModal} className="shrink-0 p-2.5 rounded-full bg-ember-50 dark:bg-ember-500/10 text-ember-500 hover:bg-ember-100 dark:hover:bg-ember-500/20 transition-all hover:scale-110 hover:-rotate-12 active:scale-95"><Pencil className="w-5 h-5" /></button>}
-                <button onClick={toggleFav} disabled={favLoading} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-full transition-all duration-300 hover:scale-105 active:scale-90 ${isFav ? 'heart-ring bg-curtain-50 dark:bg-curtain-500/10 text-curtain-500 shadow-lg shadow-curtain-500/10' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-curtain-500'}`}>
-                  <Heart className={`w-5 h-5 transition-all ${isFav ? 'heart-pop fill-current scale-110' : ''}`} />
-                  {favCount > 0 && <span className="text-xs font-bold">{favCount}</span>}
-                </button>
-              </div>
-
-              {/* Description */}
-              {video.description && <div className="card p-7 mb-6 anim-stagger-4"><h3 className="label-field">Opis</h3><div className="text-zinc-700 dark:text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">{video.description}</div></div>}
-
-              {/* Comments */}
-              <div className="card p-7 anim-stagger-5">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-2"><MessageCircle className="w-5 h-5 text-ember-500" /><h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Komentarze ({activeCount})</h3></div>
-                  {isDev && <button onClick={() => setDevOpen(!devOpen)} className="text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-3 py-1.5 rounded-full hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-all active:scale-95">DEV: Dodaj jako...</button>}
-                </div>
-                {devOpen && isDev && (
-                  <div className="mb-6 p-4 bg-amber-50/50 dark:bg-amber-500/5 rounded-2xl border border-amber-200 dark:border-amber-500/20 space-y-3 animate-scale-in">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      <select value={devUserId} onChange={e => setDevUserId(e.target.value)} className="input-field !py-2 text-xs"><option value="">Użytkownik...</option>{allUsers.map(u => <option key={u.id} value={u.id}>{u.display_name || u.username}</option>)}</select>
-                      <input type="datetime-local" value={devDate} onChange={e => setDevDate(e.target.value)} className="input-field !py-2 text-xs" />
-                      <input type="text" value={devParent} onChange={e => setDevParent(e.target.value)} className="input-field !py-2 text-xs" placeholder="Parent ID" />
-                      <button onClick={submitDev} disabled={!devUserId || !devContent.trim()} className="btn-primary !py-2 text-xs">Dodaj</button>
-                    </div>
-                    <textarea value={devContent} onChange={e => setDevContent(e.target.value)} className="input-field !py-2 text-sm resize-none" rows={2} placeholder="Treść..." />
-                  </div>
-                )}
-                {replyTo && (
-                  <div className="flex items-center gap-2 mb-3 p-2 bg-ember-50 dark:bg-ember-500/10 rounded-xl text-sm animate-spring-in">
-                    <Reply className="w-4 h-4 text-ember-500" /><span className="text-ember-600 dark:text-ember-400">Odpowiedź do <strong>{replyTo.display_name || replyTo.username}</strong></span>
-                    <button onClick={() => setReplyTo(null)} className="ml-auto p-1 hover:bg-ember-100 dark:hover:bg-ember-500/20 rounded-lg hover:rotate-90 transition-all duration-300"><X className="w-3.5 h-3.5 text-ember-500" /></button>
-                  </div>
-                )}
-                <div className="flex gap-3 mb-6">
-                  <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=dd5f02&color=fff&size=80`} alt="" className="w-10 h-10 rounded-xl shrink-0 object-cover" />
-                  <div className="flex-1 relative">
-                    <textarea value={newComment} maxLength={commentLimit} onChange={e => setNewComment(e.target.value)} placeholder={replyTo ? 'Odpowiedz...' : 'Napisz komentarz...'} className="input-field !py-3 !pr-12 resize-none text-sm min-h-[48px] max-h-[120px]" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment(); }}} rows={1} />
-                    <button onClick={submitComment} disabled={!newComment.trim() || commentLoading} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-ember-500 hover:text-ember-600 disabled:text-zinc-300 dark:disabled:text-zinc-700 transition-all hover:scale-110 hover:rotate-12 active:scale-90"><Send className="w-4 h-4" /></button>
-                  </div>
-                </div>
-                {tree.length === 0 ? <p className="text-sm text-zinc-400 text-center py-6">Brak komentarzy — bądź pierwszą osobą!</p> : (
-                  <div className="space-y-1 stagger-children">{tree.map(c => <CommentNode key={c.id} c={c} depth={0} replies={c._replies} user={user} editingId={editingComment} editContent={editContent} setEditContent={setEditContent} silentEdit={silentEdit} setSilentEdit={setSilentEdit} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete} editHistoryId={editHistoryPopup} setEditHistoryId={setEditHistoryPopup} />)}</div>
-                )}
-              </div>
-            </div>
-
-            {/* ── Sticky info rail ── */}
-            <aside className="xl:sticky xl:top-4 space-y-4 min-w-0">
-              {/* Author */}
-              <Link to={`/author/${video.author_id}`} viewTransition className="card p-5 flex items-center gap-4 group hover:-translate-y-1 transition-all anim-stagger-4 block">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-ember-500 to-curtain-600 flex items-center justify-center font-extrabold text-white font-display text-lg shadow-ember group-hover:scale-110 group-hover:-rotate-6 transition-transform shrink-0">
-                  {(video.author_display_name || video.author_name || '?')[0].toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-400 font-display">Autor</p>
-                  <p className="text-sm font-bold text-zinc-900 dark:text-white truncate group-hover:text-ember-500 transition-colors">{video.author_display_name || video.author_name}</p>
-                </div>
-                <User className="w-4 h-4 text-zinc-300 dark:text-zinc-600 group-hover:text-ember-500 group-hover:translate-x-1 transition-all shrink-0" />
-              </Link>
-
-              {/* Meta */}
-              <div className="card p-5 space-y-3.5 anim-stagger-5">
-                <div className="flex items-center gap-3">
-                  <CalendarDays className="w-4 h-4 text-ember-500 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-400 font-display">Data publikacji</p>
-                    <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{formatDate(video.publish_date)}</p>
-                  </div>
-                </div>
-                {video.category_name && (
-                  <div className="flex items-center gap-3">
-                    <FolderOpen className="w-4 h-4 text-ember-500 shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-400 font-display">Kategoria</p>
-                      <Link to={`/category/${video.category_slug}`} viewTransition className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 hover:text-ember-500 transition-colors">{video.category_name}</Link>
-                    </div>
-                  </div>
-                )}
-                {video.tags?.length > 0 && (
-                  <div className="pt-1 border-t border-zinc-100 dark:border-white/[0.06]">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-400 font-display mb-2 pt-2">Tagi</p>
-                    <div className="flex flex-wrap gap-1.5 stagger-children">
-                      {video.tags.map(t => <Link key={t.id} to={`/?tags=${t.id}`} viewTransition className="tag-chip text-[11px]">{t.name}</Link>)}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </aside>
+        {(prevVideo || nextVideo) && (
+          <div className="flex items-stretch gap-3 sm:gap-4 mb-8 anim-stagger-4">
+            {prevVideo ? (
+              <button onClick={() => goToVideo(prevVideo.id, 'prev')} className="flex-1 min-w-0 max-w-[50%] card p-4 sm:p-5 group hover:shadow-lg hover:-translate-y-1 text-left transition-all">
+                <div className="flex items-center gap-1.5 text-violet-500 font-bold text-xs sm:text-sm mb-1"><ChevronLeft className="w-4 h-4 shrink-0 group-hover:-translate-x-1.5 transition-transform duration-300" /> poprzedni</div>
+                <p className="text-xs sm:text-sm text-zinc-900 dark:text-white font-medium truncate group-hover:text-violet-500 transition-colors">{prevVideo.title}</p>
+              </button>
+            ) : <div className="flex-1" />}
+            {nextVideo ? (
+              <button onClick={() => goToVideo(nextVideo.id, 'next')} className="flex-1 min-w-0 max-w-[50%] card p-4 sm:p-5 text-right group hover:shadow-lg hover:-translate-y-1 ml-auto transition-all">
+                <div className="flex items-center justify-end gap-1.5 text-violet-500 font-bold text-xs sm:text-sm mb-1">następny <ChevronRight className="w-4 h-4 shrink-0 group-hover:translate-x-1.5 transition-transform duration-300" /></div>
+                <p className="text-xs sm:text-sm text-zinc-900 dark:text-white font-medium truncate group-hover:text-violet-500 transition-colors">{nextVideo.title}</p>
+              </button>
+            ) : <div className="flex-1" />}
           </div>
+        )}
+
+        {video.description && <div className="card p-8 mb-6 anim-stagger-5"><h3 className="label-field">Opis</h3><div className="text-zinc-700 dark:text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">{video.description}</div></div>}
+
+        <div className="card p-8 anim-stagger-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2"><MessageCircle className="w-5 h-5 text-violet-500" /><h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Komentarze ({activeCount})</h3></div>
+            {isDev && <button onClick={() => setDevOpen(!devOpen)} className="text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-3 py-1.5 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-all">DEV: Dodaj jako...</button>}
+          </div>
+          {devOpen && isDev && (
+            <div className="mb-6 p-4 bg-amber-50/50 dark:bg-amber-500/5 rounded-2xl border border-amber-200 dark:border-amber-500/20 space-y-3 animate-scale-in">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <select value={devUserId} onChange={e => setDevUserId(e.target.value)} className="input-field !py-2 text-xs"><option value="">Użytkownik...</option>{allUsers.map(u => <option key={u.id} value={u.id}>{u.display_name || u.username}</option>)}</select>
+                <input type="datetime-local" value={devDate} onChange={e => setDevDate(e.target.value)} className="input-field !py-2 text-xs" />
+                <input type="text" value={devParent} onChange={e => setDevParent(e.target.value)} className="input-field !py-2 text-xs" placeholder="Parent ID" />
+                <button onClick={submitDev} disabled={!devUserId || !devContent.trim()} className="btn-primary !py-2 text-xs">Dodaj</button>
+              </div>
+              <textarea value={devContent} onChange={e => setDevContent(e.target.value)} className="input-field !py-2 text-sm resize-none" rows={2} placeholder="Treść..." />
+            </div>
+          )}
+          {replyTo && (
+            <div className="flex items-center gap-2 mb-3 p-2 bg-violet-50 dark:bg-violet-500/10 rounded-xl text-sm animate-scale-in">
+              <Reply className="w-4 h-4 text-violet-500" /><span className="text-violet-600 dark:text-violet-400">Odpowiedź do <strong>{replyTo.display_name || replyTo.username}</strong></span>
+              <button onClick={() => setReplyTo(null)} className="ml-auto p-1 hover:bg-violet-100 dark:hover:bg-violet-500/20 rounded-lg"><X className="w-3.5 h-3.5 text-violet-500" /></button>
+            </div>
+          )}
+          <div className="flex gap-3 mb-6">
+            <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className="w-10 h-10 rounded-xl shrink-0 object-cover" />
+            <div className="flex-1 relative">
+              <textarea value={newComment} maxLength={commentLimit} onChange={e => setNewComment(e.target.value)} placeholder={replyTo ? 'Odpowiedz...' : 'Napisz komentarz...'} className="input-field !py-3 !pr-12 resize-none text-sm min-h-[48px] max-h-[120px]" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment(); }}} rows={1} />
+              <button onClick={submitComment} disabled={!newComment.trim() || commentLoading} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-violet-500 hover:text-violet-600 disabled:text-zinc-300 dark:disabled:text-zinc-700 transition-all hover:scale-110 active:scale-90"><Send className="w-4 h-4" /></button>
+            </div>
+          </div>
+          {tree.length === 0 ? <p className="text-sm text-zinc-400 text-center py-6">Brak komentarzy — bądź pierwszą osobą!</p> : (
+            <div className="space-y-1">{tree.map(c => <CommentNode key={c.id} c={c} depth={0} replies={c._replies} user={user} editingId={editingComment} editContent={editContent} setEditContent={setEditContent} silentEdit={silentEdit} setSilentEdit={setSilentEdit} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete} editHistoryId={editHistoryPopup} setEditHistoryId={setEditHistoryPopup} />)}</div>
+          )}
         </div>
       </div>
 
       {/* All modals via Portal — always centered in viewport */}
-      {deleteConfirm && <Portal><div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}><div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',backdropFilter:'blur(8px)'}} onClick={()=>setDeleteConfirm(null)}/><div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[28px] shadow-2xl max-w-sm w-full p-8 text-center" style={{position:'relative',zIndex:1,animation:'modalIn 0.35s cubic-bezier(0.16,1,0.3,1)'}}><Trash2 className="w-12 h-12 text-red-500 mx-auto mb-4"/><h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć komentarz?</h3><p className="text-sm text-zinc-500 mb-6">Treść zostanie ukryta, wątek zachowany.</p><div className="flex gap-3 justify-center"><button onClick={()=>setDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button><button onClick={softDel} className="btn-danger text-sm">Usuń</button></div></div></div></Portal>}
-      {hardDeleteConfirm && <Portal><div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}><div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',backdropFilter:'blur(8px)'}} onClick={()=>setHardDeleteConfirm(null)}/><div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[28px] shadow-2xl max-w-sm w-full p-8 text-center" style={{position:'relative',zIndex:1,animation:'modalIn 0.35s cubic-bezier(0.16,1,0.3,1)'}}><AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4"/><h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć permanentnie?</h3><p className="text-sm text-zinc-500 mb-6">Komentarz i odpowiedzi usunięte na zawsze.</p><div className="flex gap-3 justify-center"><button onClick={()=>setHardDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button><button onClick={hardDel} className="btn-danger text-sm">Usuń</button></div></div></div></Portal>}
+      {deleteConfirm && <Portal><div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}><div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',backdropFilter:'blur(8px)'}} onClick={()=>setDeleteConfirm(null)}/><div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center" style={{position:'relative',zIndex:1,animation:'modalIn 0.35s cubic-bezier(0.16,1,0.3,1)'}}><Trash2 className="w-12 h-12 text-red-500 mx-auto mb-4"/><h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć komentarz?</h3><p className="text-sm text-zinc-500 mb-6">Treść zostanie ukryta, wątek zachowany.</p><div className="flex gap-3 justify-center"><button onClick={()=>setDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button><button onClick={softDel} className="btn-danger text-sm">Usuń</button></div></div></div></Portal>}
+      {hardDeleteConfirm && <Portal><div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}><div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',backdropFilter:'blur(8px)'}} onClick={()=>setHardDeleteConfirm(null)}/><div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center" style={{position:'relative',zIndex:1,animation:'modalIn 0.35s cubic-bezier(0.16,1,0.3,1)'}}><AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4"/><h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć permanentnie?</h3><p className="text-sm text-zinc-500 mb-6">Komentarz i odpowiedzi usunięte na zawsze.</p><div className="flex gap-3 justify-center"><button onClick={()=>setHardDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button><button onClick={hardDel} className="btn-danger text-sm">Usuń</button></div></div></div></Portal>}
       {showEditModal && <Portal><VideoModal isOpen={showEditModal} onClose={()=>setShowEditModal(false)} video={video} users={editUsers} onSaved={()=>{setShowEditModal(false);api.getVideo(id).then(v=>setVideo(v)).catch(()=>{})}}/></Portal>}
     </>
   );

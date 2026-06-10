@@ -171,7 +171,7 @@ export default function WatchPartyTab() {
                 <div className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Uczestnicy ({party.members.length})</div>
                 {party.members.map(m => (
                   <div key={m.id} className="flex items-center gap-2.5">
-                    <img src={m.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.display_name || 'U')}&background=dd5f02&color=fff&size=40`} className="w-7 h-7 rounded-lg object-cover shrink-0" alt="" />
+                    <img src={m.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.display_name || 'U')}&background=6366f1&color=fff&size=40`} className="w-7 h-7 rounded-lg object-cover shrink-0" alt="" />
                     <span className="text-sm text-white flex-1 truncate">{m.display_name}</span>
                     {m.id === party.hostId && <span className="text-[9px] bg-violet-500/20 text-violet-400 px-1.5 py-0.5 rounded font-bold">HOST</span>}
                     {m.canControl && m.id !== party.hostId && <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded">ctrl</span>}
