@@ -583,18 +583,14 @@ function completeTsSession(req, res, user, method) {
 const challengeMessage = (code) =>
   `🔐 Alleria Filmy — Twój kod logowania: ${code}\nWpisz go na stronie, aby dokończyć logowanie. Kod ważny 5 minut. Jeśli to nie Ty — zignoruj tę wiadomość.`;
 
-// TS6 ServerQuery HTTP API — send the code to the matched client (private message + poke)
+// TS6 ServerQuery HTTP API — send the code to the matched client via private message
 async function sendTs6Code(tsBaseUrl, tsServerId, headers, clid, code) {
-  let ok = false;
   try {
     const r = await fetch(`${tsBaseUrl}/${tsServerId}/sendtextmessage?targetmode=1&target=${clid}&msg=${encodeURIComponent(challengeMessage(code))}`, { headers });
-    if (r.ok) ok = true; else console.log(`[TS6] sendtextmessage HTTP ${r.status}`);
+    if (r.ok) return true;
+    console.log(`[TS6] sendtextmessage HTTP ${r.status}`);
   } catch (e) { console.log(`[TS6] sendtextmessage failed: ${e.message}`); }
-  try {
-    await fetch(`${tsBaseUrl}/${tsServerId}/clientpoke?clid=${clid}&msg=${encodeURIComponent('Kod logowania: ' + code)}`, { headers });
-    ok = true;
-  } catch (e) { console.log(`[TS6] clientpoke failed: ${e.message}`); }
-  return ok;
+  return false;
 }
 
 // Verify handler shared by TS3/TS6 — checks the code and creates the session
@@ -974,7 +970,6 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
       await ts3.send(`sendtextmessage targetmode=1 target=${matched.clid} msg=${ts3Escape(challengeMessage(code))}`);
       codeSent = true;
     } catch (e) { console.log(`[TS3] sendtextmessage failed: ${e.message}`); }
-    try { await ts3.send(`clientpoke clid=${matched.clid} msg=${ts3Escape('Kod logowania: ' + code)}`); } catch (e) {}
     ts3.close(); ts3 = null;
 
     if (!codeSent) {

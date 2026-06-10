@@ -333,7 +333,7 @@ export default function DebugPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-1 mb-6 border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto">
+      <div className="flex flex-wrap gap-1 mb-6 border-b border-zinc-200 dark:border-zinc-800">
         {TABS.map(t => {
           const Icon = t.icon;
           const active = activeTab === t.id;

@@ -185,13 +185,13 @@ export default function ManagePage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-2 mb-8">
+      <div className="flex flex-wrap gap-1 mb-6 border-b border-zinc-200 dark:border-zinc-800">
         {[['categories', 'Kategorie', FolderOpen], ['users', 'Użytkownicy', Users]].map(([key, label, Icon]) => (
           <button key={key} onClick={() => setTab(key)}
-            className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-sm transition-all ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap transition-colors ${
               tab === key
-                ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 shadow-xl shadow-zinc-900/10 dark:shadow-white/10'
-                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                ? 'border-violet-500 text-violet-600 dark:text-violet-400'
+                : 'border-transparent text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
             }`}>
             <Icon className="w-4 h-4" />
             {label}
