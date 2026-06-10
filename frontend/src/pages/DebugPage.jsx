@@ -2,24 +2,19 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug } from 'lucide-react';
 import { api } from '../utils/api';
 
-// Section header — groups the tiles below it under a labelled heading
-function SectionHeader({ icon: Icon, title, desc }) {
-  return (
-    <div className="flex items-center gap-3 mb-4 mt-10">
-      <div className="w-8 h-8 bg-zinc-100 dark:bg-zinc-800 rounded-lg flex items-center justify-center shrink-0">
-        <Icon className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
-      </div>
-      <div>
-        <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display leading-tight">{title}</h2>
-        {desc && <p className="text-xs text-zinc-500">{desc}</p>}
-      </div>
-    </div>
-  );
-}
+// Dev Tools tabs — selected at the top of the page
+const TABS = [
+  { id: 'streaming', label: 'Streaming', icon: HardDrive },
+  { id: 'admin', label: 'Administracyjne', icon: Users },
+  { id: 'categories', label: 'Kategorie', icon: ShieldCheck },
+  { id: 'settings', label: 'Ustawienia', icon: Settings },
+  { id: 'debug', label: 'Debug', icon: Bug },
+];
 
 export default function DebugPage() {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('streaming');
   const fileInputRef = useRef(null);
 
   // SQL executor
@@ -337,6 +332,27 @@ export default function DebugPage() {
         <p className="text-zinc-500 dark:text-zinc-400">Narzędzia deweloperskie do zarządzania platformą i bazą danych.</p>
       </div>
 
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-1 mb-6 border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto">
+        {TABS.map(t => {
+          const Icon = t.icon;
+          const active = activeTab === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap transition-colors ${
+                active
+                  ? 'border-violet-500 text-violet-600 dark:text-violet-400'
+                  : 'border-transparent text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+              }`}
+            >
+              <Icon className="w-4 h-4" /> {t.label}
+            </button>
+          );
+        })}
+      </div>
+
       {status && (
         <div className={`mb-6 p-4 rounded-2xl border text-sm font-medium animate-slide-up ${
           status.type === 'success'
@@ -348,8 +364,8 @@ export default function DebugPage() {
       )}
 
       {/* ============ STREAMING ============ */}
-      <SectionHeader icon={HardDrive} title="Streaming" desc="Statystyki, transkodowanie i pliki serwera streamingu" />
-
+      {activeTab === 'streaming' && (
+      <div className="animate-fade-in">
       {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <div className="card p-5 text-center">
@@ -652,9 +668,12 @@ export default function DebugPage() {
         </div>
       </div>
 
-      {/* ============ ADMINISTRACYJNE ============ */}
-      <SectionHeader icon={Users} title="Administracyjne" desc="Zarządzanie watch party i użytkownikami" />
+      </div>
+      )}
 
+      {/* ============ ADMINISTRACYJNE ============ */}
+      {activeTab === 'admin' && (
+      <div className="animate-fade-in">
       {/* Watch Party manager */}
       <div className="card p-6 mb-4">
         <div className="flex items-center justify-between mb-4">
@@ -798,9 +817,12 @@ export default function DebugPage() {
         </div>
       </div>
 
-      {/* ============ KATEGORIE ============ */}
-      <SectionHeader icon={ShieldCheck} title="Kategorie" desc="Weryfikacja uprawnień dostępu" />
+      </div>
+      )}
 
+      {/* ============ KATEGORIE ============ */}
+      {activeTab === 'categories' && (
+      <div className="animate-fade-in">
       {/* Access Checker */}
       <div className="card p-6">
         <div className="flex items-center gap-3 mb-5">
@@ -905,10 +927,12 @@ export default function DebugPage() {
         })()}
       </div>
 
-      {/* ============ USTAWIENIA ============ */}
-      <SectionHeader icon={Settings} title="Ustawienia" desc="Limity treści i bezpieczeństwo webhooków" />
+      </div>
+      )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      {/* ============ USTAWIENIA ============ */}
+      {activeTab === 'settings' && (
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-fade-in">
         {/* Content length limits */}
         <div className="card p-8 h-full flex flex-col">
           <div className="flex items-start gap-4">
@@ -976,9 +1000,11 @@ export default function DebugPage() {
         </div>
       </div>
 
-      {/* ============ DEBUG ============ */}
-      <SectionHeader icon={Bug} title="Debug" desc="Eksport/import bazy, logi i konsola SQL" />
+      )}
 
+      {/* ============ DEBUG ============ */}
+      {activeTab === 'debug' && (
+      <div className="animate-fade-in">
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {/* Export */}
         <div className="card p-8 h-full flex flex-col">
@@ -1154,6 +1180,9 @@ export default function DebugPage() {
             </div>
           </div>
         </div>
+
+      </div>
+      )}
 
       {/* Clear DB confirmation modal */}
       {clearDbOpen && (
