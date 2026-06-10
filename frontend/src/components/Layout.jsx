@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import { morph } from '../utils/fx';
 import {
-  Film, Shield, LogOut, X, Wrench, ChevronDown, ChevronsLeft, ChevronsRight,
+  Film, Shield, LogOut, X, Wrench, ChevronDown,
   Heart, Clock, BarChart3, User, FolderOpen, FileText, MessageSquarePlus,
   Search, Menu, Command
 } from 'lucide-react';
@@ -47,7 +47,7 @@ function CatTree({ cats, parentId, depth, activeCatSlug, onNavigate }) {
           to={`/category/${cat.slug}`}
           viewTransition
           onClick={onNavigate}
-          className={`rail-item w-full pr-3 py-2 group ${depth === 0 ? 'pl-8' : depth === 1 ? 'pl-11' : 'pl-14'} ${
+          className={`rail-item w-full pr-3 py-2 group ${depth === 0 ? 'pl-9' : depth === 1 ? 'pl-12' : 'pl-14'} ${
             active ? 'active' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
           }`}
         >
@@ -67,31 +67,30 @@ export default function Layout({ children }) {
   const location = useLocation();
   const mainRef = useRef(null);
 
-  const [railWide, setRailWide] = useState(() => {
-    try { return localStorage.getItem('railWide') !== '0'; } catch { return true; }
-  });
-  const [catFlyout, setCatFlyout] = useState(false);
   const [catsExpanded, setCatsExpanded] = useState(true);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const [categories, setCategories] = useState([]);
   const [versions, setVersions] = useState({ panel: '', stream: '', streamStatus: '' });
 
   const supportsVT = typeof document !== 'undefined' && !!document.startViewTransition;
 
-  const toggleRail = () => {
-    const next = !railWide;
-    setRailWide(next);
-    setCatFlyout(false);
-    try { localStorage.setItem('railWide', next ? '1' : '0'); } catch {}
-  };
-
   // Scroll main content to top + close transient panels on route change
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
-    setCatFlyout(false); setUserMenu(false); setSheetOpen(false);
+    setUserMenu(false); setSheetOpen(false);
   }, [location.pathname]);
+
+  // Topbar turns to glass once the content scrolls
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const onScroll = () => setScrolled(el.scrollTop > 14);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
 
   // ⌘K / Ctrl+K opens the command palette (morphing from the search pill)
   useEffect(() => {
@@ -155,24 +154,24 @@ export default function Layout({ children }) {
     <Link
       to={to}
       viewTransition
-      className={`rail-item w-full ${railWide ? 'px-4' : 'justify-center px-0'} py-2.5 ${
+      className={`rail-item w-full pl-[18px] pr-3 py-2.5 ${
         active ? 'active' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
       }`}
     >
       {active && <NavPill />}
       <Icon className="nav-icon w-[19px] h-[19px] shrink-0" />
-      {railWide && <span className="font-semibold text-[13px] truncate">{label}</span>}
-      {!railWide && <span className="rail-tip">{label}</span>}
+      <span className="dock-label font-semibold text-[13px] truncate">{label}</span>
+      <span className="rail-tip">{label}</span>
     </Link>
   );
 
-  const RailLabel = ({ label }) => railWide ? (
-    <div className="px-4 mb-1.5 mt-5 first:mt-0 flex items-center gap-2">
-      <span className="text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-400 dark:text-zinc-600 shrink-0 font-display">{label}</span>
-      <div className="h-px flex-1 bg-gradient-to-r from-zinc-200 dark:from-white/10 to-transparent" />
+  const RailLabel = ({ label }) => (
+    <div className="dock-only-wide px-4 mb-1.5 mt-5 first:mt-0">
+      <div className="flex items-center gap-2">
+        <span className="text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-400 dark:text-zinc-600 shrink-0 font-display">{label}</span>
+        <div className="h-px flex-1 bg-gradient-to-r from-zinc-200 dark:from-white/10 to-transparent" />
+      </div>
     </div>
-  ) : (
-    <div className="mx-3 my-3 h-px bg-zinc-200 dark:bg-white/10" />
   );
 
   return (
@@ -186,59 +185,48 @@ export default function Layout({ children }) {
         <div className="noise-overlay" />
       </div>
 
-      {/* ════════ ICON RAIL (desktop) ════════ */}
-      <aside className={`hidden lg:flex flex-col z-30 p-3 pr-0 transition-[width] duration-300 ease-out ${railWide ? 'w-[280px]' : 'w-[92px]'}`}>
-        <div className="flex flex-col h-full bg-white/90 dark:bg-zinc-900/70 backdrop-blur-2xl border border-zinc-200 dark:border-white/[0.07] rounded-3xl shadow-xl shadow-zinc-200/40 dark:shadow-black/40 relative overflow-visible">
+      {/* ════ HOVER-EXPANDING DOCK (desktop) ════ */}
+      <aside className="hidden lg:block relative z-40 p-3 pr-0 w-[96px] shrink-0">
+        <div className="dock-rail absolute top-3 bottom-3 left-3 flex flex-col bg-white/90 dark:bg-zinc-900/80 backdrop-blur-2xl border border-zinc-200 dark:border-white/[0.07] rounded-3xl shadow-xl shadow-zinc-200/40 dark:shadow-black/50">
 
           {/* Logo */}
-          <div className={`pt-5 pb-2 shrink-0 flex ${railWide ? 'px-5' : 'justify-center px-0'}`}>
-            <Link to="/" viewTransition className="flex items-center gap-3 group">
+          <div className="pt-5 pb-2 shrink-0 flex items-center gap-3 pl-[15px]">
+            <Link to="/" viewTransition className="flex items-center gap-3 group min-w-0">
               <div className="border-beam logo-glow w-11 h-11 rounded-2xl flex items-center justify-center overflow-hidden bg-gradient-to-br from-ember-500/10 to-curtain-500/10 border border-white/10 group-hover:scale-110 group-hover:-rotate-6 transition-transform duration-300 shrink-0">
                 <img src={LOGO_URL} alt="Alleria" className="w-9 h-9 object-contain group-hover:rotate-[14deg] transition-transform duration-300" />
               </div>
-              {railWide && (
-                <div className="animate-slide-right">
-                  <span className="text-[15px] font-bold tracking-tight text-zinc-900 dark:text-white font-display block leading-tight">ALLERIA</span>
-                  <span className="text-gradient text-[9px] font-bold uppercase tracking-[0.35em] font-display">FILMY</span>
-                </div>
-              )}
+              <div className="dock-label">
+                <span className="text-[15px] font-bold tracking-tight text-zinc-900 dark:text-white font-display block leading-tight">ALLERIA</span>
+                <span className="text-gradient text-[9px] font-bold uppercase tracking-[0.35em] font-display">FILMY</span>
+              </div>
             </Link>
           </div>
 
           {/* Nav */}
-          <div className={`flex-1 px-3 pb-2 pt-3 relative ${railWide ? 'overflow-y-auto' : 'overflow-visible'}`}>
+          <div className="flex-1 px-3 pb-2 pt-3 overflow-y-auto overflow-x-hidden">
             <RailLabel label="Przeglądaj" />
             <nav className="space-y-1 nav-stagger">
               <RailLink {...navItems[0]} />
 
-              {/* Categories: tree when wide, flyout when collapsed */}
               {categories.length > 0 && (
-                <div className="relative">
+                <div>
                   <button
-                    onClick={() => railWide ? setCatsExpanded(v => !v) : setCatFlyout(v => !v)}
-                    className={`rail-item w-full ${railWide ? 'px-4' : 'justify-center px-0'} py-2.5 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white ${(!railWide && anyCatActive) ? '!text-ember-500' : ''}`}
-                    aria-expanded={railWide ? catsExpanded : catFlyout}
+                    onClick={() => setCatsExpanded(v => !v)}
+                    className="rail-item w-full pl-[18px] pr-3 py-2.5 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                    aria-expanded={catsExpanded}
                   >
                     <FolderOpen className="nav-icon w-[19px] h-[19px] shrink-0" />
-                    {railWide && <span className="font-semibold text-[13px] flex-1 text-left">Kategorie</span>}
-                    {railWide && <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${catsExpanded ? '' : '-rotate-90'}`} />}
-                    {!railWide && <span className="rail-tip">Kategorie</span>}
+                    <span className="dock-label font-semibold text-[13px] flex-1 text-left">Kategorie</span>
+                    <ChevronDown className={`dock-label w-3.5 h-3.5 transition-transform duration-300 ${catsExpanded ? '' : '-rotate-90'}`} />
+                    <span className="rail-tip">Kategorie (najedź, aby rozwinąć)</span>
                   </button>
-
-                  {railWide && (
+                  <div className="dock-only-wide">
                     <div className={`reveal-y ${catsExpanded ? 'open' : ''}`}>
                       <div className="space-y-0.5 pt-0.5">
                         <CatTree cats={categories} parentId={null} depth={0} activeCatSlug={activeCatSlug} onNavigate={() => {}} />
                       </div>
                     </div>
-                  )}
-
-                  {!railWide && catFlyout && (
-                    <div className="rail-flyout absolute left-[calc(100%+14px)] top-0 w-72 max-h-[60vh] overflow-y-auto bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl border border-zinc-200 dark:border-white/10 rounded-3xl shadow-2xl p-3 z-[70]">
-                      <p className="px-3 pt-1 pb-2 text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-400 font-display">Kategorie</p>
-                      <CatTree cats={categories} parentId={null} depth={0} activeCatSlug={activeCatSlug} onNavigate={() => setCatFlyout(false)} />
-                    </div>
-                  )}
+                  </div>
                 </div>
               )}
 
@@ -250,6 +238,7 @@ export default function Layout({ children }) {
             {adminItems.length > 0 && (
               <>
                 <RailLabel label="Administracja" />
+                <div className="dock-only-wide -mt-3 mb-1" />
                 <nav className="space-y-1 nav-stagger">
                   {adminItems.map(item => <RailLink key={item.to} {...item} />)}
                 </nav>
@@ -257,28 +246,19 @@ export default function Layout({ children }) {
             )}
           </div>
 
-          {/* Rail footer */}
-          <div className={`p-3 shrink-0 space-y-1 ${railWide ? '' : 'flex flex-col items-center'}`}>
+          {/* Dock footer */}
+          <div className="p-3 shrink-0 space-y-1">
             <a
               href="https://github.com/mrfroncu/alleria-filmy-platform-3/issues"
               target="_blank" rel="noopener noreferrer"
-              className={`rail-item w-full ${railWide ? 'px-4' : 'justify-center px-0'} py-2.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white`}
+              className="rail-item w-full pl-[18px] pr-3 py-2.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
             >
               <MessageSquarePlus className="nav-icon w-[18px] h-[18px] shrink-0" />
-              {railWide && <span className="font-semibold text-[12px]">Report Issue</span>}
-              {!railWide && <span className="rail-tip">Report Issue / Request Feature</span>}
+              <span className="dock-label font-semibold text-[12px]">Report Issue</span>
+              <span className="rail-tip">Report Issue / Request Feature</span>
             </a>
-            <button
-              onClick={toggleRail}
-              className={`rail-item w-full ${railWide ? 'px-4' : 'justify-center px-0'} py-2.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white`}
-              title={railWide ? 'Zwiń panel' : 'Rozwiń panel'}
-            >
-              {railWide
-                ? <><ChevronsLeft className="nav-icon w-[18px] h-[18px] shrink-0" /><span className="font-semibold text-[12px]">Zwiń</span></>
-                : <><ChevronsRight className="nav-icon w-[18px] h-[18px] shrink-0" /><span className="rail-tip">Rozwiń panel</span></>}
-            </button>
-            {railWide && versions.panel && (
-              <div className="pt-1 text-[8px] text-zinc-400 dark:text-zinc-600 font-mono text-center animate-fade-in">
+            {versions.panel && (
+              <div className="dock-only-wide pt-1 text-[8px] text-zinc-400 dark:text-zinc-600 font-mono text-center">
                 Panel & API: v{versions.panel} | Player:{' '}
                 {versions.streamStatus === 'offline'
                   ? <span className="text-red-500">(offline)</span>
@@ -289,17 +269,17 @@ export default function Layout({ children }) {
         </div>
       </aside>
 
-      {/* ════════ MAIN COLUMN ════════ */}
+      {/* ════ MAIN COLUMN ════ */}
       <div className="flex-1 flex flex-col min-w-0 z-10">
 
-        {/* ── Glass topbar ── */}
-        <header className="shrink-0 px-4 lg:px-8 pt-3 lg:pt-5 pb-1 flex items-center gap-3 relative z-40">
+        {/* ── Topbar: transparent → glass on scroll ── */}
+        <header className={`shrink-0 px-4 lg:px-8 flex items-center gap-3 relative z-40 transition-all duration-300 ${scrolled ? 'topbar-glass py-2' : 'py-3 lg:py-4'}`}>
           {/* Mobile logo */}
           <Link to="/" viewTransition className="lg:hidden flex items-center gap-2 shrink-0">
             <img src={LOGO_URL} alt="Alleria" className="w-8 h-8 object-contain animate-float" />
           </Link>
 
-          {/* Page title — morphs between routes */}
+          {/* Page title — re-animates on each route */}
           <div className="min-w-0 flex-1">
             <p className="hidden lg:block text-[9px] font-bold uppercase tracking-[0.3em] text-ember-500 font-display">Alleria Filmy</p>
             <h2 key={pageTitle} className="text-base lg:text-xl font-extrabold text-zinc-900 dark:text-white font-display truncate animate-slide-right">
@@ -373,7 +353,7 @@ export default function Layout({ children }) {
         </main>
       </div>
 
-      {/* ════════ MOBILE BOTTOM DOCK ════════ */}
+      {/* ════ MOBILE BOTTOM DOCK ════ */}
       <nav className="dock lg:hidden fixed bottom-3 left-3 right-3 z-50 flex items-center gap-1 p-1.5 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-2xl border border-zinc-200 dark:border-white/10 rounded-[22px]">
         {navItems.slice(0, 3).map(item => (
           <Link key={item.to} to={item.to} viewTransition className={`dock-item ${item.active ? 'active' : 'text-zinc-400'}`}>

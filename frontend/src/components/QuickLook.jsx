@@ -11,10 +11,11 @@ import { formatDate } from '../utils/helpers';
  * the small card grows into the panel, the panel shrinks back into
  * its slot in the grid. "Oglądaj" then morphs the artwork into the player.
  */
-export default function QuickLook({ video, onClose, to, progress }) {
+export default function QuickLook({ video, onClose, to, progress, morphKey }) {
   const navigate = useNavigate();
   const thumbRef = useRef(null);
   const href = to || `/video/${video.id}`;
+  const key = morphKey ?? video.id;
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -38,7 +39,7 @@ export default function QuickLook({ video, onClose, to, progress }) {
       <div className="quicklook-wrap">
         <div
           className="quicklook-panel w-full max-w-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 rounded-[28px] shadow-2xl overflow-hidden max-h-[92vh] overflow-y-auto"
-          style={{ viewTransitionName: `vc-${video.id}` }}
+          style={{ viewTransitionName: `vc-${key}` }}
           role="dialog"
           aria-modal="true"
           aria-label={video.title}
@@ -47,7 +48,7 @@ export default function QuickLook({ video, onClose, to, progress }) {
           <div
             ref={thumbRef}
             className="relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden"
-            style={{ viewTransitionName: `vct-${video.id}` }}
+            style={{ viewTransitionName: `vct-${key}` }}
           >
             {video.thumbnail ? (
               <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover" />
