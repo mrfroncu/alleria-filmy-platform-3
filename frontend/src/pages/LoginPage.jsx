@@ -35,6 +35,12 @@ export default function LoginPage() {
   const [ts3Error, setTs3Error] = useState(null);
   const [ts6Error, setTs6Error] = useState(null);
 
+  // TS login challenge (code sent to the user on TeamSpeak)
+  const [challenge, setChallenge] = useState(null); // { challengeId, method, nickname, version }
+  const [challengeCode, setChallengeCode] = useState('');
+  const [challengeError, setChallengeError] = useState(null);
+  const [challengeLoading, setChallengeLoading] = useState(false);
+
   const returnTo = (() => {
     const params = new URLSearchParams(window.location.search);
     const r = params.get('returnTo');
@@ -89,18 +95,52 @@ export default function LoginPage() {
     }
   };
 
+  const startChallenge = (res, method, version) => {
+    setChallenge({ challengeId: res.challengeId, method, nickname: res.nickname, version });
+    setChallengeCode('');
+    setChallengeError(null);
+  };
+
   const handleTeamspeakLogin = async () => {
     setTsLoading(true); setTs6Error(null);
-    try { await api.loginTeamspeak(); window.location.href = '/'; }
+    try {
+      const res = await api.loginTeamspeak();
+      if (res?.challenge) startChallenge(res, 'teamspeak', 'TeamSpeak 6');
+      else window.location.href = '/';
+    }
     catch (err) { setTs6Error(parseTsError(err.message, 'TeamSpeak 6')); }
     finally { setTsLoading(false); }
   };
 
   const handleTeamspeak3Login = async () => {
     setTs3Loading(true); setTs3Error(null);
-    try { await api.loginTeamspeak3(); window.location.href = '/'; }
+    try {
+      const res = await api.loginTeamspeak3();
+      if (res?.challenge) startChallenge(res, 'teamspeak3', 'TeamSpeak 3');
+      else window.location.href = '/';
+    }
     catch (err) { setTs3Error(parseTsError(err.message, 'TeamSpeak 3')); }
     finally { setTs3Loading(false); }
+  };
+
+  const handleChallengeSubmit = async () => {
+    if (!challenge || challengeCode.trim().length < 6 || challengeLoading) return;
+    setChallengeLoading(true); setChallengeError(null);
+    try {
+      const verifyFn = challenge.method === 'teamspeak3' ? api.verifyTeamspeak3 : api.verifyTeamspeak;
+      await verifyFn(challenge.challengeId, challengeCode.trim());
+      const dest = (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) ? returnTo : '/';
+      window.location.href = dest;
+    } catch (err) {
+      setChallengeError(err.message || 'Nieprawidłowy kod.');
+      setChallengeLoading(false);
+    }
+  };
+
+  const cancelChallenge = () => {
+    setChallenge(null);
+    setChallengeCode('');
+    setChallengeError(null);
   };
 
   return (
@@ -340,6 +380,7 @@ export default function LoginPage() {
                 <p>• Musisz być <span className="font-semibold text-zinc-700 dark:text-zinc-300">aktywnie połączony</span> z serwerem TS w momencie logowania.</p>
                 <p>• Weryfikacja działa przez <span className="font-semibold text-zinc-700 dark:text-zinc-300">dopasowanie IP</span> — nie używaj VPN, który zmienia Twój adres.</p>
                 <p>• Wymagana jest <span className="font-semibold text-zinc-700 dark:text-zinc-300">odpowiednia grupa serwerowa</span> na TS.</p>
+                <p>• Po dopasowaniu bot wyśle Ci na TS <span className="font-semibold text-zinc-700 dark:text-zinc-300">6-znakowy kod</span> — wpisz go, aby potwierdzić logowanie.</p>
               </div>
             )}
           </div>
@@ -392,6 +433,64 @@ export default function LoginPage() {
             <div className="overflow-y-auto px-7 py-6 space-y-6 text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
               <RegulaminContent />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════
+          TS LOGIN CHALLENGE MODAL
+          ══════════════════════════════════════ */}
+      {challenge && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
+          onClick={(e) => { if (e.target === e.currentTarget && !challengeLoading) cancelChallenge(); }}
+        >
+          <div className="relative w-full max-w-sm bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl border border-zinc-200 dark:border-white/10 p-7 animate-slide-up">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-2xl bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-6 h-6 text-violet-500" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-zinc-900 dark:text-white">Potwierdź logowanie</h2>
+                <p className="text-xs text-zinc-500">{challenge.version}{challenge.nickname ? ` · ${challenge.nickname}` : ''}</p>
+              </div>
+            </div>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+              Wysłaliśmy 6-znakowy kod na Twojego klienta {challenge.version} (prywatna wiadomość od bota). Wpisz go poniżej, aby dokończyć logowanie.
+            </p>
+            <input
+              type="text"
+              value={challengeCode}
+              onChange={(e) => setChallengeCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleChallengeSubmit(); }}
+              placeholder="K7P2QX"
+              maxLength={6}
+              autoFocus
+              className="w-full text-center text-2xl font-mono font-bold tracking-[0.4em] py-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-white focus:outline-none focus:border-violet-500 mb-3"
+            />
+            {challengeError && (
+              <div className="mb-3 p-2.5 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 text-xs flex items-start gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>{challengeError}</span>
+              </div>
+            )}
+            <div className="flex gap-2.5">
+              <button
+                onClick={cancelChallenge}
+                disabled={challengeLoading}
+                className="flex-1 py-3 rounded-2xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-semibold text-sm transition-colors disabled:opacity-50"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleChallengeSubmit}
+                disabled={challengeLoading || challengeCode.length < 6}
+                className="flex-1 py-3 rounded-2xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-sm transition-colors disabled:opacity-50"
+              >
+                {challengeLoading ? 'Sprawdzanie…' : 'Zaloguj'}
+              </button>
+            </div>
+            <p className="text-[11px] text-zinc-400 text-center mt-3">Kod ważny 5 minut. Nie udostępniaj go nikomu.</p>
           </div>
         </div>
       )}

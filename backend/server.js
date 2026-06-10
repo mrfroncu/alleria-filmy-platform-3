@@ -14,6 +14,7 @@ const fetch = require('node-fetch');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
+const crypto = require('crypto');
 const { initDB } = require('./database');
 const { createParty, getParty, deleteParty, listParties, createWsToken, setupWatchPartyWS } = require('./watchParty');
 const rateLimit = require('express-rate-limit');
@@ -504,6 +505,127 @@ async function discordCallbackHandler(req, res) {
 app.get('/api/auth/discord/callback', discordCallbackHandler);
 app.get('/auth/discord/callback', discordCallbackHandler);
 
+// ============ TEAMSPEAK LOGIN CHALLENGE ============
+// After a TS client is matched by IP, the ServerQuery "bot" sends a random 6-char
+// code to that client via a private message. The user must type it back to finish
+// login. This is a second factor that closes the IP-based-auth weakness
+// (shared NAT / spoofed X-Forwarded-For could otherwise impersonate another user).
+const tsChallenges = new Map(); // challengeId -> { method, clientIp, cleanIp, tsNickname, tsUid, role, code, attempts, expires }
+const TS_CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const TS_CHALLENGE_MAX_ATTEMPTS = 5;
+
+function genChallengeCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous 0/O/1/I
+  const bytes = crypto.randomBytes(6);
+  let code = '';
+  for (let i = 0; i < 6; i++) code += chars[bytes[i] % chars.length];
+  return code;
+}
+
+function createTsChallenge(data) {
+  const id = uuidv4();
+  const code = genChallengeCode();
+  tsChallenges.set(id, { ...data, code, attempts: 0, expires: Date.now() + TS_CHALLENGE_TTL_MS });
+  const t = setTimeout(() => tsChallenges.delete(id), TS_CHALLENGE_TTL_MS);
+  if (t.unref) t.unref();
+  return { id, code };
+}
+
+function consumeTsChallenge(challengeId, code, clientIp) {
+  const ch = tsChallenges.get(challengeId);
+  if (!ch) return { error: 'Kod wygasł lub nie istnieje. Zaloguj się ponownie.' };
+  if (Date.now() > ch.expires) { tsChallenges.delete(challengeId); return { error: 'Kod wygasł. Zaloguj się ponownie.' }; }
+  if (ch.clientIp !== clientIp) return { error: 'Niezgodność adresu IP — zaloguj się ponownie.' };
+  ch.attempts++;
+  if (ch.attempts > TS_CHALLENGE_MAX_ATTEMPTS) { tsChallenges.delete(challengeId); return { error: 'Zbyt wiele prób. Zaloguj się ponownie.' }; }
+  if (String(code).trim().toUpperCase() !== ch.code) {
+    return { error: 'Nieprawidłowy kod.', remaining: TS_CHALLENGE_MAX_ATTEMPTS - ch.attempts };
+  }
+  tsChallenges.delete(challengeId);
+  return { challenge: ch };
+}
+
+// Build/refresh a TS user record and return the row
+function upsertTsUser({ method, tsNickname, tsUid, cleanIp, role }) {
+  let existing = db.prepare('SELECT * FROM users WHERE ts_uid = ?').get(tsUid);
+  if (!existing) {
+    existing = method === 'teamspeak3'
+      ? db.prepare("SELECT * FROM users WHERE ts_ip = ? AND auth_method IN ('teamspeak3','teamspeak')").get(cleanIp)
+      : db.prepare("SELECT * FROM users WHERE ts_ip = ? AND auth_method = 'teamspeak'").get(cleanIp);
+  }
+  let userId;
+  if (existing) {
+    db.prepare(`UPDATE users SET username=?, display_name=?, role=?, ts_ip=?, ts_uid=?, last_login=datetime('now') WHERE id=?`)
+      .run(tsNickname, tsNickname, role, cleanIp, tsUid, existing.id);
+    userId = existing.id;
+  } else {
+    const result = db.prepare('INSERT INTO users (username, display_name, role, auth_method, ts_ip, ts_uid) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(tsNickname, tsNickname, role, method, cleanIp, tsUid);
+    userId = result.lastInsertRowid;
+  }
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+}
+
+function completeTsSession(req, res, user, method) {
+  req.session.regenerate((err) => {
+    if (err) return res.status(500).json({ error: 'Session error' });
+    req.session.user = {
+      id: user.id, username: user.username, display_name: user.display_name,
+      avatar: user.avatar, role: user.role, auth_method: method, discord_roles: []
+    };
+    req.session.save((saveErr) => {
+      if (saveErr) return res.status(500).json({ error: 'Session save error' });
+      res.json({ success: true, user: req.session.user });
+    });
+  });
+}
+
+const challengeMessage = (code) =>
+  `🔐 Alleria Filmy — Twój kod logowania: ${code}\nWpisz go na stronie, aby dokończyć logowanie. Kod ważny 5 minut. Jeśli to nie Ty — zignoruj tę wiadomość.`;
+
+// TS6 ServerQuery HTTP API — send the code to the matched client (private message + poke)
+async function sendTs6Code(tsBaseUrl, tsServerId, headers, clid, code) {
+  let ok = false;
+  try {
+    const r = await fetch(`${tsBaseUrl}/${tsServerId}/sendtextmessage?targetmode=1&target=${clid}&msg=${encodeURIComponent(challengeMessage(code))}`, { headers });
+    if (r.ok) ok = true; else console.log(`[TS6] sendtextmessage HTTP ${r.status}`);
+  } catch (e) { console.log(`[TS6] sendtextmessage failed: ${e.message}`); }
+  try {
+    await fetch(`${tsBaseUrl}/${tsServerId}/clientpoke?clid=${clid}&msg=${encodeURIComponent('Kod logowania: ' + code)}`, { headers });
+    ok = true;
+  } catch (e) { console.log(`[TS6] clientpoke failed: ${e.message}`); }
+  return ok;
+}
+
+// Verify handler shared by TS3/TS6 — checks the code and creates the session
+function handleTsVerify(method) {
+  return (req, res) => {
+    const clientIp = req.ip || req.socket.remoteAddress;
+    const { challengeId, code } = req.body || {};
+    if (!challengeId || !code) return res.status(400).json({ error: 'Brak identyfikatora wyzwania lub kodu.' });
+    const result = consumeTsChallenge(challengeId, code, clientIp);
+    if (result.error) {
+      const body = { error: result.error };
+      if (result.remaining !== undefined) body.remaining = result.remaining;
+      return res.status(401).json(body);
+    }
+    const ch = result.challenge;
+    if (ch.method !== method) return res.status(400).json({ error: 'Niezgodny typ wyzwania.' });
+    try {
+      const user = upsertTsUser({ method, tsNickname: ch.tsNickname, tsUid: ch.tsUid, cleanIp: ch.cleanIp, role: ch.role });
+      logLogin(user.id, ch.tsNickname, method, clientIp, 1, 'challenge OK');
+      console.log(`[${method === 'teamspeak3' ? 'TS3' : 'TS6'}] ✅ Login (challenge OK): "${ch.tsNickname}" (role: ${ch.role})`);
+      completeTsSession(req, res, user, method);
+    } catch (err) {
+      console.error(`[${method}] verify error:`, err);
+      res.status(500).json({ error: 'Błąd logowania: ' + err.message });
+    }
+  };
+}
+
+app.post('/api/auth/teamspeak/verify', authLimiter, handleTsVerify('teamspeak'));
+app.post('/api/auth/teamspeak3/verify', authLimiter, handleTsVerify('teamspeak3'));
+
 // ============ TEAMSPEAK 6 AUTH ============
 // Uses TS ServerQuery HTTP API (port 10080)
 // Auth: Basic Auth (username:password) + optional x-api-key
@@ -611,36 +733,18 @@ app.post('/api/auth/teamspeak', authLimiter, async (req, res) => {
     let role = 'member';
     if (hasAdminGroup) role = 'admin';
 
-    // Upsert user
-    let existing = db.prepare('SELECT * FROM users WHERE ts_uid = ?').get(tsUid);
-    if (!existing) existing = db.prepare("SELECT * FROM users WHERE ts_ip = ? AND auth_method = 'teamspeak'").get(cleanIp);
-
-    let userId;
-    if (existing) {
-      db.prepare(`UPDATE users SET username=?, display_name=?, role=?, ts_ip=?, ts_uid=?, last_login=datetime('now') WHERE id=?`)
-        .run(tsNickname, tsNickname, role, cleanIp, tsUid, existing.id);
-      userId = existing.id;
-    } else {
-      const result = db.prepare('INSERT INTO users (username, display_name, role, auth_method, ts_ip, ts_uid) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(tsNickname, tsNickname, role, 'teamspeak', cleanIp, tsUid);
-      userId = result.lastInsertRowid;
-    }
-
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-
-    logLogin(userId, tsNickname, 'teamspeak', clientIp, 1, null);
-    console.log(`[TS6] ✅ Login: "${tsNickname}" (role: ${role})`);
-    req.session.regenerate((err) => {
-      if (err) return res.status(500).json({ error: 'Session error' });
-      req.session.user = {
-        id: user.id, username: user.username, display_name: user.display_name,
-        avatar: user.avatar, role: user.role, auth_method: 'teamspeak', discord_roles: []
-      };
-      req.session.save((saveErr) => {
-        if (saveErr) return res.status(500).json({ error: 'Session save error' });
-        res.json({ success: true, user: req.session.user });
-      });
+    // Matched + authorized — send a login challenge code instead of logging in directly
+    const { id: challengeId, code } = createTsChallenge({
+      method: 'teamspeak', clientIp, cleanIp, tsNickname, tsUid, role,
     });
+    const sent = await sendTs6Code(tsBaseUrl, tsServerId, headers, matchedClient.clid, code);
+    if (!sent) {
+      tsChallenges.delete(challengeId);
+      logLogin(null, tsNickname, 'teamspeak', clientIp, 0, 'Nie udało się wysłać kodu');
+      return res.status(502).json({ error: 'Nie udało się wysłać kodu na TeamSpeak. Spróbuj ponownie.' });
+    }
+    console.log(`[TS6] 🔐 Challenge sent to "${tsNickname}" (clid ${matchedClient.clid})`);
+    res.json({ challenge: true, challengeId, method: 'teamspeak', nickname: tsNickname, expiresIn: TS_CHALLENGE_TTL_MS / 1000 });
 
   } catch (err) {
     console.error('[TS6 AUTH] Error:', err);
@@ -663,6 +767,20 @@ function ts3Unescape(str) {
     .replace(/\\t/g, '\t')
     .replace(/\\v/g, '\v')
     .replace(/\x00/g, '\\');
+}
+
+// Escape a value for sending over the TS3 ServerQuery protocol
+function ts3Escape(str) {
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/\//g, '\\/')
+    .replace(/\|/g, '\\p')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')
+    .replace(/\f/g, '\\f')
+    .replace(/\x0B/g, '\\v')
+    .replace(/ /g, '\\s');
 }
 
 function ts3ParseLine(line) {
@@ -831,7 +949,6 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
       console.log(`[TS3] Error getting groups: ${e.message}`);
     }
 
-    ts3.close(); ts3 = null;
     console.log(`[TS3] User "${tsNickname}" groups: [${groups.join(', ')}]`);
 
     const memberGroupId = process.env.TS3_MEMBER_GROUP_ID;
@@ -841,41 +958,32 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
     const hasAdminGroup = adminGroupId ? groups.includes(String(adminGroupId)) : false;
 
     if (!hasMemberGroup && !hasAdminGroup) {
+      ts3.close(); ts3 = null;
       logLogin(null, tsNickname, 'teamspeak3', clientIp, 0, `Missing group (has: ${groups.join(',')})`);
       return res.status(401).json({ error: 'Nie posiadasz wymaganej grupy na serwerze TeamSpeak 3.' });
     }
 
     const role = hasAdminGroup ? 'admin' : 'member';
 
-    let existing = db.prepare('SELECT * FROM users WHERE ts_uid = ?').get(tsUid);
-    if (!existing) existing = db.prepare("SELECT * FROM users WHERE ts_ip = ? AND auth_method IN ('teamspeak3', 'teamspeak')").get(cleanIp);
-
-    let userId;
-    if (existing) {
-      db.prepare(`UPDATE users SET username=?, display_name=?, role=?, ts_ip=?, ts_uid=?, last_login=datetime('now') WHERE id=?`)
-        .run(tsNickname, tsNickname, role, cleanIp, tsUid, existing.id);
-      userId = existing.id;
-    } else {
-      const result = db.prepare('INSERT INTO users (username, display_name, role, auth_method, ts_ip, ts_uid) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(tsNickname, tsNickname, role, 'teamspeak3', cleanIp, tsUid);
-      userId = result.lastInsertRowid;
-    }
-
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-
-    logLogin(userId, tsNickname, 'teamspeak3', clientIp, 1, null);
-    console.log(`[TS3] ✅ Login: "${tsNickname}" (role: ${role})`);
-    req.session.regenerate((err) => {
-      if (err) return res.status(500).json({ error: 'Session error' });
-      req.session.user = {
-        id: user.id, username: user.username, display_name: user.display_name,
-        avatar: user.avatar, role: user.role, auth_method: 'teamspeak3', discord_roles: []
-      };
-      req.session.save((saveErr) => {
-        if (saveErr) return res.status(500).json({ error: 'Session save error' });
-        res.json({ success: true, user: req.session.user });
-      });
+    // Matched + authorized — send a login challenge code over the still-open connection
+    const { id: challengeId, code } = createTsChallenge({
+      method: 'teamspeak3', clientIp, cleanIp, tsNickname, tsUid, role,
     });
+    let codeSent = false;
+    try {
+      await ts3.send(`sendtextmessage targetmode=1 target=${matched.clid} msg=${ts3Escape(challengeMessage(code))}`);
+      codeSent = true;
+    } catch (e) { console.log(`[TS3] sendtextmessage failed: ${e.message}`); }
+    try { await ts3.send(`clientpoke clid=${matched.clid} msg=${ts3Escape('Kod logowania: ' + code)}`); } catch (e) {}
+    ts3.close(); ts3 = null;
+
+    if (!codeSent) {
+      tsChallenges.delete(challengeId);
+      logLogin(null, tsNickname, 'teamspeak3', clientIp, 0, 'Nie udało się wysłać kodu');
+      return res.status(502).json({ error: 'Nie udało się wysłać kodu na TeamSpeak 3. Spróbuj ponownie.' });
+    }
+    console.log(`[TS3] 🔐 Challenge sent to "${tsNickname}" (clid ${matched.clid})`);
+    res.json({ challenge: true, challengeId, method: 'teamspeak3', nickname: tsNickname, expiresIn: TS_CHALLENGE_TTL_MS / 1000 });
 
   } catch (err) {
     if (ts3) { try { ts3.close(); } catch (_) {} }

@@ -28,6 +28,12 @@ export const api = {
   logout: () => request('/auth/logout', { method: 'POST' }),
   loginTeamspeak: () => request('/auth/teamspeak', { method: 'POST' }),
   loginTeamspeak3: () => request('/auth/teamspeak3', { method: 'POST' }),
+  verifyTeamspeak: (challengeId, code) => request('/auth/teamspeak/verify', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challengeId, code }),
+  }),
+  verifyTeamspeak3: (challengeId, code) => request('/auth/teamspeak3/verify', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challengeId, code }),
+  }),
 
   // Videos
   getVideos: (params = {}) => {
