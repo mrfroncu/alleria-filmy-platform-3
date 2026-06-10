@@ -2,40 +2,34 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart, Film, Trash2 } from 'lucide-react';
 import { api } from '../utils/api';
-import { formatDateShort } from '../utils/helpers';
-
-const armHeroMorph = (e) => {
-  const thumb = e.currentTarget.querySelector('[data-vt-thumb]');
-  if (thumb) thumb.style.viewTransitionName = 'video-hero';
-};
+import { morph } from '../utils/fx';
+import VideoCard from '../components/VideoCard';
+import QuickLook from '../components/QuickLook';
 
 export default function FavoritesPage() {
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [removingId, setRemovingId] = useState(null);
+  const [quickLook, setQuickLook] = useState(null);
 
-  const load = () => {
-    setLoading(true);
+  const openQuick = (video) => morph(() => setQuickLook(video));
+  const closeQuick = () => morph(() => setQuickLook(null));
+
+  useEffect(() => {
     api.getFavorites().then(setFavorites).catch(console.error).finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); }, []);
+  }, []);
 
   const handleRemove = async (e, videoId) => {
     e.preventDefault();
     e.stopPropagation();
-    setRemovingId(videoId);
     await api.removeFavorite(videoId);
-    // Let the shrink-out animation play before the card leaves the list
-    setTimeout(() => {
-      setFavorites(prev => prev.filter(v => v.id !== videoId));
-      setRemovingId(null);
-    }, 280);
+    // Removal runs in a view transition: the tile shrinks away and the
+    // remaining tiles GLIDE into the freed slot.
+    morph(() => setFavorites(prev => prev.filter(v => v.id !== videoId)));
   };
 
   return (
-    <div className="p-6 sm:p-10 max-w-7xl mx-auto">
-      <div className="mb-10 anim-stagger-1">
+    <div className="p-5 sm:px-10 sm:py-6 max-w-7xl mx-auto">
+      <div className="mb-8 anim-stagger-1">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-11 h-11 bg-curtain-50 dark:bg-curtain-500/10 border border-curtain-100 dark:border-curtain-500/20 rounded-2xl flex items-center justify-center animate-float">
             <Heart className="w-5 h-5 text-curtain-500 fill-curtain-500/30" />
@@ -73,38 +67,29 @@ export default function FavoritesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 video-grid">
           {favorites.map((video, idx) => (
-            <Link
+            <VideoCard
               key={video.id}
-              to={`/video/${video.id}`}
-              viewTransition
-              onClick={armHeroMorph}
-              className={`video-card card overflow-hidden group ${removingId === video.id ? 'opacity-0 scale-75 blur-sm' : ''}`}
-              style={{ animationDelay: `${idx * 45}ms`, transition: 'opacity 0.28s, transform 0.28s, filter 0.28s' }}
-            >
-              <div data-vt-thumb className="thumb-shine relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden rounded-t-3xl">
-                {video.thumbnail ? (
-                  <img src={video.thumbnail} alt={video.title} className="video-thumb w-full h-full object-cover" loading="lazy" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center"><Film className="w-12 h-12 text-zinc-300 dark:text-zinc-700" /></div>
-                )}
+              video={video}
+              layout="grid"
+              onQuickLook={openQuick}
+              morphHidden={quickLook?.id === video.id}
+              delay={idx * 45}
+              overlay={
                 <button
                   onClick={(e) => handleRemove(e, video.id)}
-                  className="absolute top-3 right-3 p-2 bg-black/50 hover:bg-red-600 rounded-full text-white transition-all duration-300 opacity-0 group-hover:opacity-100 hover:scale-110 hover:rotate-6 active:scale-90"
+                  className="absolute top-3 right-3 p-2 bg-black/50 hover:bg-red-600 rounded-full text-white transition-all duration-300 opacity-0 group-hover:opacity-100 hover:scale-110 hover:rotate-6 active:scale-90 z-10"
                   title="Usuń z ulubionych"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
-              </div>
-              <div className="p-6">
-                <h3 className="font-bold text-zinc-900 dark:text-white mb-2 line-clamp-2 group-hover:text-ember-500 dark:group-hover:text-ember-400 transition-colors font-display">{video.title}</h3>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-zinc-500 font-medium">{video.author_display_name || video.author_name}</span>
-                  <span className="text-xs text-zinc-400 font-mono">{formatDateShort(video.publish_date)}</span>
-                </div>
-              </div>
-            </Link>
+              }
+            />
           ))}
         </div>
+      )}
+
+      {quickLook && (
+        <QuickLook video={quickLook} onClose={closeQuick} />
       )}
     </div>
   );

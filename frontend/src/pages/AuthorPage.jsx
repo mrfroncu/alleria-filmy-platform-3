@@ -2,13 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Film, ArrowLeft, Calendar } from 'lucide-react';
 import { api } from '../utils/api';
-import { formatDate, formatDateShort } from '../utils/helpers';
+import { morph } from '../utils/fx';
+import { formatDate } from '../utils/helpers';
 import { useCountUp } from '../utils/hooks';
-
-const armHeroMorph = (e) => {
-  const thumb = e.currentTarget.querySelector('[data-vt-thumb]');
-  if (thumb) thumb.style.viewTransitionName = 'video-hero';
-};
+import VideoCard from '../components/VideoCard';
+import QuickLook from '../components/QuickLook';
 
 function AuthorAvatar({ author, size = 'lg' }) {
   const letter = (author.display_name || author.username || '?')[0].toUpperCase();
@@ -38,7 +36,11 @@ export default function AuthorPage() {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [quickLook, setQuickLook] = useState(null);
   const videoCount = useCountUp(videos.length);
+
+  const openQuick = (video) => morph(() => setQuickLook(video));
+  const closeQuick = () => morph(() => setQuickLook(null));
 
   useEffect(() => {
     setLoading(true);
@@ -58,7 +60,6 @@ export default function AuthorPage() {
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Header skeleton */}
         <div className="card p-8 mb-8">
           <div className="flex items-center gap-6">
             <div className="w-20 h-20 rounded-3xl bg-zinc-100 dark:bg-zinc-800 skeleton shrink-0" />
@@ -68,7 +69,6 @@ export default function AuthorPage() {
             </div>
           </div>
         </div>
-        {/* Grid skeleton */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
           {[1,2,3,4,5,6].map(i => (
             <div key={i} className="card overflow-hidden">
@@ -105,12 +105,10 @@ export default function AuthorPage() {
   const displayName = author.display_name || author.username;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
+    <div className="max-w-6xl mx-auto px-4 py-6 space-y-8">
 
       {/* ── Author profile card ── */}
-      {/* No overflow-hidden on outer card — lets the avatar overlap the stripe without clipping */}
       <div className="card anim-stagger-1">
-        {/* Top gradient stripe — overflow-hidden only here for the dot pattern */}
         <div className="h-28 bg-gradient-to-r from-ember-600 via-curtain-600 to-ember-500 relative overflow-hidden rounded-t-3xl" style={{ backgroundSize: '300% 100%', animation: 'gradientFlow 12s ease infinite' }}>
           <div className="absolute inset-0 opacity-20"
             style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
@@ -118,7 +116,6 @@ export default function AuthorPage() {
         </div>
 
         <div className="px-8 pb-8">
-          {/* Avatar — negative margin pulls it up over the stripe; z-10 keeps it on top */}
           <div className="-mt-10 mb-5 relative z-10 animate-spring-in" style={{ animationDelay: '120ms' }}>
             <AuthorAvatar author={author} size="lg" />
           </div>
@@ -144,7 +141,6 @@ export default function AuthorPage() {
               )}
             </div>
 
-            {/* Stats — counts up on entrance */}
             <div className="shrink-0 flex items-center gap-6 sm:mt-1">
               <div className="text-center">
                 <p className="text-2xl font-extrabold text-gradient font-display">{videoCount}</p>
@@ -193,60 +189,20 @@ export default function AuthorPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 video-grid">
           {videos.map((video, idx) => (
-            <Link
+            <VideoCard
               key={video.id}
-              to={`/video/${video.id}`}
-              viewTransition
-              onClick={armHeroMorph}
-              className="video-card card overflow-hidden group"
-              style={{ animationDelay: `${idx * 40}ms` }}
-            >
-              {/* Thumbnail */}
-              <div data-vt-thumb className="thumb-shine relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden rounded-t-3xl">
-                {video.thumbnail ? (
-                  <img
-                    src={video.thumbnail}
-                    alt={video.title}
-                    className="video-thumb w-full h-full object-cover"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Film className="w-10 h-10 text-zinc-300 dark:text-zinc-700" />
-                  </div>
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              </div>
-
-              {/* Info */}
-              <div className="p-5">
-                <h3 className="font-bold text-zinc-900 dark:text-white mb-2 line-clamp-2 group-hover:text-ember-500 dark:group-hover:text-ember-400 transition-colors leading-snug font-display">
-                  {video.title}
-                </h3>
-                <div className="flex items-center justify-between mb-2">
-                  {video.category_name && (
-                    <span className="inline-flex px-2.5 py-0.5 bg-ember-50 dark:bg-ember-500/10 text-ember-600 dark:text-ember-300 rounded-full text-[10px] font-bold border border-ember-100 dark:border-ember-500/20">
-                      {video.category_name}
-                    </span>
-                  )}
-                  <span className="text-xs text-zinc-400 font-mono ml-auto">
-                    {formatDateShort(video.publish_date)}
-                  </span>
-                </div>
-                {video.tags?.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {video.tags.slice(0, 3).map(tag => (
-                      <span key={tag.id} className="tag-chip text-[10px] py-0.5 px-2">{tag.name}</span>
-                    ))}
-                    {video.tags.length > 3 && (
-                      <span className="text-[10px] text-zinc-400 py-0.5">+{video.tags.length - 3}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </Link>
+              video={video}
+              layout="grid"
+              onQuickLook={openQuick}
+              morphHidden={quickLook?.id === video.id}
+              delay={idx * 40}
+            />
           ))}
         </div>
+      )}
+
+      {quickLook && (
+        <QuickLook video={quickLook} onClose={closeQuick} />
       )}
     </div>
   );

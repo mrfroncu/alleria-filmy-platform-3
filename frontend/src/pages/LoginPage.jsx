@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, AlertCircle, Info, X, ChevronDown, ExternalLink, Film, Users, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, AlertCircle, Info, X, ChevronDown, ExternalLink, Film, Users, ShieldCheck, Sparkles } from 'lucide-react';
 import { api } from '../utils/api';
 import { getCurrentYear } from '../utils/helpers';
 import { REGULAMIN_LAST_MODIFIED, RegulaminContent } from '../data/regulamin';
@@ -24,6 +24,15 @@ function parseTsError(msg, version) {
   }
   return msg;
 }
+
+const MARQUEE_ITEMS = [
+  'Biblioteka filmów i nagrań',
+  'Watch Party ze znajomymi',
+  'Tylko dla społeczności Alleria',
+  'Bezpieczne logowanie',
+  'Kontynuuj oglądanie na każdym urządzeniu',
+  'Archiwum wspomnień',
+];
 
 export default function LoginPage() {
   const [tsLoading, setTsLoading]   = useState(false);
@@ -144,114 +153,46 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row bg-white dark:bg-zinc-950">
+    <div className="min-h-screen relative overflow-hidden bg-zinc-950 flex flex-col">
 
-      {/* ══════════════════════════════════════
-          LEFT PANEL — the "cinema hall" (desktop)
-          ══════════════════════════════════════ */}
-      <div className="hidden lg:flex lg:w-[52%] xl:w-[55%] relative overflow-hidden bg-zinc-950 flex-col">
+      {/* ════ Cinematic backdrop ════ */}
+      <div className="absolute inset-0 bg-gradient-to-br from-ember-950 via-zinc-950 to-zinc-950" />
+      <div className="aurora-blob aurora-1 -top-48 -left-48 w-[640px] h-[640px] bg-ember-600/20 blur-[150px]" />
+      <div className="aurora-blob aurora-2 bottom-0 right-0 w-[480px] h-[480px] bg-curtain-700/20 blur-[130px]" />
+      <div className="aurora-blob aurora-3 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[560px] h-[560px] bg-amber-500/[0.06] blur-[100px]" />
+      <div className="noise-overlay" />
+      <div
+        className="absolute inset-0 opacity-[0.035] pointer-events-none"
+        style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '32px 32px' }}
+      />
+      <div className="absolute inset-0 pointer-events-none" style={{
+        backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(255,255,255,0.012) 3px, rgba(255,255,255,0.012) 4px)',
+      }} />
 
-        {/* Layered warm background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-ember-950 via-zinc-950 to-zinc-950" />
-        <div className="aurora-blob aurora-1 -top-48 -left-48 w-[600px] h-[600px] bg-ember-600/20 blur-[140px]" />
-        <div className="aurora-blob aurora-2 bottom-0 right-0 w-[420px] h-[420px] bg-curtain-700/20 blur-[120px]" />
-        <div className="aurora-blob aurora-3 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-amber-500/[0.06] blur-[90px]" />
-        <div className="noise-overlay" />
+      {/* ════ Centered glass card ════ */}
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-5 py-10">
 
-        {/* Subtle dot grid */}
-        <div
-          className="absolute inset-0 opacity-[0.035] pointer-events-none"
-          style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '32px 32px' }}
-        />
+        <div className="w-full max-w-[420px] bg-white/[0.04] backdrop-blur-2xl border border-white/10 rounded-[32px] shadow-2xl shadow-black/50 p-8 sm:p-10 animate-spring-in relative overflow-hidden">
+          {/* top glow line */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-2/3 h-px bg-gradient-to-r from-transparent via-ember-500/70 to-transparent" />
 
-        {/* Horizontal scan lines — projector feel */}
-        <div className="absolute inset-0 pointer-events-none" style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(255,255,255,0.012) 3px, rgba(255,255,255,0.012) 4px)',
-        }} />
-
-        {/* Content */}
-        <div className="relative z-10 flex flex-col h-full p-12 xl:p-16">
-
-          {/* Top: logo badge */}
-          <div className="flex items-center gap-3 animate-slide-down">
-            <div className="border-beam w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center overflow-hidden backdrop-blur-sm">
-              <img src="https://alleria.pl/image/favicon.png" alt="Alleria" className="w-6 h-6 object-contain" />
+          {/* Logo */}
+          <div className="text-center mb-8">
+            <div className="border-beam logo-glow w-16 h-16 rounded-[22px] bg-gradient-to-br from-ember-500/15 to-curtain-500/15 border border-white/10 flex items-center justify-center mx-auto mb-4 overflow-hidden">
+              <img src="https://alleria.pl/image/logo-clr.png" alt="Alleria" className="w-11 h-11 object-contain animate-float" />
             </div>
-            <span className="text-white/60 text-xs font-semibold tracking-[0.2em] uppercase font-display">Alleria.pl</span>
+            <h1 className="text-2xl font-extrabold text-white tracking-tight font-display">ALLERIA</h1>
+            <p className="text-gradient text-[10px] font-bold tracking-[0.4em] mt-0.5 font-display">FILMY</p>
           </div>
 
-          {/* Middle: hero */}
-          <div className="flex-1 flex flex-col justify-center py-12">
-            <p className="text-ember-400 text-xs font-semibold tracking-[0.25em] uppercase mb-5 font-display animate-slide-up">
-              Prywatna platforma wideo
-            </p>
-
-            <h1 className="text-5xl xl:text-6xl 2xl:text-7xl font-extrabold text-white leading-[1.05] tracking-tight mb-6 font-display animate-blur-in">
-              Filmy<br />
-              <span className="text-gradient">społeczności.</span>
-            </h1>
-
-            <p className="text-zinc-400 text-base xl:text-lg leading-relaxed max-w-xs xl:max-w-sm mb-12 animate-slide-up" style={{ animationDelay: '120ms', animationFillMode: 'both' }}>
-              Archiwum wspomnień, nagrane sesje, wspólne chwile — wszystko w jednym miejscu, wyłącznie dla członków Alleria.
-            </p>
-
-            {/* Feature badges */}
-            <div className="flex flex-col gap-3 stagger-children">
-              {[
-                { icon: Film,        label: 'Biblioteka filmów i nagrań' },
-                { icon: Users,       label: 'Dostęp tylko dla społeczności' },
-                { icon: ShieldCheck, label: 'Bezpieczne logowanie przez Discord i TeamSpeak' },
-              ].map(({ icon: Icon, label }) => (
-                <div key={label} className="flex items-center gap-3 group">
-                  <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0 transition-all duration-300 group-hover:scale-110 group-hover:border-ember-500/40 group-hover:bg-ember-500/10">
-                    <Icon className="w-4 h-4 text-ember-400" />
-                  </div>
-                  <span className="text-sm text-zinc-400 group-hover:text-zinc-200 transition-colors">{label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Bottom: copyright */}
-          <p className="text-zinc-700 text-xs">
-            © 2025–{getCurrentYear()} Alleria.pl · built by{' '}
-            <a href="https://github.com/mrfroncu" target="_blank" rel="noopener noreferrer"
-               className="text-zinc-600 hover:text-zinc-400 transition-colors">Matthew</a>
-          </p>
-        </div>
-      </div>
-
-      {/* ══════════════════════════════════════
-          RIGHT PANEL — login form
-          ══════════════════════════════════════ */}
-      <div className="flex-1 flex flex-col items-center justify-center min-h-screen lg:min-h-0 bg-white dark:bg-zinc-950 px-6 py-12 relative">
-
-        {/* Mobile background haze */}
-        <div className="lg:hidden absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="aurora-blob aurora-1 -top-32 -right-32 w-64 h-64 bg-ember-500/10 dark:bg-ember-500/20 blur-[80px]" />
-          <div className="aurora-blob aurora-2 -bottom-32 -left-32 w-64 h-64 bg-curtain-600/10 dark:bg-curtain-600/20 blur-[80px]" />
-        </div>
-
-        <div className="w-full max-w-[360px] relative z-10">
-
-          {/* Mobile header */}
-          <div className="lg:hidden text-center mb-10 animate-spring-in">
-            <div className="logo-glow w-16 h-16 rounded-[22px] bg-gradient-to-br from-ember-500/15 to-curtain-500/15 border border-zinc-200 dark:border-white/10 flex items-center justify-center mx-auto mb-4 shadow-xl shadow-ember-500/10 overflow-hidden">
-              <img src="https://alleria.pl/image/logo-clr.png" alt="Alleria" className="w-11 h-11 object-contain" />
-            </div>
-            <h1 className="text-2xl font-extrabold text-zinc-900 dark:text-white tracking-tight font-display">ALLERIA</h1>
-            <p className="text-xs font-bold tracking-[0.35em] text-ember-500 mt-0.5 font-display">FILMY</p>
-          </div>
-
-          {/* Form heading */}
-          <div className="mb-8 anim-stagger-1">
-            <h2 className="text-2xl font-bold text-zinc-900 dark:text-white mb-1 font-display">Zaloguj się</h2>
-            <p className="text-zinc-500 dark:text-zinc-400 text-sm">Dostęp mają wyłącznie członkowie społeczności Alleria.</p>
+          <div className="mb-7 text-center anim-stagger-1">
+            <h2 className="text-lg font-bold text-white mb-1 font-display">Zaloguj się</h2>
+            <p className="text-zinc-400 text-[13px]">Dostęp mają wyłącznie członkowie społeczności Alleria.</p>
           </div>
 
           {/* ── Config warning ── */}
           {!configOk && (
-            <div className="mb-5 p-3.5 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-2xl flex items-start gap-3 text-amber-700 dark:text-amber-300 text-xs animate-shake">
+            <div className="mb-5 p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-start gap-3 text-amber-300 text-xs animate-shake">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold mb-0.5">Serwer nie skonfigurowany</p>
@@ -262,7 +203,7 @@ export default function LoginPage() {
 
           {/* ── Discord error ── */}
           {discordError && (
-            <div className="mb-5 p-3.5 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-2xl flex items-start gap-3 text-red-700 dark:text-red-300 text-xs animate-shake">
+            <div className="mb-5 p-3.5 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-start gap-3 text-red-300 text-xs animate-shake">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{discordError}</span>
             </div>
@@ -283,10 +224,10 @@ export default function LoginPage() {
           {/* ── Separator ── */}
           <div className="relative my-5 anim-stagger-3">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-zinc-200 dark:border-zinc-800" />
+              <div className="w-full border-t border-white/10" />
             </div>
             <div className="relative flex justify-center">
-              <span className="px-3 bg-white dark:bg-zinc-950 text-zinc-400 dark:text-zinc-600 text-xs font-medium">
+              <span className="px-3 bg-[#131110] rounded-full text-zinc-500 text-xs font-medium">
                 lub przez TeamSpeak
               </span>
             </div>
@@ -294,15 +235,13 @@ export default function LoginPage() {
 
           {/* ── TeamSpeak section ── */}
           <div className="space-y-2 anim-stagger-4">
-
-            {/* TS3 — left, TS6 — right */}
             <div className="grid grid-cols-2 gap-2.5">
               {/* TS3 */}
               <div className="flex flex-col gap-1.5">
                 <button
                   onClick={handleTeamspeak3Login}
                   disabled={ts3Loading || tsLoading}
-                  className="w-full py-3 px-3 bg-zinc-900 dark:bg-zinc-800 hover:bg-zinc-800 dark:hover:bg-zinc-700 hover:-translate-y-0.5 active:scale-[0.96] text-white rounded-2xl font-bold text-xs transition-all flex flex-col items-center gap-1.5 disabled:opacity-50 shadow-md shadow-zinc-900/20 dark:shadow-black/30 border border-zinc-800 dark:border-zinc-700 hover:border-ember-500/40"
+                  className="w-full py-3 px-3 bg-white/[0.06] hover:bg-white/10 hover:-translate-y-0.5 active:scale-[0.96] text-white rounded-2xl font-bold text-xs transition-all flex flex-col items-center gap-1.5 disabled:opacity-50 border border-white/10 hover:border-ember-500/40"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-zinc-400">
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
@@ -312,7 +251,7 @@ export default function LoginPage() {
                 <a
                   href="ts3server://alleria.pl"
                   title="alleria.pl"
-                  className="flex items-center justify-center gap-1.5 py-2 rounded-full bg-zinc-100 dark:bg-zinc-900 hover:bg-ember-50 dark:hover:bg-ember-500/10 border border-zinc-200 dark:border-zinc-800 hover:border-ember-300 dark:hover:border-ember-500/30 text-zinc-500 dark:text-zinc-500 hover:text-ember-600 dark:hover:text-ember-400 text-[10px] font-semibold transition-all no-underline group"
+                  className="flex items-center justify-center gap-1.5 py-2 rounded-full bg-white/[0.03] hover:bg-ember-500/10 border border-white/[0.07] hover:border-ember-500/30 text-zinc-500 hover:text-ember-400 text-[10px] font-semibold transition-all no-underline group"
                 >
                   <ExternalLink className="w-2.5 h-2.5 shrink-0 group-hover:scale-110 group-hover:rotate-6 transition-transform" />
                   <span>Połącz z TS3</span>
@@ -324,7 +263,7 @@ export default function LoginPage() {
                 <button
                   onClick={handleTeamspeakLogin}
                   disabled={ts3Loading || tsLoading}
-                  className="w-full py-3 px-3 bg-zinc-900 dark:bg-zinc-800 hover:bg-zinc-800 dark:hover:bg-zinc-700 hover:-translate-y-0.5 active:scale-[0.96] text-white rounded-2xl font-bold text-xs transition-all flex flex-col items-center gap-1.5 disabled:opacity-50 shadow-md shadow-zinc-900/20 dark:shadow-black/30 border border-zinc-800 dark:border-zinc-700 hover:border-ember-500/40"
+                  className="w-full py-3 px-3 bg-white/[0.06] hover:bg-white/10 hover:-translate-y-0.5 active:scale-[0.96] text-white rounded-2xl font-bold text-xs transition-all flex flex-col items-center gap-1.5 disabled:opacity-50 border border-white/10 hover:border-ember-500/40"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-zinc-400">
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
@@ -334,7 +273,7 @@ export default function LoginPage() {
                 <a
                   href="teamspeak://ts6.alleria.pl"
                   title="ts6.alleria.pl"
-                  className="flex items-center justify-center gap-1.5 py-2 rounded-full bg-zinc-100 dark:bg-zinc-900 hover:bg-ember-50 dark:hover:bg-ember-500/10 border border-zinc-200 dark:border-zinc-800 hover:border-ember-300 dark:hover:border-ember-500/30 text-zinc-500 dark:text-zinc-500 hover:text-ember-600 dark:hover:text-ember-400 text-[10px] font-semibold transition-all no-underline group"
+                  className="flex items-center justify-center gap-1.5 py-2 rounded-full bg-white/[0.03] hover:bg-ember-500/10 border border-white/[0.07] hover:border-ember-500/30 text-zinc-500 hover:text-ember-400 text-[10px] font-semibold transition-all no-underline group"
                 >
                   <ExternalLink className="w-2.5 h-2.5 shrink-0 group-hover:scale-110 group-hover:rotate-6 transition-transform" />
                   <span>Połącz z TS6</span>
@@ -347,7 +286,7 @@ export default function LoginPage() {
               <div className="grid grid-cols-2 gap-2.5 pt-0.5">
                 <div>
                   {ts3Error && (
-                    <div className="p-2.5 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 text-[10px] leading-snug flex items-start gap-1.5 animate-shake">
+                    <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-300 text-[10px] leading-snug flex items-start gap-1.5 animate-shake">
                       <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
                       <span>{ts3Error}</span>
                     </div>
@@ -355,7 +294,7 @@ export default function LoginPage() {
                 </div>
                 <div>
                   {ts6Error && (
-                    <div className="p-2.5 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 text-[10px] leading-snug flex items-start gap-1.5 animate-shake">
+                    <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-300 text-[10px] leading-snug flex items-start gap-1.5 animate-shake">
                       <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
                       <span>{ts6Error}</span>
                     </div>
@@ -367,7 +306,7 @@ export default function LoginPage() {
             {/* TS requirements — collapsible */}
             <button
               onClick={() => setTsInfoOpen(v => !v)}
-              className="w-full flex items-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors pt-1"
+              className="w-full flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors pt-1"
             >
               <Info className="w-3 h-3 shrink-0" />
               <span>Jak działa logowanie przez TeamSpeak?</span>
@@ -375,42 +314,60 @@ export default function LoginPage() {
             </button>
 
             <div className={`reveal-y ${tsInfoOpen ? 'open' : ''}`}>
-              <div className="text-[11px] text-zinc-500 dark:text-zinc-400 space-y-1.5 pl-3 border-l-2 border-ember-500/30 pb-1">
-                <p>• Musisz być <span className="font-semibold text-zinc-700 dark:text-zinc-300">aktywnie połączony</span> z serwerem TS w momencie logowania.</p>
-                <p>• Weryfikacja działa przez <span className="font-semibold text-zinc-700 dark:text-zinc-300">dopasowanie IP</span> — nie używaj VPN, który zmienia Twój adres.</p>
-                <p>• Wymagana jest <span className="font-semibold text-zinc-700 dark:text-zinc-300">odpowiednia grupa serwerowa</span> na TS.</p>
-                <p>• Po dopasowaniu bot wyśle Ci na TS <span className="font-semibold text-zinc-700 dark:text-zinc-300">6-znakowy kod</span> — wpisz go, aby potwierdzić logowanie.</p>
+              <div className="text-[11px] text-zinc-400 space-y-1.5 pl-3 border-l-2 border-ember-500/30 pb-1">
+                <p>• Musisz być <span className="font-semibold text-zinc-200">aktywnie połączony</span> z serwerem TS w momencie logowania.</p>
+                <p>• Weryfikacja działa przez <span className="font-semibold text-zinc-200">dopasowanie IP</span> — nie używaj VPN, który zmienia Twój adres.</p>
+                <p>• Wymagana jest <span className="font-semibold text-zinc-200">odpowiednia grupa serwerowa</span> na TS.</p>
+                <p>• Po dopasowaniu bot wyśle Ci na TS <span className="font-semibold text-zinc-200">6-znakowy kod</span> — wpisz go, aby potwierdzić logowanie.</p>
               </div>
             </div>
           </div>
 
-          {/* ── Divider ── */}
-          <div className="my-6 border-t border-zinc-100 dark:border-zinc-900 anim-stagger-5" />
-
-          {/* ── Regulamin acceptance ── */}
-          <p className="text-center text-xs text-zinc-400 dark:text-zinc-600 anim-stagger-5">
+          {/* ── Regulamin ── */}
+          <p className="text-center text-[11px] text-zinc-500 mt-7 anim-stagger-5">
             Logując się akceptujesz{' '}
             <button
               onClick={() => setRegulaminOpen(true)}
-              className="link-underline text-ember-500 hover:text-ember-400 transition-colors font-medium"
+              className="link-underline text-ember-400 hover:text-ember-300 transition-colors font-medium"
             >
               Regulamin
             </button>
             {' '}platformy Alleria Filmy.
           </p>
+        </div>
 
-          {/* Mobile footer */}
-          <p className="lg:hidden mt-6 text-center text-xs text-zinc-300 dark:text-zinc-700">
-            © 2025–{getCurrentYear()} Alleria.pl · built by{' '}
-            <a href="https://github.com/mrfroncu" target="_blank" rel="noopener noreferrer"
-               className="text-zinc-400 dark:text-zinc-600 hover:text-ember-500 transition-colors">Matthew</a>
-          </p>
+        {/* Feature chips under card */}
+        <div className="flex flex-wrap justify-center gap-2 mt-7 max-w-md stagger-children">
+          {[
+            { icon: Film, label: 'Biblioteka nagrań' },
+            { icon: Users, label: 'Tylko dla społeczności' },
+            { icon: ShieldCheck, label: 'Bezpieczne logowanie' },
+          ].map(({ icon: Icon, label }) => (
+            <span key={label} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-zinc-400 text-[11px] font-semibold hover:border-ember-500/40 hover:text-zinc-200 hover:-translate-y-0.5 transition-all">
+              <Icon className="w-3.5 h-3.5 text-ember-400" /> {label}
+            </span>
+          ))}
         </div>
       </div>
 
-      {/* ══════════════════════════════════════
-          REGULAMIN MODAL
-          ══════════════════════════════════════ */}
+      {/* ════ Marquee strip ════ */}
+      <div className="relative z-10 overflow-hidden py-4 border-t border-white/[0.05]" aria-hidden="true">
+        <div className="marquee gap-10 text-zinc-700 text-xs font-bold uppercase tracking-[0.3em] font-display whitespace-nowrap">
+          {[...MARQUEE_ITEMS, ...MARQUEE_ITEMS].map((t, i) => (
+            <span key={i} className="flex items-center gap-10">
+              {t} <Sparkles className="w-3.5 h-3.5 text-ember-700" />
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <p className="relative z-10 text-center text-xs text-zinc-700 pb-5">
+        © 2025–{getCurrentYear()} Alleria.pl · built by{' '}
+        <a href="https://github.com/mrfroncu" target="_blank" rel="noopener noreferrer"
+           className="text-zinc-600 hover:text-zinc-400 transition-colors">Matthew</a>
+      </p>
+
+      {/* ════ REGULAMIN MODAL ════ */}
       {regulaminOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in"
@@ -436,9 +393,7 @@ export default function LoginPage() {
         </div>
       )}
 
-      {/* ══════════════════════════════════════
-          TS LOGIN CHALLENGE MODAL
-          ══════════════════════════════════════ */}
+      {/* ════ TS LOGIN CHALLENGE MODAL ════ */}
       {challenge && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in"
