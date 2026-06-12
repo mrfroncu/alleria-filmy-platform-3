@@ -99,7 +99,7 @@ export default function ProfilePage() {
           <div className="flex flex-col sm:flex-row items-start gap-6">
             <div className="glow-ring rounded-3xl shrink-0">
               <img
-                src={profile.avatar || `https://ui-avatars.com/api/?name=${profile.display_name}&background=dd5f02&color=fff&size=160`}
+                src={profile.avatar || `https://ui-avatars.com/api/?name=${profile.display_name}&background=8b5cf6&color=fff&size=160`}
                 alt=""
                 className="w-24 h-24 rounded-3xl shadow-lg border-2 border-zinc-200 dark:border-zinc-700 object-cover hover:scale-105 hover:-rotate-2 transition-transform duration-300"
               />

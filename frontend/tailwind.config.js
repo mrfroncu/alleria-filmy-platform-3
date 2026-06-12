@@ -1,54 +1,41 @@
 /** @type {import('tailwindcss').Config} */
 
 /* ════════════════════════════════════════════════════════════════
-   ALLERIA FILMY — Design System v3 "EMBER"
-   Warm cinematic palette: projector amber + curtain rose on
-   deep warm charcoal. Kinetic, springy, morph-driven motion.
+   ALLERIA FILMY — Design System v4 "Cinema"
+   Layout & motion from the Cinema rebuild (billboard hero, shelves,
+   morph engine), recolored to the classic violet/fuchsia palette.
+   The `ember`/`curtain` token names are kept (components reference
+   them) but they now resolve to violet / fuchsia.
    ════════════════════════════════════════════════════════════════ */
 
-// Primary brand scale — "ember" (projector light)
+// Primary brand scale — classic violet
 const ember = {
-  50: '#fff8eb',
-  100: '#ffeec6',
-  200: '#ffd988',
-  300: '#ffbe4a',
-  400: '#ffa520',
-  500: '#f98307',
-  600: '#dd5f02',
-  700: '#b74006',
-  800: '#94300c',
-  900: '#7a290d',
-  950: '#461302',
+  50: '#f5f3ff',
+  100: '#ede9fe',
+  200: '#ddd6fe',
+  300: '#c4b5fd',
+  400: '#a78bfa',
+  500: '#8b5cf6',
+  600: '#7c3aed',
+  700: '#6d28d9',
+  800: '#5b21b6',
+  900: '#4c1d95',
+  950: '#2e1065',
 };
 
-// Secondary brand scale — "curtain" rose
+// Secondary brand scale — classic fuchsia
 const curtain = {
-  50: '#fff1f2',
-  100: '#ffe4e6',
-  200: '#fecdd3',
-  300: '#fda4af',
-  400: '#fb7185',
-  500: '#f43f5e',
-  600: '#e11d48',
-  700: '#be123c',
-  800: '#9f1239',
-  900: '#881337',
-  950: '#4c0519',
-};
-
-// Warm neutral scale (stone) — replaces the cold zinc grays
-const warmGray = {
-  50: '#fafaf9',
-  100: '#f5f5f4',
-  200: '#e7e5e4',
-  300: '#d6d3d1',
-  400: '#a8a29e',
-  500: '#78716c',
-  600: '#57534e',
-  700: '#44403c',
-  800: '#292524',
-  900: '#1c1917',
-  950: '#0c0a09',
+  50: '#fdf4ff',
+  100: '#fae8ff',
+  200: '#f5d0fe',
+  300: '#f0abfc',
+  400: '#e879f9',
+  500: '#d946ef',
+  600: '#c026d3',
+  700: '#a21caf',
+  800: '#86198f',
+  900: '#701a75',
+  950: '#4a044e',
 };
 
 export default {
@@ -59,13 +46,6 @@ export default {
       colors: {
         ember,
         curtain,
-        // ── Legacy aliases ──
-        // Older pages still reference violet/fuchsia/zinc utility classes.
-        // They resolve to the Ember tokens so the whole app wears one skin.
-        violet: ember,
-        fuchsia: curtain,
-        purple: ember,
-        zinc: warmGray,
       },
       fontFamily: {
         sans: ['Manrope', 'ui-sans-serif', 'system-ui', 'sans-serif'],
@@ -77,10 +57,10 @@ export default {
         '5xl': '2.5rem',
       },
       boxShadow: {
-        'glow-sm': '0 0 16px rgba(249, 131, 7, 0.22)',
-        'glow': '0 0 32px rgba(249, 131, 7, 0.3)',
-        'glow-lg': '0 0 64px rgba(249, 131, 7, 0.35)',
-        'ember': '0 8px 30px -8px rgba(249, 131, 7, 0.45)',
+        'glow-sm': '0 0 16px rgba(139, 92, 246, 0.22)',
+        'glow': '0 0 32px rgba(139, 92, 246, 0.3)',
+        'glow-lg': '0 0 64px rgba(139, 92, 246, 0.35)',
+        'ember': '0 8px 30px -8px rgba(139, 92, 246, 0.45)',
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-out',

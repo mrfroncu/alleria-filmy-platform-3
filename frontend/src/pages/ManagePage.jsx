@@ -506,7 +506,7 @@ export default function ManagePage() {
                     <tr key={u.id} className="border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-white/[0.02] transition-colors">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
-                          <img src={u.avatar || `https://ui-avatars.com/api/?name=${u.display_name || u.username}&background=dd5f02&color=fff`} alt="" className="w-7 h-7 rounded-lg object-cover border border-zinc-200 dark:border-zinc-700" />
+                          <img src={u.avatar || `https://ui-avatars.com/api/?name=${u.display_name || u.username}&background=8b5cf6&color=fff`} alt="" className="w-7 h-7 rounded-lg object-cover border border-zinc-200 dark:border-zinc-700" />
                           <div>
                             <p className="text-sm font-bold text-zinc-900 dark:text-white">{u.display_name || u.username}</p>
                             <p className="text-[10px] text-zinc-500 font-mono">@{u.username} • ID:{u.id}</p>

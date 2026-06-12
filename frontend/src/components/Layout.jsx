@@ -308,7 +308,7 @@ export default function Layout({ children }) {
             >
               <span className="hidden lg:block text-[13px] font-bold text-zinc-700 dark:text-zinc-200 max-w-[120px] truncate">{user?.display_name || user?.username}</span>
               <span className="relative">
-                <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=dd5f02&color=fff&size=80`} alt="" className="w-8 h-8 rounded-full object-cover border border-zinc-200 dark:border-white/10" />
+                <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className="w-8 h-8 rounded-full object-cover border border-zinc-200 dark:border-white/10" />
                 <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-zinc-900 animate-pulse-soft ${user?.role === 'dev' ? 'bg-red-400' : user?.role === 'admin' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
               </span>
             </button>
@@ -376,7 +376,7 @@ export default function Layout({ children }) {
             <div className="w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto mb-5" />
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=dd5f02&color=fff&size=80`} alt="" className="w-10 h-10 rounded-2xl object-cover" />
+                <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className="w-10 h-10 rounded-2xl object-cover" />
                 <div>
                   <p className="text-sm font-bold text-zinc-900 dark:text-white">{user?.display_name || user?.username}</p>
                   <p className="text-[10px] text-zinc-500 font-mono">{user?.role?.toUpperCase()}</p>

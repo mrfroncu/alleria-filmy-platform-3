@@ -163,7 +163,7 @@ export default function StatsPage() {
               {stats.topViewers.map((u) => (
                 <div key={u.id} className="group">
                   <div className="flex items-center gap-2.5 mb-1">
-                    <img src={u.avatar || `https://ui-avatars.com/api/?name=${u.display_name}&background=dd5f02&color=fff&size=40`} alt="" className="w-7 h-7 rounded-lg object-cover border border-zinc-200 dark:border-zinc-700 group-hover:scale-110 transition-transform" />
+                    <img src={u.avatar || `https://ui-avatars.com/api/?name=${u.display_name}&background=8b5cf6&color=fff&size=40`} alt="" className="w-7 h-7 rounded-lg object-cover border border-zinc-200 dark:border-zinc-700 group-hover:scale-110 transition-transform" />
                     <span className="text-[13px] font-semibold text-zinc-900 dark:text-white flex-1 truncate">{u.display_name}</span>
                     <span className="text-[11px] font-bold text-zinc-400">{u.total_views}</span>
                   </div>
@@ -188,7 +188,7 @@ export default function StatsPage() {
               {stats.topAuthors.map((a) => (
                 <Link key={a.id} to={`/author/${a.id}`} viewTransition className="block group">
                   <div className="flex items-center gap-2.5 mb-1">
-                    <img src={a.avatar || `https://ui-avatars.com/api/?name=${a.display_name}&background=dd5f02&color=fff&size=40`} alt="" className="w-7 h-7 rounded-lg object-cover border border-zinc-200 dark:border-zinc-700 group-hover:scale-110 group-hover:-rotate-3 transition-transform" />
+                    <img src={a.avatar || `https://ui-avatars.com/api/?name=${a.display_name}&background=8b5cf6&color=fff&size=40`} alt="" className="w-7 h-7 rounded-lg object-cover border border-zinc-200 dark:border-zinc-700 group-hover:scale-110 group-hover:-rotate-3 transition-transform" />
                     <span className="text-[13px] font-semibold text-zinc-900 dark:text-white flex-1 truncate group-hover:text-ember-500 transition-colors">{a.display_name}</span>
                     <span className="text-[11px] font-bold text-zinc-400">{a.video_count}</span>
                   </div>

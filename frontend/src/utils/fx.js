@@ -24,7 +24,7 @@ export function morph(update) {
 /**
  * Particle burst from the center of an element (favorites, success actions).
  */
-export function burst(el, colors = ['#f98307', '#f43f5e', '#ffbe4a', '#fb7185', '#ffd988']) {
+export function burst(el, colors = ['#8b5cf6', '#d946ef', '#c4b5fd', '#e879f9', '#f0abfc']) {
   if (!el || reducedMotion()) return;
   const rect = el.getBoundingClientRect();
   const cx = rect.left + rect.width / 2;

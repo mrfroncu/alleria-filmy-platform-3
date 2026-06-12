@@ -111,7 +111,7 @@ function CommentNode({ c, depth, replies, user, editingId, editContent, setEditC
   return (
     <div className={depth > 0 ? 'ml-6 sm:ml-10 border-l-2 border-ember-200/50 dark:border-ember-800/30 pl-4' : ''}>
       <div className="flex gap-3 group py-2 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 -mx-2 px-2 rounded-xl transition-colors">
-        <img src={c.avatar || `https://ui-avatars.com/api/?name=${c.display_name || c.username || 'U'}&background=dd5f02&color=fff&size=80`} alt="" className={`w-8 h-8 rounded-xl shrink-0 object-cover mt-0.5 ${isDeleted ? 'opacity-40 grayscale' : ''}`} />
+        <img src={c.avatar || `https://ui-avatars.com/api/?name=${c.display_name || c.username || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className={`w-8 h-8 rounded-xl shrink-0 object-cover mt-0.5 ${isDeleted ? 'opacity-40 grayscale' : ''}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
             <span className={`text-sm font-bold ${isDeleted ? 'text-zinc-400' : 'text-zinc-900 dark:text-white'}`}>{c.display_name || c.username}</span>
@@ -512,7 +512,7 @@ export default function VideoPage() {
                   </div>
                 )}
                 <div className="flex gap-3 mb-6">
-                  <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=dd5f02&color=fff&size=80`} alt="" className="w-10 h-10 rounded-xl shrink-0 object-cover" />
+                  <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className="w-10 h-10 rounded-xl shrink-0 object-cover" />
                   <div className="flex-1 relative">
                     <textarea value={newComment} maxLength={commentLimit} onChange={e => setNewComment(e.target.value)} placeholder={replyTo ? 'Odpowiedz...' : 'Napisz komentarz...'} className="input-field !py-3 !pr-12 resize-none text-sm min-h-[48px] max-h-[120px]" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment(); }}} rows={1} />
                     <button onClick={submitComment} disabled={!newComment.trim() || commentLoading} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-ember-500 hover:text-ember-600 disabled:text-zinc-300 dark:disabled:text-zinc-700 transition-all hover:scale-110 hover:rotate-12 active:scale-90"><Send className="w-4 h-4" /></button>
