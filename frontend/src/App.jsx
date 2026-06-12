@@ -41,6 +41,11 @@ function GuestRoute({ children }) {
 function LoadingScreen() {
   return (
     <div className="flex flex-col items-center justify-center gap-6 min-h-screen bg-zinc-50 dark:bg-zinc-950 relative overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+        <div className="aurora-blob aurora-1 -top-40 -left-40 w-[480px] h-[480px] bg-ember-500/15 dark:bg-ember-500/20 blur-[130px]" />
+        <div className="aurora-blob aurora-2 -bottom-40 -right-40 w-[480px] h-[480px] bg-curtain-600/10 dark:bg-curtain-600/15 blur-[130px]" />
+        <div className="noise-overlay" />
+      </div>
       <div className="loader-orbit">
         <div className="loader-core" />
       </div>

@@ -464,7 +464,7 @@ export default function WatchPartyPage() {
           <span className="font-mono text-[11px] text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded tracking-widest">{party.code}</span>
           <div className="flex -space-x-1.5 ml-1">
             {party.members.slice(0, 5).map(m => (
-              <img key={m.id} src={m.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.display_name || 'U')}&background=6366f1&color=fff&size=32`} className="w-6 h-6 rounded-lg border border-zinc-900 object-cover" title={m.display_name} alt="" />
+              <img key={m.id} src={m.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.display_name || 'U')}&background=dd5f02&color=fff&size=32`} className="w-6 h-6 rounded-lg border border-zinc-900 object-cover" title={m.display_name} alt="" />
             ))}
             {party.members.length > 5 && <span className="w-6 h-6 rounded-lg bg-zinc-700 text-[9px] text-zinc-400 flex items-center justify-center border border-zinc-900">+{party.members.length - 5}</span>}
           </div>
@@ -575,7 +575,7 @@ export default function WatchPartyPage() {
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
             {party.members.map(m => (
               <div key={m.id} className="flex items-center gap-2">
-                <img src={m.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.display_name || 'U')}&background=6366f1&color=fff&size=32`} className="w-6 h-6 rounded-lg object-cover shrink-0" alt="" />
+                <img src={m.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.display_name || 'U')}&background=dd5f02&color=fff&size=32`} className="w-6 h-6 rounded-lg object-cover shrink-0" alt="" />
                 <span className="text-xs text-white flex-1 truncate">{m.display_name}</span>
                 {m.id === party.hostId && <Crown className="w-3 h-3 text-amber-400 shrink-0" title="Host" />}
                 {isHost && m.id !== user?.id && (
