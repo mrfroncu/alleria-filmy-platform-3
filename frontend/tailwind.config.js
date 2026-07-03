@@ -1,11 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 
 /* ════════════════════════════════════════════════════════════════
-   ALLERIA FILMY — Design System v4 "Cinema"
-   Layout & motion from the Cinema rebuild (billboard hero, shelves,
-   morph engine), recolored to the classic violet/fuchsia palette.
-   The `ember`/`curtain` token names are kept (components reference
-   them) but they now resolve to violet / fuchsia.
+   ALLERIA FILMY — Design System v3.1
+   Layout & motion from the rc3 rebuild (rail, ⌘K palette, QuickLook,
+   morph engine), recolored to the classic violet/fuchsia palette
+   from 3.20.4. The `ember`/`curtain` token names are kept (components
+   reference them) but they now resolve to violet / fuchsia, and the
+   gray scale is back to stock cool zinc.
    ════════════════════════════════════════════════════════════════ */
 
 // Primary brand scale — classic violet

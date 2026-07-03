@@ -1,25 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Scroll-reveal: returns a ref; the element gets `.visible` once it
- * enters the viewport (pair with .shelf-reveal / .scroll-reveal CSS).
- */
-export function useReveal(threshold = 0.12) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    if (!('IntersectionObserver' in window)) { el.classList.add('visible'); return; }
-    const io = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) { el.classList.add('visible'); io.disconnect(); }
-    }, { threshold });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [threshold]);
-  return ref;
-}
-
-/**
  * Animates a number from 0 to `target` with an ease-out curve.
  * Used for stat counters so numbers "spin up" on entrance.
  */
