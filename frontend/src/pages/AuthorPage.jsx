@@ -2,11 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Film, ArrowLeft, Calendar } from 'lucide-react';
 import { api } from '../utils/api';
-import { morph } from '../utils/fx';
-import { formatDate } from '../utils/helpers';
-import { useCountUp } from '../utils/hooks';
-import VideoCard from '../components/VideoCard';
-import QuickLook from '../components/QuickLook';
+import { formatDate, formatDateShort } from '../utils/helpers';
 
 function AuthorAvatar({ author, size = 'lg' }) {
   const letter = (author.display_name || author.username || '?')[0].toUpperCase();
@@ -19,12 +15,12 @@ function AuthorAvatar({ author, size = 'lg' }) {
       <img
         src={author.avatar}
         alt={author.display_name}
-        className={`${sizeClass} rounded-3xl object-cover ring-4 ring-white dark:ring-zinc-900 shadow-xl hover:scale-105 hover:-rotate-3 transition-transform duration-300`}
+        className={`${sizeClass} rounded-2xl object-cover ring-4 ring-white dark:ring-zinc-900 shadow-xl`}
       />
     );
   }
   return (
-    <div className={`${sizeClass} rounded-3xl bg-gradient-to-br from-ember-500 to-curtain-600 flex items-center justify-center font-extrabold text-white ring-4 ring-white dark:ring-zinc-900 shadow-xl font-display hover:scale-105 hover:-rotate-3 transition-transform duration-300`}>
+    <div className={`${sizeClass} rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center font-black text-white ring-4 ring-white dark:ring-zinc-900 shadow-xl`}>
       {letter}
     </div>
   );
@@ -36,11 +32,6 @@ export default function AuthorPage() {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [quickLook, setQuickLook] = useState(null);
-  const videoCount = useCountUp(videos.length);
-
-  const openQuick = (video) => morph(() => setQuickLook(video));
-  const closeQuick = () => morph(() => setQuickLook(null));
 
   useEffect(() => {
     setLoading(true);
@@ -60,15 +51,17 @@ export default function AuthorPage() {
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Header skeleton */}
         <div className="card p-8 mb-8">
           <div className="flex items-center gap-6">
-            <div className="w-20 h-20 rounded-3xl bg-zinc-100 dark:bg-zinc-800 skeleton shrink-0" />
+            <div className="w-20 h-20 rounded-2xl bg-zinc-100 dark:bg-zinc-800 skeleton shrink-0" />
             <div className="flex-1 space-y-3">
               <div className="h-7 bg-zinc-100 dark:bg-zinc-800 rounded-xl skeleton w-48" />
               <div className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-32" />
             </div>
           </div>
         </div>
+        {/* Grid skeleton */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
           {[1,2,3,4,5,6].map(i => (
             <div key={i} className="card overflow-hidden">
@@ -87,13 +80,13 @@ export default function AuthorPage() {
   if (error || !author) {
     return (
       <div className="max-w-6xl mx-auto px-4 py-8">
-        <div className="card p-16 text-center animate-spring-in">
-          <div className="w-16 h-16 bg-red-50 dark:bg-red-500/10 rounded-3xl flex items-center justify-center mx-auto mb-4 animate-float">
+        <div className="card p-16 text-center">
+          <div className="w-16 h-16 bg-red-50 dark:bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <Film className="w-8 h-8 text-red-400" />
           </div>
-          <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-2 font-display">Nie znaleziono autora</h2>
+          <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-2">Nie znaleziono autora</h2>
           <p className="text-zinc-500 text-sm mb-6">{error}</p>
-          <Link to="/" viewTransition className="btn-primary inline-flex items-center gap-2">
+          <Link to="/" className="btn-primary inline-flex items-center gap-2">
             <ArrowLeft className="w-4 h-4" />
             Wróć do biblioteki
           </Link>
@@ -105,18 +98,20 @@ export default function AuthorPage() {
   const displayName = author.display_name || author.username;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 space-y-8">
+    <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
 
       {/* ── Author profile card ── */}
-      <div className="card anim-stagger-1">
-        <div className="h-28 bg-gradient-to-r from-ember-600 via-curtain-600 to-ember-500 relative overflow-hidden rounded-t-3xl" style={{ backgroundSize: '300% 100%', animation: 'gradientFlow 12s ease infinite' }}>
+      {/* No overflow-hidden on outer card — lets the avatar overlap the stripe without clipping */}
+      <div className="card">
+        {/* Top gradient stripe — overflow-hidden only here for the dot pattern */}
+        <div className="h-28 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 relative overflow-hidden rounded-t-3xl">
           <div className="absolute inset-0 opacity-20"
             style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
-          <div className="noise-overlay" />
         </div>
 
         <div className="px-8 pb-8">
-          <div className="-mt-10 mb-5 relative z-10 animate-spring-in" style={{ animationDelay: '120ms' }}>
+          {/* Avatar — negative margin pulls it up over the stripe; z-10 keeps it on top */}
+          <div className="-mt-10 mb-5 relative z-10">
             <AuthorAvatar author={author} size="lg" />
           </div>
 
@@ -141,9 +136,10 @@ export default function AuthorPage() {
               )}
             </div>
 
+            {/* Stats */}
             <div className="shrink-0 flex items-center gap-6 sm:mt-1">
               <div className="text-center">
-                <p className="text-2xl font-extrabold text-gradient font-display">{videoCount}</p>
+                <p className="text-2xl font-black text-violet-500">{videos.length}</p>
                 <p className="text-xs text-zinc-400 font-medium">
                   {videos.length === 1 ? 'film' : videos.length < 5 ? 'filmy' : 'filmów'}
                 </p>
@@ -154,7 +150,7 @@ export default function AuthorPage() {
       </div>
 
       {/* ── Section header ── */}
-      <div className="flex items-center justify-between anim-stagger-3">
+      <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display">
             Filmy autora
@@ -165,18 +161,17 @@ export default function AuthorPage() {
         </div>
         <Link
           to="/"
-          viewTransition
-          className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-ember-500 transition-all hover:gap-2.5 group"
+          className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-violet-500 transition-colors"
         >
-          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+          <ArrowLeft className="w-4 h-4" />
           Biblioteka
         </Link>
       </div>
 
       {/* ── Video grid ── */}
       {videos.length === 0 ? (
-        <div className="card p-16 text-center animate-spring-in">
-          <div className="w-16 h-16 bg-zinc-100 dark:bg-zinc-800 rounded-3xl flex items-center justify-center mx-auto mb-4 animate-float">
+        <div className="card p-16 text-center">
+          <div className="w-16 h-16 bg-zinc-100 dark:bg-zinc-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <Film className="w-8 h-8 text-zinc-400" />
           </div>
           <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2 font-display">
@@ -187,22 +182,60 @@ export default function AuthorPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 video-grid">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
           {videos.map((video, idx) => (
-            <VideoCard
+            <Link
               key={video.id}
-              video={video}
-              layout="grid"
-              onQuickLook={openQuick}
-              morphHidden={quickLook?.id === video.id}
-              delay={idx * 40}
-            />
+              to={`/video/${video.id}`}
+              className="video-card card overflow-hidden group"
+              style={{ animationDelay: `${idx * 40}ms` }}
+            >
+              {/* Thumbnail */}
+              <div className="relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+                {video.thumbnail ? (
+                  <img
+                    src={video.thumbnail}
+                    alt={video.title}
+                    className="video-thumb w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Film className="w-10 h-10 text-zinc-300 dark:text-zinc-700" />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              </div>
+
+              {/* Info */}
+              <div className="p-5">
+                <h3 className="font-bold text-zinc-900 dark:text-white mb-2 line-clamp-2 group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors leading-snug">
+                  {video.title}
+                </h3>
+                <div className="flex items-center justify-between mb-2">
+                  {video.category_name && (
+                    <span className="inline-flex px-2 py-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 rounded-lg text-[10px] font-bold">
+                      {video.category_name}
+                    </span>
+                  )}
+                  <span className="text-xs text-zinc-400 font-mono ml-auto">
+                    {formatDateShort(video.publish_date)}
+                  </span>
+                </div>
+                {video.tags?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {video.tags.slice(0, 3).map(tag => (
+                      <span key={tag.id} className="tag-chip text-[10px] py-0.5 px-2">{tag.name}</span>
+                    ))}
+                    {video.tags.length > 3 && (
+                      <span className="text-[10px] text-zinc-400 py-0.5">+{video.tags.length - 3}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Link>
           ))}
         </div>
-      )}
-
-      {quickLook && (
-        <QuickLook video={quickLook} onClose={closeQuick} />
       )}
     </div>
   );

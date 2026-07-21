@@ -40,18 +40,8 @@ function GuestRoute({ children }) {
 
 function LoadingScreen() {
   return (
-    <div className="flex flex-col items-center justify-center gap-6 min-h-screen bg-zinc-50 dark:bg-zinc-950 relative overflow-hidden">
-      <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
-        <div className="aurora-blob aurora-1 -top-40 -left-40 w-[480px] h-[480px] bg-ember-500/15 dark:bg-ember-500/20 blur-[130px]" />
-        <div className="aurora-blob aurora-2 -bottom-40 -right-40 w-[480px] h-[480px] bg-curtain-600/10 dark:bg-curtain-600/15 blur-[130px]" />
-        <div className="noise-overlay" />
-      </div>
-      <div className="loader-orbit">
-        <div className="loader-core" />
-      </div>
-      <p className="text-shimmer text-xs font-bold uppercase tracking-[0.35em] text-zinc-500 dark:text-zinc-400 font-display">
-        Alleria Filmy
-      </p>
+    <div className="flex items-center justify-center min-h-screen bg-zinc-50 dark:bg-zinc-950">
+      <div className="w-8 h-8 border-4 border-violet-500 border-t-transparent rounded-full animate-spin" />
     </div>
   );
 }

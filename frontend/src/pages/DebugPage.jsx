@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug } from 'lucide-react';
 import { api } from '../utils/api';
-import { morph } from '../utils/fx';
 
 // Dev Tools tabs — selected at the top of the page
 const TABS = [
@@ -348,31 +347,32 @@ export default function DebugPage() {
   };
 
   return (
-    <div className="p-6 sm:p-10 max-w-7xl mx-auto">
-      <div className="mb-8 anim-stagger-1">
+    <div className="p-6 sm:p-10 max-w-7xl mx-auto animate-fade-in">
+      <div className="mb-8">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-11 h-11 bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-2xl flex items-center justify-center animate-float">
+          <div className="w-10 h-10 bg-red-50 dark:bg-red-500/10 rounded-xl flex items-center justify-center">
             <Wrench className="w-5 h-5 text-red-500" />
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight font-display">
-            <span className="text-gradient">Dev Tools</span>
-          </h1>
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Dev Tools</h1>
         </div>
         <p className="text-zinc-500 dark:text-zinc-400">Narzędzia deweloperskie do zarządzania platformą i bazą danych.</p>
       </div>
 
-      {/* Tabs — the pill MORPHS between tabs via view transitions */}
-      <div className="seg-tabs mb-6 anim-stagger-2 flex-wrap">
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-1 mb-6 border-b border-zinc-200 dark:border-zinc-800">
         {TABS.map(t => {
           const Icon = t.icon;
           const active = activeTab === t.id;
           return (
             <button
               key={t.id}
-              onClick={() => morph(() => setActiveTab(t.id))}
-              className={`seg-tab ${active ? 'active' : ''}`}
+              onClick={() => setActiveTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap transition-colors ${
+                active
+                  ? 'border-violet-500 text-violet-600 dark:text-violet-400'
+                  : 'border-transparent text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+              }`}
             >
-              {active && <span className="seg-pill" style={{ viewTransitionName: 'tab-pill' }} aria-hidden="true" />}
               <Icon className="w-4 h-4" /> {t.label}
             </button>
           );
