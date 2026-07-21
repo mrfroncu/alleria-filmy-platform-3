@@ -1154,6 +1154,30 @@ export default function DebugPage() {
                 >
                   Wyczyść logi logowania
                 </button>
+                <button
+                  onClick={async () => {
+                    if (!confirm('Wyczyścić logi audytu?')) return;
+                    try {
+                      const r = await api.clearAuditLogs();
+                      setStatus({ type: 'success', msg: `Usunięto ${r.deleted} logów audytu.` });
+                    } catch (e) { setStatus({ type: 'error', msg: e.message }); }
+                  }}
+                  className="btn-secondary text-sm"
+                >
+                  Wyczyść logi audytu
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!confirm('Wyczyścić logi watch party?')) return;
+                    try {
+                      const r = await api.clearWatchPartyLogs();
+                      setStatus({ type: 'success', msg: `Usunięto ${r.deleted} logów watch party.` });
+                    } catch (e) { setStatus({ type: 'error', msg: e.message }); }
+                  }}
+                  className="btn-secondary text-sm"
+                >
+                  Wyczyść logi watch party
+                </button>
               </div>
             </div>
           </div>

@@ -2846,6 +2846,13 @@ app.get('/api/audit-logs', requireDev, (req, res) => {
   res.json({ logs, total, page: parseInt(page), totalPages: Math.ceil(total / perPage) });
 });
 
+app.delete('/api/audit-logs/clear', requireDev, (req, res) => {
+  try {
+    const info = db.prepare('DELETE FROM audit_logs').run();
+    res.json({ success: true, deleted: info.changes });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Tags used in a specific category
 app.get('/api/tags/category/:slug', requireAuth, (req, res) => {
   try {

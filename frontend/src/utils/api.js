@@ -227,6 +227,7 @@ export const api = {
     const q = new URLSearchParams(params).toString();
     return request(`/audit-logs${q ? `?${q}` : ''}`);
   },
+  clearAuditLogs: () => request('/audit-logs/clear', { method: 'DELETE' }),
   addAdminComment: (data) => request('/comments/admin', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
   }),
