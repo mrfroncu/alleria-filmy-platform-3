@@ -185,6 +185,26 @@ export default function ManagePage() {
         <p className="text-zinc-500 dark:text-zinc-400">Zarządzaj kategoriami, uprawnieniami i użytkownikami.</p>
       </div>
 
+      {/* Summary */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        <div className="card p-5 text-center">
+          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{cats.length}</p>
+          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Kategorii</p>
+        </div>
+        <div className="card p-5 text-center">
+          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{users.length}</p>
+          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Użytkowników</p>
+        </div>
+        <div className="card p-5 text-center">
+          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{ranks.length}</p>
+          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Rang</p>
+        </div>
+        <div className="card p-5 text-center">
+          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{cats.filter(c => (c.access_mode || '').includes('custom')).length}</p>
+          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Niestandardowy dostęp</p>
+        </div>
+      </div>
+
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 mb-6 border-b border-zinc-200 dark:border-zinc-800">
         {[['categories', 'Kategorie', FolderOpen], ['users', 'Użytkownicy', Users]].map(([key, label, Icon]) => (

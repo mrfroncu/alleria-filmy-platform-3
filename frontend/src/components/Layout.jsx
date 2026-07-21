@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import {
   Film, Shield, Menu, X, Wrench, ChevronRight, ChevronDown,
-  Heart, Clock, BarChart3, User, FolderOpen, FileText, MessageSquarePlus
+  Heart, Clock, BarChart3, FolderOpen, FileText, MessageSquarePlus
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
 import WatchPartyTab from './WatchPartyTab';
@@ -172,11 +172,6 @@ export default function Layout({ children }) {
             <NavLink to="/history" icon={Clock} label="Historia" active={isActive('/history')} />
           </nav>
 
-          <SectionLabel label="Konto" />
-          <nav className="space-y-0.5">
-            <NavLink to="/profile" icon={User} label="Mój profil" active={isActive('/profile')} />
-          </nav>
-
           {(isAdmin || isDev) && (
             <>
               <SectionLabel label="Administracja" />
@@ -206,8 +201,8 @@ export default function Layout({ children }) {
         {/* Version info */}
         <div className="p-4 relative z-10 shrink-0">
           {versions.panel && (
-            <div className="pt-2 text-[8px] text-zinc-400 dark:text-zinc-600 font-mono text-center">
-              Panel & API: v{versions.panel} | Player:{' '}
+            <div className="pt-2 text-[9px] text-zinc-500 dark:text-zinc-400 font-mono text-center">
+              Panel: v{versions.panel} | Player:{' '}
               {versions.streamStatus === 'offline'
                 ? <span className="text-red-500">(offline)</span>
                 : <>v{versions.stream}{' '}{versions.streamStatus === 'compatible' && <span className="text-emerald-500">(C)</span>}{versions.streamStatus === 'deprecated' && <span className="text-amber-500">(Streamer deprecated)</span>}</>

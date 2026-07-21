@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug } from 'lucide-react';
+import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug, Lock } from 'lucide-react';
 import { api } from '../utils/api';
 
 // Dev Tools tabs — selected at the top of the page
@@ -848,9 +848,9 @@ export default function DebugPage() {
 
       {/* ============ KATEGORIE ============ */}
       {activeTab === 'categories' && (
-      <div className="animate-fade-in">
+      <div className="animate-fade-in grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
       {/* Access Checker */}
-      <div className="card p-6">
+      <div className="card p-6 xl:col-span-2">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-9 h-9 bg-blue-50 dark:bg-blue-500/10 rounded-xl flex items-center justify-center">
             <ShieldCheck className="w-5 h-5 text-blue-500" />
@@ -953,6 +953,36 @@ export default function DebugPage() {
         })()}
       </div>
 
+      {/* Access reasons legend */}
+      <div className="card p-6 xl:col-span-1">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-9 h-9 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center">
+            <Lock className="w-5 h-5 text-violet-500" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Powody dostępu</h3>
+            <p className="text-xs text-zinc-500">Co oznaczają etykiety w wynikach</p>
+          </div>
+        </div>
+        <div className="space-y-3">
+          {[
+            { color: 'bg-violet-500', label: 'Administrator / Developer', desc: 'Pełny dostęp z racji roli systemowej' },
+            { color: 'bg-emerald-500', label: 'Kategoria / film publiczny', desc: 'Brak ograniczeń dostępu' },
+            { color: 'bg-blue-500', label: 'Dostęp niestandardowy', desc: 'Użytkownik na ręcznie ustawionej liście' },
+            { color: 'bg-emerald-500', label: 'Rola widza / edytora', desc: 'Dopasowana rola Discord lub ranga' },
+            { color: 'bg-red-400', label: 'Brak wymaganej roli', desc: 'Użytkownik nie ma dostępu' },
+          ].map((r, i) => (
+            <div key={i} className="flex items-start gap-2.5">
+              <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${r.color}`} />
+              <div>
+                <p className="text-xs font-bold text-zinc-700 dark:text-zinc-300">{r.label}</p>
+                <p className="text-[11px] text-zinc-400">{r.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       </div>
       )}
 
@@ -960,7 +990,7 @@ export default function DebugPage() {
       {activeTab === 'settings' && (
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-fade-in">
         {/* Content length limits */}
-        <div className="card p-8 h-full flex flex-col">
+        <div className="card p-8 h-full flex flex-col xl:col-span-2">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
               <Settings className="w-6 h-6 text-violet-500" />
@@ -970,7 +1000,7 @@ export default function DebugPage() {
               <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
                 Maksymalna długość pól (w znakach). Egzekwowane po stronie serwera.
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl">
                 <div>
                   <label className="label-field">Nazwa wyświetlana</label>
                   <input type="number" min="1" max="100000" value={limitForm.limit_display_name}

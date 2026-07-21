@@ -136,6 +136,7 @@ export default function LogsPage() {
               </button>
             ))}
           </div>
+          <p className="text-xs text-zinc-500 mb-3">{auditTotal} wpisów{auditType ? ` · typ: ${auditType}` : ''}{auditAction ? ` · akcja: ${auditAction}` : ''}</p>
           <div className="space-y-2">
             {auditLogs.length === 0 ? <div className="card p-8 text-center"><p className="text-zinc-400 text-sm">Brak logów</p></div> : auditLogs.map(l => (
               <div key={l.id} className="card p-4 hover:shadow-md transition-all">
@@ -286,6 +287,13 @@ export default function LogsPage() {
       {/* ─── WATCH ─── */}
       {tab === 'watch' && (
         <div className="card overflow-hidden">
+          <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
+            <div className="w-9 h-9 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center shrink-0">
+              <Eye className="w-4 h-4 text-violet-500" />
+            </div>
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Log wyświetleń</h3>
+            <span className="text-xs text-zinc-500 ml-auto">{watchMeta.total} wpisów</span>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead><tr className="border-b border-zinc-200 dark:border-zinc-800">
@@ -312,6 +320,13 @@ export default function LogsPage() {
       {/* ─── LOGIN ─── */}
       {tab === 'login' && (
         <div className="card overflow-hidden">
+          <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
+            <div className="w-9 h-9 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center shrink-0">
+              <LogIn className="w-4 h-4 text-violet-500" />
+            </div>
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Log logowań</h3>
+            <span className="text-xs text-zinc-500 ml-auto">{loginMeta.total} wpisów</span>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead><tr className="border-b border-zinc-200 dark:border-zinc-800">

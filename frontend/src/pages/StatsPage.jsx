@@ -63,13 +63,23 @@ export default function StatsPage() {
           <TrendingUp className="w-5 h-5 text-violet-500" /> Twoje statystyki
         </h2>
         <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl">
-            <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{stats.myStats.views}</p>
-            <p className="text-xs text-zinc-500">Obejrzanych filmów</p>
+          <div className="flex items-center gap-4 p-5 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl">
+            <div className="w-11 h-11 rounded-xl bg-violet-100 dark:bg-violet-500/15 flex items-center justify-center shrink-0">
+              <Eye className="w-5 h-5 text-violet-500" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display leading-tight">{stats.myStats.views}</p>
+              <p className="text-xs text-zinc-500">Obejrzanych filmów</p>
+            </div>
           </div>
-          <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl">
-            <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{stats.myStats.favorites}</p>
-            <p className="text-xs text-zinc-500">Ulubionych</p>
+          <div className="flex items-center gap-4 p-5 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl">
+            <div className="w-11 h-11 rounded-xl bg-pink-100 dark:bg-pink-500/15 flex items-center justify-center shrink-0">
+              <Heart className="w-5 h-5 text-pink-500" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display leading-tight">{stats.myStats.favorites}</p>
+              <p className="text-xs text-zinc-500">Ulubionych</p>
+            </div>
           </div>
         </div>
       </div>
