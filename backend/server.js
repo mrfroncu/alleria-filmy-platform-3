@@ -589,6 +589,9 @@ function completeTsSession(req, res, user, method) {
 const challengeMessage = (code) =>
   `🔐 Alleria Filmy — Twój kod logowania: ${code}\nWpisz go na stronie, aby dokończyć logowanie. Kod ważny 5 minut. Jeśli to nie Ty — zignoruj tę wiadomość.`;
 
+// Nickname the ServerQuery bot shows as sender instead of the raw query login (e.g. "serveradmin")
+const TS_BOT_NICKNAME = process.env.TS_BOT_NICKNAME || 'ALLERIA VIDEOS PLATFORM';
+
 // TS6 ServerQuery HTTP API — send the code to the matched client via private message
 async function sendTs6Code(tsBaseUrl, tsServerId, headers, clid, code) {
   try {
@@ -661,6 +664,12 @@ app.post('/api/auth/teamspeak', authLimiter, async (req, res) => {
     }
 
     console.log(`[TS6] Attempting auth for IP: ${cleanIp} via ${tsBaseUrl}/${tsServerId}`);
+
+    // Rename the ServerQuery bot so messages arrive from TS_BOT_NICKNAME, not the query login
+    try {
+      const nickRes = await fetch(`${tsBaseUrl}/${tsServerId}/clientupdate?client_nickname=${encodeURIComponent(TS_BOT_NICKNAME)}`, { headers });
+      if (!nickRes.ok) console.log(`[TS6] clientupdate nickname HTTP ${nickRes.status}`);
+    } catch (e) { console.log(`[TS6] clientupdate nickname failed: ${e.message}`); }
 
     // Step 1: Get client list
     const clientListRes = await fetch(`${tsBaseUrl}/${tsServerId}/clientlist`, { headers });
@@ -921,6 +930,11 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
     ts3 = await connectTS3(tsHost, tsPort);
     await ts3.send(`login ${tsUsername} ${tsPassword}`);
     await ts3.send(`use sid=${tsServerId}`);
+
+    // Rename the ServerQuery bot so messages/pokes arrive from TS_BOT_NICKNAME, not the query login
+    try {
+      await ts3.send(`clientupdate client_nickname=${ts3Escape(TS_BOT_NICKNAME)}`);
+    } catch (e) { console.log(`[TS3] clientupdate nickname failed: ${e.message}`); }
 
     const clLines = await ts3.send('clientlist -uid -ip');
     const clients = clLines.length > 0 ? ts3ParseLine(clLines[0]) : [];
