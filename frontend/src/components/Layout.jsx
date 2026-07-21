@@ -3,11 +3,12 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import {
-  Film, Shield, LogOut, Menu, X, Wrench, ChevronRight, ChevronDown,
+  Film, Shield, Menu, X, Wrench, ChevronRight, ChevronDown,
   Heart, Clock, BarChart3, User, FolderOpen, FileText, MessageSquarePlus
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
 import WatchPartyTab from './WatchPartyTab';
+import ProfileMenu from './ProfileMenu';
 
 const LOGO_URL = 'https://alleria.pl/image/favicon.png';
 
@@ -42,7 +43,7 @@ function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlu
 }
 
 export default function Layout({ children }) {
-  const { user, logout, isAdmin, isDev } = useAuth();
+  const { isAdmin, isDev } = useAuth();
   const location = useLocation();
   const mainRef = useRef(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -202,24 +203,8 @@ export default function Layout({ children }) {
           </div>
         </div>
 
-        {/* User card */}
+        {/* Version info */}
         <div className="p-4 relative z-10 shrink-0">
-          <div className="p-3 bg-zinc-50 dark:bg-white/5 rounded-2xl border border-zinc-200 dark:border-white/10 backdrop-blur-md">
-            <div className="flex items-center gap-3">
-              <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=6366f1&color=fff&size=80`} alt="" className="w-9 h-9 rounded-xl shadow-sm border border-zinc-200 dark:border-white/10 object-cover" />
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-bold text-zinc-900 dark:text-white truncate">{user?.display_name || user?.username}</p>
-                <p className="text-[10px] text-zinc-500 truncate font-mono flex items-center gap-1">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${user?.role === 'dev' ? 'bg-red-400' : user?.role === 'admin' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                  {user?.role?.toUpperCase()}
-                </p>
-              </div>
-              <button onClick={logout} className="p-1.5 rounded-lg text-zinc-400 hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 transition-all duration-300 shrink-0" title="Wyloguj">
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-          {/* Version info */}
           {versions.panel && (
             <div className="pt-2 text-[8px] text-zinc-400 dark:text-zinc-600 font-mono text-center">
               Panel & API: v{versions.panel} | Player:{' '}
@@ -233,14 +218,23 @@ export default function Layout({ children }) {
       </aside>
 
       <main ref={mainRef} className="flex-1 overflow-y-auto relative flex flex-col">
+        {/* Mobile top bar */}
         <div className="lg:hidden flex items-center justify-between p-4 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
           <div className="flex items-center gap-2.5">
             <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain" />
             <span className="font-bold text-zinc-900 dark:text-white font-display text-sm">ALLERIA FILMY</span>
           </div>
-          <button onClick={() => setSidebarOpen(true)} className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white">
-            <Menu className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <ProfileMenu compact />
+            <button onClick={() => setSidebarOpen(true)} className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white">
+              <Menu className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Desktop top bar */}
+        <div className="hidden lg:flex items-center justify-end px-8 py-3 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
+          <ProfileMenu />
         </div>
 
         <div className="flex-1">{children}</div>

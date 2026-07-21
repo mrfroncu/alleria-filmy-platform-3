@@ -125,13 +125,13 @@ export default function DateTimePicker({ value, onChange, label }) {
         <div className="absolute z-50 mt-2 w-[320px] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl shadow-zinc-900/20 dark:shadow-black/40 overflow-hidden" style={{ animation: 'slideUp 0.2s ease-out' }}>
           {/* Month/Year nav */}
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
-            <button type="button" onClick={prevMonth} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-zinc-900 dark:hover:text-white">
+            <button type="button" onClick={prevMonth} className="btn-icon-zinc">
               <ChevronLeft className="w-4 h-4" />
             </button>
             <span className="text-sm font-bold text-zinc-900 dark:text-white font-display">
               {MONTHS_PL[viewMonth]} {viewYear}
             </span>
-            <button type="button" onClick={nextMonth} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-zinc-900 dark:hover:text-white">
+            <button type="button" onClick={nextMonth} className="btn-icon-zinc">
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -205,7 +205,7 @@ export default function DateTimePicker({ value, onChange, label }) {
                 setMinute(m);
                 emitChange(now.getDate(), now.getMonth(), now.getFullYear(), h, m);
               }}
-              className="ml-auto text-[11px] font-bold text-violet-500 hover:text-violet-400 transition-colors"
+              className="btn-link-violet ml-auto text-[11px]"
             >
               Teraz
             </button>

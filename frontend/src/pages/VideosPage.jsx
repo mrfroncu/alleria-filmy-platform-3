@@ -102,7 +102,7 @@ export default function VideosPage() {
             <button
               onClick={handleResetProgress}
               disabled={resetting}
-              className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-xs text-zinc-400 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 font-medium transition-all disabled:opacity-50"
+              className="btn-link-red flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 text-zinc-400"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Resetuj postęp oglądania
@@ -125,8 +125,8 @@ export default function VideosPage() {
               className="input-field pl-14"
             />
             {search && (
-              <button onClick={() => setSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors">
-                <X className="w-4 h-4 text-zinc-400" />
+              <button onClick={() => setSearch('')} className="btn-icon-zinc !p-1 absolute right-4 top-1/2 -translate-y-1/2">
+                <X className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -181,7 +181,7 @@ export default function VideosPage() {
             <div className="flex items-center justify-between mb-4">
               <span className="label-field mb-0">Filtruj po tagach</span>
               {selectedTags.length > 0 && (
-                <button onClick={() => setSelectedTags([])} className="text-xs text-violet-500 font-bold hover:text-violet-400">
+                <button onClick={() => setSelectedTags([])} className="btn-link-violet">
                   Wyczyść
                 </button>
               )}
@@ -216,7 +216,7 @@ export default function VideosPage() {
         {hasActiveFilters && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-zinc-500 font-medium">Aktywne filtry:</span>
-            <button onClick={clearFilters} className="text-xs text-red-500 font-bold hover:text-red-400 transition-colors">
+            <button onClick={clearFilters} className="btn-link-red">
               Wyczyść wszystkie
             </button>
           </div>
@@ -334,7 +334,7 @@ export default function VideosPage() {
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="px-4 py-2 rounded-xl text-sm font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30 transition-all"
+                  className="page-btn px-4 py-2 rounded-xl text-sm font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30"
                 >
                   ← Poprzednia
                 </button>
@@ -353,7 +353,7 @@ export default function VideosPage() {
                         <button
                           key={p}
                           onClick={() => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                          className={`w-10 h-10 rounded-xl text-sm font-bold transition-all ${p === page ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}
+                          className={`page-btn w-10 h-10 rounded-xl text-sm font-bold ${p === page ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}
                         >
                           {p}
                         </button>
@@ -363,7 +363,7 @@ export default function VideosPage() {
                 <button
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="px-4 py-2 rounded-xl text-sm font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30 transition-all"
+                  className="page-btn px-4 py-2 rounded-xl text-sm font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30"
                 >
                   Następna →
                 </button>

@@ -31,6 +31,64 @@
   .btn-danger {
     @apply py-3 px-6 bg-red-600 text-white rounded-2xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-500/20 active:scale-[0.96] hover:-translate-y-0.5;
   }
+
+  /* Medium action buttons — save/cancel rows, modal CTAs, secondary CTAs */
+  .btn-sm-primary {
+    @apply py-2 px-4 bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white rounded-xl font-bold text-sm hover:from-violet-600 hover:to-fuchsia-600 transition-all shadow-md shadow-violet-500/20 active:scale-[0.95] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-sm-secondary {
+    @apply py-2 px-4 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-xl font-bold text-sm hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all active:scale-[0.95] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-sm-danger {
+    @apply py-2 px-4 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 transition-all shadow-md shadow-red-500/20 active:scale-[0.95] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-sm-success {
+    @apply py-2 px-4 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all shadow-md shadow-emerald-500/20 active:scale-[0.95] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Icon-only action buttons — edit/delete/save/refresh in tables & rows */
+  .btn-icon {
+    @apply p-1.5 rounded-lg flex items-center justify-center transition-all active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-icon-violet {
+    @apply btn-icon text-violet-500 hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400;
+  }
+  .btn-icon-indigo {
+    @apply btn-icon text-indigo-500 hover:bg-indigo-500/10 hover:text-indigo-600 dark:hover:text-indigo-400;
+  }
+  .btn-icon-red {
+    @apply btn-icon text-red-500 hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400;
+  }
+  .btn-icon-emerald {
+    @apply btn-icon text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400;
+  }
+  .btn-icon-zinc {
+    @apply btn-icon text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white;
+  }
+
+  /* Small neutral utility buttons — chips, nav-back, modal close */
+  .btn-ghost {
+    @apply px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 rounded-lg text-xs font-semibold hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-white transition-all active:scale-[0.95] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  /* Same compact footprint as .btn-ghost, for a confirm action inline in a dense toolbar */
+  .btn-ghost-primary {
+    @apply px-3 py-1.5 bg-violet-500 text-white rounded-lg text-xs font-semibold hover:bg-violet-600 transition-all active:scale-[0.95] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Text-only micro actions — comment Reply/Edit/Delete, "Clear filters" */
+  .btn-link {
+    @apply text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-link-violet {
+    @apply btn-link text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300;
+  }
+  .btn-link-red {
+    @apply btn-link text-red-500 hover:text-red-600 dark:hover:text-red-400;
+  }
+  .btn-link-zinc {
+    @apply btn-link text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white;
+  }
+
   .input-field {
     @apply w-full px-5 py-4 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl focus:outline-none focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500 transition-all font-medium text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-600;
   }

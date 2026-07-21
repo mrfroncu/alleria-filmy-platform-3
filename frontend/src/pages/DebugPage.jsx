@@ -426,7 +426,7 @@ export default function DebugPage() {
               </span>
             )}
           </h3>
-          <button onClick={loadLiveTranscoding} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl transition-all font-semibold">
+          <button onClick={loadLiveTranscoding} className="btn-ghost flex items-center gap-1.5">
             <RefreshCw className="w-3.5 h-3.5" /> Odśwież
           </button>
         </div>
@@ -488,7 +488,7 @@ export default function DebugPage() {
           <button
             onClick={loadStreamFiles}
             disabled={streamFilesLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl transition-all font-semibold"
+            className="btn-ghost flex items-center gap-1.5"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${streamFilesLoading ? 'animate-spin' : ''}`} />
             {streamFiles ? 'Odśwież' : 'Załaduj'}
@@ -535,7 +535,7 @@ export default function DebugPage() {
                 <div className="flex flex-wrap gap-2 mb-3">
                   <button
                     onClick={() => setSelectedFiles(allSelected ? new Set() : new Set(streamFiles.map(f => f.video_id)))}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 rounded-lg font-semibold transition-colors"
+                    className="btn-ghost flex items-center gap-1.5"
                   >
                     {allSelected ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
                     {allSelected ? 'Odznacz wszystko' : 'Zaznacz wszystko'}
@@ -619,7 +619,7 @@ export default function DebugPage() {
                         <button
                           onClick={e => { e.stopPropagation(); deleteSelectedFiles([f.video_id]); }}
                           disabled={deletingFiles}
-                          className="shrink-0 p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-40"
+                          className="btn-icon-red shrink-0"
                           title="Usuń ten plik"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -678,7 +678,7 @@ export default function DebugPage() {
                 Skanuj i wyczyść
               </button>
               {cleanupLog.length > 0 && (
-                <button onClick={() => setCleanupLog([])} className="text-xs font-bold text-zinc-500 hover:text-zinc-900 dark:hover:text-white">
+                <button onClick={() => setCleanupLog([])} className="btn-link-zinc">
                   Wyczyść logi
                 </button>
               )}
@@ -717,7 +717,7 @@ export default function DebugPage() {
           <button
             onClick={loadWatchParties}
             disabled={wpLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl transition-all font-semibold"
+            className="btn-ghost flex items-center gap-1.5"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${wpLoading ? 'animate-spin' : ''}`} />
             Odśwież
@@ -780,7 +780,7 @@ export default function DebugPage() {
                       await api.forceDeleteWatchParty(p.code).catch(() => {});
                       loadWatchParties();
                     }}
-                    className="shrink-0 p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all"
+                    className="btn-icon-red shrink-0"
                     title="Usuń party"
                   >
                     <Trash2 className="w-4 h-4" />

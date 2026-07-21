@@ -85,7 +85,7 @@ export default function LogsPage() {
       <span className="text-xs text-zinc-500">Strona {meta.page} z {meta.totalPages} ({meta.total} rekordów)</span>
       <div className="flex gap-1">
         {Array.from({ length: Math.min(meta.totalPages, 10) }, (_, i) => i + 1).map(p => (
-          <button key={p} onClick={() => onPage(p)} className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${p === meta.page ? 'bg-violet-500 text-white' : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>{p}</button>
+          <button key={p} onClick={() => onPage(p)} className={`page-btn w-8 h-8 rounded-lg text-xs font-bold ${p === meta.page ? 'bg-violet-500 text-white' : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>{p}</button>
         ))}
         {meta.totalPages > 10 && <span className="text-xs text-zinc-400 px-2">...</span>}
       </div>
@@ -158,7 +158,7 @@ export default function LogsPage() {
           {auditPages > 1 && (
             <div className="flex justify-center gap-2 mt-4">
               {Array.from({ length: auditPages }, (_, i) => i + 1).slice(Math.max(0, auditPage - 3), auditPage + 2).map(p => (
-                <button key={p} onClick={() => setAuditPage(p)} className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${p === auditPage ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>{p}</button>
+                <button key={p} onClick={() => setAuditPage(p)} className={`page-btn w-8 h-8 rounded-xl text-xs font-bold ${p === auditPage ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>{p}</button>
               ))}
             </div>
           )}
@@ -221,7 +221,7 @@ export default function LogsPage() {
             <div className="ml-auto">
               <button
                 onClick={() => { if (!confirm('Wyczyścić logi Watch Party?')) return; api.clearWatchPartyLogs(wpCodeFilter).then(() => loadWpLogs(1)); }}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 rounded-xl transition-all font-semibold"
+                className="btn-link-red flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-red-500/10"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 {wpCodeFilter ? `Wyczyść ${wpCodeFilter}` : 'Wyczyść wszystkie'}

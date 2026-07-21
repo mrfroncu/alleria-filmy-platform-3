@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FolderOpen, Plus, Pencil, Trash2, Users, Shield } from 'lucide-react';
 import { api } from '../utils/api';
 import { buildCategoryTreeOptions, formatDate } from '../utils/helpers';
+import { roleBadgeClass } from '../utils/roleColors';
 
 export default function ManagePage() {
   const [tab, setTab] = useState('categories');
@@ -215,7 +216,7 @@ export default function ManagePage() {
                 {editingCat ? <Pencil className="w-5 h-5 text-violet-500" /> : <Plus className="w-5 h-5 text-violet-500" />}
               </div>
               <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display">{editingCat ? `Edycja: ${editingCat.name}` : 'Nowa kategoria'}</h2>
-              {editingCat && <button onClick={resetForm} className="ml-auto text-xs text-zinc-400 hover:text-zinc-600 transition-colors">Anuluj edycję</button>}
+              {editingCat && <button onClick={resetForm} className="btn-link-zinc ml-auto">Anuluj edycję</button>}
             </div>
 
             <div className="space-y-4">
@@ -339,7 +340,7 @@ export default function ManagePage() {
                 <Shield className="w-5 h-5 text-indigo-500" />
               </div>
               <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display">{editingRank ? `Edycja rangi: ${editingRank.name}` : 'Nowa ranga'}</h2>
-              {editingRank && <button onClick={resetRankForm} className="ml-auto text-xs text-zinc-400 hover:text-zinc-600 transition-colors">Anuluj edycję</button>}
+              {editingRank && <button onClick={resetRankForm} className="btn-link-zinc ml-auto">Anuluj edycję</button>}
             </div>
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -362,8 +363,8 @@ export default function ManagePage() {
                         {r.description && <span className="text-xs text-zinc-400 ml-2">{r.description}</span>}
                       </div>
                       <span className="text-[10px] font-mono text-zinc-400">ID:{r.id}</span>
-                      <button onClick={() => { setEditingRank(r); setRankName(r.name); setRankDesc(r.description || ''); setRankColor(r.color || '#6366f1'); }} className="p-1.5 hover:bg-indigo-100 dark:hover:bg-indigo-500/10 rounded-lg text-zinc-400 hover:text-indigo-500 transition-all"><Pencil className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => deleteRank(r)} className="p-1.5 hover:bg-red-100 dark:hover:bg-red-500/10 rounded-lg text-zinc-400 hover:text-red-500 transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => { setEditingRank(r); setRankName(r.name); setRankDesc(r.description || ''); setRankColor(r.color || '#6366f1'); }} className="btn-icon-indigo"><Pencil className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => deleteRank(r)} className="btn-icon-red"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
                 </div>
@@ -411,10 +412,10 @@ export default function ManagePage() {
                           </div>
                         )}
                       </div>
-                      <button onClick={() => startEdit(cat)} className="p-2 hover:bg-violet-100 dark:hover:bg-violet-500/10 rounded-xl text-zinc-400 hover:text-violet-500 transition-all hover:scale-110">
+                      <button onClick={() => startEdit(cat)} className="btn-icon-violet">
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button onClick={() => deleteCategory(cat)} className="p-2 hover:bg-red-100 dark:hover:bg-red-500/10 rounded-xl text-zinc-400 hover:text-red-500 transition-all hover:scale-110">
+                      <button onClick={() => deleteCategory(cat)} className="btn-icon-red">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -454,8 +455,8 @@ export default function ManagePage() {
                       setUserRanks(prev => ({ ...prev, [editingUserRanks.userId]: editingUserRanks.rankIds }));
                       setEditingUserRanks(null);
                     } catch (err) { alert('Błąd: ' + err.message); }
-                  }} className="text-xs px-3 py-1.5 bg-indigo-500 text-white rounded-lg font-medium hover:bg-indigo-600 transition-colors">Zapisz</button>
-                  <button onClick={() => setEditingUserRanks(null)} className="text-xs px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded-lg font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">Anuluj</button>
+                  }} className="btn-ghost-primary">Zapisz</button>
+                  <button onClick={() => setEditingUserRanks(null)} className="btn-ghost">Anuluj</button>
                 </div>
               </div>
             </div>
@@ -514,11 +515,7 @@ export default function ManagePage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex px-2 py-0.5 rounded-lg text-[10px] font-bold ${
-                          u.role === 'dev' ? 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300' :
-                          u.role === 'admin' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' :
-                          'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'
-                        }`}>{u.role?.toUpperCase()}</span>
+                        <span className={`inline-flex px-2 py-0.5 rounded-lg text-[10px] font-bold border ${roleBadgeClass(u.role)}`}>{u.role?.toUpperCase()}</span>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1 max-w-[200px]">
@@ -551,7 +548,7 @@ export default function ManagePage() {
                               <span key={r.id} className="text-[10px] font-medium px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: r.color }}>{r.name}</span>
                             ))}
                             <button onClick={() => setEditingUserRanks({ userId: u.id, name: u.display_name || u.username, rankIds: [...assignedRankIds] })}
-                              className="p-0.5 hover:bg-indigo-100 dark:hover:bg-indigo-500/10 rounded text-zinc-400 hover:text-indigo-500 transition-all ml-0.5" title="Edytuj rangi">
+                              className="btn-icon-indigo !p-0.5 ml-0.5" title="Edytuj rangi">
                               <Pencil className="w-3 h-3" />
                             </button>
                           </div>
@@ -569,7 +566,7 @@ export default function ManagePage() {
                               setAllUsers(prev => prev.filter(x => x.id !== u.id));
                             } catch (err) { alert('Błąd: ' + err.message); }
                           }}
-                          className="p-1.5 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+                          className="btn-icon-red"
                           title="Usuń konto"
                         >
                           <Trash2 className="w-3.5 h-3.5" />

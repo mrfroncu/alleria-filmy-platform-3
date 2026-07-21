@@ -171,8 +171,8 @@ export default function AdminPage() {
                   <option value="custom">Niestandardowe</option>
                 </select>
               )}
-              <button onClick={handleBulkAction} disabled={!bulkAction} className="btn-primary !py-2 text-sm">Wykonaj</button>
-              <button onClick={() => { setSelectedIds([]); setBulkAction(''); }} className="text-xs font-bold text-zinc-500 hover:text-zinc-900 dark:hover:text-white">Anuluj</button>
+              <button onClick={handleBulkAction} disabled={!bulkAction} className="btn-sm-primary">Wykonaj</button>
+              <button onClick={() => { setSelectedIds([]); setBulkAction(''); }} className="btn-link-zinc">Anuluj</button>
             </div>
           )}
 
@@ -247,10 +247,10 @@ export default function AdminPage() {
                         <td className="px-4 py-3 text-xs text-zinc-500 font-mono whitespace-nowrap">{formatDate(video.publish_date)}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => { setEditingVideo(video); setIsModalOpen(true); }} className="p-1.5 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-lg transition-colors text-zinc-400 hover:text-violet-500 dark:hover:text-violet-400">
+                            <button onClick={() => { setEditingVideo(video); setIsModalOpen(true); }} className="btn-icon-violet">
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
-                            <button onClick={() => setDeleteConfirm(video)} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors text-zinc-400 hover:text-red-600 dark:hover:text-red-400">
+                            <button onClick={() => setDeleteConfirm(video)} className="btn-icon-red">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
@@ -297,7 +297,7 @@ export default function AdminPage() {
                             </div>
                           </>
                         ) : (
-                          <button onClick={() => handleDeleteTag(tag.id)} className="p-1.5 hover:bg-red-100 dark:hover:bg-red-500/20 rounded-lg transition-colors text-zinc-400 hover:text-red-500">
+                          <button onClick={() => handleDeleteTag(tag.id)} className="btn-icon-red">
                             <X className="w-3.5 h-3.5" />
                           </button>
                         )}

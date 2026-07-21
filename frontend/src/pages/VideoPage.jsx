@@ -122,8 +122,8 @@ function CommentNode({ c, depth, replies, user, editingId, editContent, setEditC
             <div className="space-y-2" onClick={e => e.stopPropagation()}>
               <textarea value={editContent} onChange={e => setEditContent(e.target.value)} className="input-field !py-2 !px-3 text-sm resize-none" rows={2} autoFocus />
               <div className="flex items-center gap-2">
-                <button onClick={() => onSaveEdit(c.id)} className="p-1.5 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg transition-all hover:scale-110"><Check className="w-4 h-4" /></button>
-                <button onClick={onCancelEdit} className="p-1.5 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-all hover:scale-110"><X className="w-4 h-4" /></button>
+                <button onClick={() => onSaveEdit(c.id)} className="btn-icon-emerald"><Check className="w-4 h-4" /></button>
+                <button onClick={onCancelEdit} className="btn-icon-zinc"><X className="w-4 h-4" /></button>
                 {isDev && <label className="flex items-center gap-1.5 text-[10px] text-amber-500 cursor-pointer ml-2 select-none"><input type="checkbox" checked={silentEdit} onChange={e => setSilentEdit(e.target.checked)} className="w-3 h-3 rounded" /> Ciche</label>}
               </div>
             </div>
@@ -136,12 +136,12 @@ function CommentNode({ c, depth, replies, user, editingId, editContent, setEditC
           )}
           {!isEditing && !isDeleted && (
             <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-all">
-              <button onClick={() => onReply(c)} className="text-[11px] text-zinc-400 hover:text-violet-500 px-2 py-1 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-all flex items-center gap-1"><Reply className="w-3 h-3" /> Odpowiedz</button>
-              {(c.user_id === user?.id || isDev) && <button onClick={() => onStartEdit(c)} className="text-[11px] text-zinc-400 hover:text-amber-500 px-2 py-1 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-all flex items-center gap-1"><Pencil className="w-3 h-3" /> Edytuj</button>}
-              {canMod && <button onClick={() => onDelete(c.id)} className="text-[11px] text-zinc-400 hover:text-red-500 px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-all flex items-center gap-1"><Trash2 className="w-3 h-3" /> Usuń</button>}
+              <button onClick={() => onReply(c)} className="btn-link-zinc hover:text-violet-500 px-2 py-1 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-500/10 flex items-center gap-1 text-[11px]"><Reply className="w-3 h-3" /> Odpowiedz</button>
+              {(c.user_id === user?.id || isDev) && <button onClick={() => onStartEdit(c)} className="btn-link-zinc hover:text-amber-500 px-2 py-1 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-500/10 flex items-center gap-1 text-[11px]"><Pencil className="w-3 h-3" /> Edytuj</button>}
+              {canMod && <button onClick={() => onDelete(c.id)} className="btn-link-red px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-1 text-[11px]"><Trash2 className="w-3 h-3" /> Usuń</button>}
             </div>
           )}
-          {isDeleted && isDev && <button onClick={() => onHardDelete(c.id)} className="text-[10px] text-red-400 hover:text-red-500 mt-1 transition-colors">Usuń całkowicie{replies.length > 0 ? ` (+ ${replies.length} odp.)` : ''}</button>}
+          {isDeleted && isDev && <button onClick={() => onHardDelete(c.id)} className="btn-link-red mt-1 text-[10px]">Usuń całkowicie{replies.length > 0 ? ` (+ ${replies.length} odp.)` : ''}</button>}
         </div>
       </div>
       {replies.map(r => <CommentNode key={r.id} c={r} depth={depth + 1} replies={r._replies || []} user={user} editingId={editingId} editContent={editContent} setEditContent={setEditContent} silentEdit={silentEdit} setSilentEdit={setSilentEdit} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete} editHistoryId={editHistoryId} setEditHistoryId={setEditHistoryId} />)}
@@ -440,8 +440,8 @@ export default function VideoPage() {
         {showResumeBanner && resumePosition !== null && (
           <div className="mb-6 flex items-center gap-3 px-4 py-3 bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 rounded-2xl animate-scale-in">
             <span className="text-sm text-violet-700 dark:text-violet-300 font-medium flex-1">Kontynuuj od {Math.floor(resumePosition / 60)}:{String(Math.floor(resumePosition % 60)).padStart(2, '0')}?</span>
-            <button onClick={() => { playerControlRef.current?.seek(resumePosition); setShowResumeBanner(false); }} className="px-4 py-1.5 bg-violet-500 text-white text-sm font-bold rounded-xl hover:bg-violet-600 transition-colors">Kontynuuj</button>
-            <button onClick={() => setShowResumeBanner(false)} className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-sm font-bold rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">Od początku</button>
+            <button onClick={() => { playerControlRef.current?.seek(resumePosition); setShowResumeBanner(false); }} className="btn-sm-primary">Kontynuuj</button>
+            <button onClick={() => setShowResumeBanner(false)} className="btn-sm-secondary">Od początku</button>
           </div>
         )}
 
@@ -481,7 +481,7 @@ export default function VideoPage() {
                 <select value={devUserId} onChange={e => setDevUserId(e.target.value)} className="input-field !py-2 text-xs"><option value="">Użytkownik...</option>{allUsers.map(u => <option key={u.id} value={u.id}>{u.display_name || u.username}</option>)}</select>
                 <input type="datetime-local" value={devDate} onChange={e => setDevDate(e.target.value)} className="input-field !py-2 text-xs" />
                 <input type="text" value={devParent} onChange={e => setDevParent(e.target.value)} className="input-field !py-2 text-xs" placeholder="Parent ID" />
-                <button onClick={submitDev} disabled={!devUserId || !devContent.trim()} className="btn-primary !py-2 text-xs">Dodaj</button>
+                <button onClick={submitDev} disabled={!devUserId || !devContent.trim()} className="btn-sm-primary">Dodaj</button>
               </div>
               <textarea value={devContent} onChange={e => setDevContent(e.target.value)} className="input-field !py-2 text-sm resize-none" rows={2} placeholder="Treść..." />
             </div>
@@ -489,7 +489,7 @@ export default function VideoPage() {
           {replyTo && (
             <div className="flex items-center gap-2 mb-3 p-2 bg-violet-50 dark:bg-violet-500/10 rounded-xl text-sm animate-scale-in">
               <Reply className="w-4 h-4 text-violet-500" /><span className="text-violet-600 dark:text-violet-400">Odpowiedź do <strong>{replyTo.display_name || replyTo.username}</strong></span>
-              <button onClick={() => setReplyTo(null)} className="ml-auto p-1 hover:bg-violet-100 dark:hover:bg-violet-500/20 rounded-lg"><X className="w-3.5 h-3.5 text-violet-500" /></button>
+              <button onClick={() => setReplyTo(null)} className="btn-icon-violet !p-1 ml-auto"><X className="w-3.5 h-3.5" /></button>
             </div>
           )}
           <div className="flex gap-3 mb-6">

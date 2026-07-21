@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
+import { roleBadgeClass } from '../utils/roleColors';
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState(null);
@@ -49,12 +50,6 @@ export default function ProfilePage() {
   }
 
   if (!profile) return null;
-
-  const roleColors = {
-    dev: 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 border-red-200 dark:border-red-500/20',
-    admin: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/20',
-    member: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/20',
-  };
 
   return (
     <div className="p-6 sm:p-10 max-w-3xl mx-auto page-enter">
@@ -105,7 +100,7 @@ export default function ProfilePage() {
               <>
                 <div className="flex items-center gap-3 mb-2">
                   <h2 className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{profile.display_name}</h2>
-                  <span className={`inline-flex px-3 py-1 rounded-xl text-xs font-bold border ${roleColors[profile.role] || roleColors.member}`}>
+                  <span className={`inline-flex px-3 py-1 rounded-xl text-xs font-bold border ${roleBadgeClass(profile.role)}`}>
                     {profile.role?.toUpperCase()}
                   </span>
                 </div>
@@ -115,7 +110,7 @@ export default function ProfilePage() {
                 ) : (
                   <p className="text-sm text-zinc-400 italic mb-4">Brak opisu — kliknij edytuj, żeby dodać.</p>
                 )}
-                <button onClick={() => setEditing(true)} className="inline-flex items-center gap-2 text-sm font-bold text-violet-500 dark:text-violet-400 hover:text-violet-500 transition-colors">
+                <button onClick={() => setEditing(true)} className="btn-link-violet inline-flex items-center gap-2 text-sm">
                   <Pencil className="w-4 h-4" /> Edytuj profil
                 </button>
               </>
