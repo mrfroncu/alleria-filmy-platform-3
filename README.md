@@ -1,43 +1,56 @@
-# ALLERIA FILMY
+<div align="center">
 
-Prywatna platforma wideo dla społeczności [Alleria.pl](https://alleria.pl) z uwierzytelnianiem Discord/TeamSpeak 3/6, zarządzaniem filmami, self-hosted streamingiem HLS z szyfrowaniem AES-128, kategoriami z podkategoriami i własnym systemem rang, kontrolą dostępu opartą na rolach, komentarzami, planowanymi publikacjami z powiadomieniami na Discordzie oraz Watch Party — synchronicznym wspólnym oglądaniem w czasie rzeczywistym.
+# 🎬 ALLERIA FILMY
 
-![Panel v3.22.0](https://img.shields.io/badge/Panel-v3.22.0-f43f5e) ![Streaming v1.9.4](https://img.shields.io/badge/Streaming-v1.9.4-10b981)
+**Prywatna platforma wideo społeczności [Alleria.pl](https://alleria.pl)**
 
-> Odznaki wersji są utrzymywane ręcznie — źródło prawdy to `backend/versions.js` / `streaming/versions.js` oraz `GET /api/version`. Przy podbijaniu wersji pamiętaj o aktualizacji też tutaj.
+![Panel v3.22.0](https://img.shields.io/badge/Panel-v3.22.0-f43f5e) ![Streaming v1.9.4](https://img.shields.io/badge/Streaming-v1.9.4-10b981) ![License: Private](https://img.shields.io/badge/license-private-lightgrey)
 
-## Spis treści
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white) ![Node](https://img.shields.io/badge/Node-20-339933?logo=node.js&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-better--sqlite3-003B57?logo=sqlite&logoColor=white)
 
-- [Funkcjonalności](#funkcjonalności)
-- [Role i dostęp do stron](#role-i-dostęp-do-stron)
-- [Architektura](#architektura)
-- [Wymagania](#wymagania)
-- [Instalacja](#instalacja)
-- [Konfiguracja `.env`](#konfiguracja-env)
-- [Ustawienia w aplikacji (Dev Tools → Ustawienia)](#ustawienia-w-aplikacji-dev-tools--ustawienia)
-- [Streaming na osobnym serwerze](#streaming-na-osobnym-serwerze)
-- [Struktura plików](#struktura-plików)
-- [Baza danych (SQLite)](#baza-danych-sqlite)
-- [API Endpoints](#api-endpoints)
-- [Technologie](#technologie)
-- [Licencja](#licencja)
+</div>
 
-## Funkcjonalności
+---
 
-### Uwierzytelnianie
+Uwierzytelnianie Discord/TeamSpeak 3/6, zarządzanie filmami, self-hosted streaming HLS z szyfrowaniem AES-128, kategorie z podkategoriami i własnym systemem rang, kontrola dostępu oparta na rolach, komentarze, planowane publikacje z powiadomieniami na Discordzie oraz Watch Party — synchroniczne wspólne oglądanie w czasie rzeczywistym.
+
+> [!NOTE]
+> Odznaki wersji na górze są utrzymywane ręcznie — źródło prawdy to `backend/versions.js` / `streaming/versions.js` oraz `GET /api/version`. Przy podbijaniu wersji pamiętaj o aktualizacji też tutaj.
+
+## 📑 Spis treści
+
+- [✨ Funkcjonalności](#-funkcjonalności)
+- [👥 Role i dostęp do stron](#-role-i-dostęp-do-stron)
+- [📐 Architektura](#-architektura)
+- [✅ Wymagania](#-wymagania)
+- [🚀 Instalacja](#-instalacja)
+- [🔧 Konfiguracja `.env`](#-konfiguracja-env)
+- [📋 Ustawienia w aplikacji](#-ustawienia-w-aplikacji-dev-tools--ustawienia)
+- [🌐 Streaming na osobnym serwerze](#-streaming-na-osobnym-serwerze)
+- [📦 Struktura plików](#-struktura-plików)
+- [💾 Baza danych (SQLite)](#-baza-danych-sqlite)
+- [🔌 API Endpoints](#-api-endpoints)
+- [🧱 Technologie](#-technologie)
+- [📄 Licencja](#-licencja)
+
+---
+
+## ✨ Funkcjonalności
+
+### 🔐 Uwierzytelnianie
 - **Discord OAuth2** — logowanie przez Discord, sprawdzanie ról, automatyczne przypisywanie uprawnień (member/admin/dev)
 - **TeamSpeak 6** — logowanie przez ServerQuery HTTP API (domyślny port 10080), dopasowanie po IP klienta, sprawdzanie grup serwera
 - **TeamSpeak 3** — logowanie przez ServerQuery po TCP (domyślny port 10011), ta sama logika dopasowania po IP i grupach co TS6, ale osobna implementacja protokołu
 - **Własny nick bota ServerQuery** — kod logowania wysyłany na TS3/TS6 przychodzi od skonfigurowanej nazwy (`TS_BOT_NICKNAME`, domyślnie „ALLERIA VIDEOS PLATFORM”), a nie od „serveradmin”
 - **Redirect po logowaniu** — niezalogowany użytkownik wchodzący na `/video/24` zostaje przekierowany na login, a po zalogowaniu wraca na `/video/24`
 
-### Smart wyszukiwanie
+### 🔍 Smart wyszukiwanie
 - **Cmd/Ctrl+K** — command palette z wyszukiwaniem tytułów, opisów, autorów i tagów filmów, dynamicznie i na żywo
 - **Wyszukiwanie stron i funkcji** — Profil, Historia, Ustawienia itd. też są wyszukiwalne; redaktorzy i deweloperzy widzą więcej wyników (dopasowanych do swoich uprawnień)
 - **Dopasowanie tagów odporne na interpunkcję** — np. zapytanie „REPO” znajdzie tag „R.E.P.O.”, ale „GTA VI” celowo **nie** dopasuje „GTA V”
 - **Górny pasek (tytuł + wyszukiwarka + profil)** można całkowicie wyłączyć w Dev Tools → Ustawienia — wtedy strony wracają do własnych, dużych nagłówków, a profil użytkownika trafia z powrotem do lewego dolnego rogu sidebaru
 
-### Filmy
+### 🎬 Filmy
 - **YouTube/Embed** — wklejanie linków YouTube z auto-konwersją na embed i smart thumbnailami
 - **Self-hosted streaming** — upload plików wideo (do 6GB), chunked upload (50MB kawałki dla Cloudflare Tunnel), transkodowanie HLS multi-quality (1080p/720p/480p/360p)
 - **Szyfrowanie AES-128** — pliki HLS szyfrowane, klucze dostarczane z tokenem sesji
@@ -47,7 +60,7 @@ Prywatna platforma wideo dla społeczności [Alleria.pl](https://alleria.pl) z u
 - **Progres uploadu** — podwójny progress bar: całość + bieżący chunk
 - **Auto-transkodowanie** — backend co 30s sprawdza status, redaktor widzi % postępu i aktualną jakość
 
-### Watch Party *(BETA)*
+### 🎉 Watch Party *(BETA)*
 - **Wspólne oglądanie** — synchronizacja odtwarzania w czasie rzeczywistym przez WebSocket
 - **Tworzenie/dołączanie** — 6-znakowy kod zaproszenia lub link; slide-out panel dostępny z każdej strony
 - **Kolejka filmów** — dodawanie filmów z biblioteki do wspólnej kolejki z wyborem źródła; host może zarządzać kolejką
@@ -59,67 +72,70 @@ Prywatna platforma wideo dla społeczności [Alleria.pl](https://alleria.pl) z u
 - **Auto-dołączanie** — wejście na `/watch-party?join=KOD` automatycznie dołącza do party
 - **Informacje o rozłączeniu** — osobne ekrany dla wyrzucenia i zakończenia party
 
-### Ochrona DRM
+### 🛡️ Ochrona DRM
 - Szyfrowanie AES-128 HLS
 - Header `Permissions-Policy: display-capture=()`
 - Watermark z nazwą użytkownika
 - Blokada: devtools, right-click, PrintScreen, PiP, keyboard shortcuts
 - Pauza przy utracie focusu okna
 
-### Komentarze
+### 💬 Komentarze
 - Komentarze pod każdym filmem z obsługą wątków (odpowiedzi)
 - Edycja własnych komentarzy z historią edycji
 - Soft-delete (usunięty komentarz zachowany dla integralności wątku)
 - Hard-delete i ciche edycje dla deweloperów (bez śladu)
 - Komentarze redaktora wstawiane przez panel Debug Tools
 
-### Rangi aplikacji (App Ranks)
+### 🏅 Rangi aplikacji (App Ranks)
 - Własne rangi niezależne od ról Discord — nazwa, kolor, opcjonalny opis
 - Rangi **same w sobie nie dają dostępu do niczego** — dopiero kategoria musi jawnie wskazać, które rangi mają dostęp jako widz lub redaktor
 - Przypisywanie rang użytkownikom w „Zarządzanie” → Użytkownicy (dev only)
 - Zarządzanie rangami (tworzenie/edycja/usuwanie) w „Zarządzanie” → Kategorie
 
-### Kategorie i podkategorie
+### 🗂️ Kategorie i podkategorie
 - Drzewo kategorii z podkategoriami (`parent_id`) w sidebarze, filtrowanie filmów po kategorii, badge kategorii na kafelkach
 - Kontrola dostępu **osobno dla widza i redaktora**, niezależnie skonfigurowana jednym z trybów: publiczny / role Discord / rangi aplikacji / ręczna lista użytkowników
 - Puste role widzów = kategoria publiczna dla wszystkich zalogowanych
 - **Powiadomienia webhook Discord** — każda kategoria może mieć własny webhook URL i szablon wiadomości z placeholderami `{title}`, `{author}`, `{category}`, `{description}`, `{date}`, `{id}`, `{url}`; wysyłane automatycznie, gdy film osiąga swoją datę publikacji; chronione SSRF-guardem (przełącznik „Ograniczenie domen webhooków” w Ustawieniach ogranicza cele do domen Discorda)
 - Zarządzanie w „Zarządzanie” (dev only) — tworzenie, edycja, usuwanie, ustawianie dostępu i webhooka
 
-### Uprawnienia per-film
+### 🔑 Uprawnienia per-film
 - **Z kategorii** — dostęp wynika z uprawnień kategorii
 - **Niestandardowe** — ręczna lista użytkowników z checkboxami
 - Filmy z custom access ukryte przed użytkownikami bez dostępu
 
-### Nawigacja kontekstowa
+### 🧭 Nawigacja kontekstowa
 - Prev/next w ramach kategorii lub wszystkich filmów
 - Sidebar podświetla kategorię, z której przyszedłeś
 - „Wróć do kategorii” / „Wróć do bazy” — zależnie od kontekstu
 
-### Panel Redaktora
+### 🛠️ Panel Redaktora
 - **Biblioteka** — tabela filmów z kolumnami: checkbox, ID, tytuł, autor, kategoria, dostęp, data, akcje
 - **Bulk actions** — seryjne: zmiana kategorii, autora, uprawnień, usuwanie
 - **Tagi** — zarządzanie tagami
 - **Status transkodowania** — auto-polling co 15s, badge z % i jakością
 - Zarządzanie kategoriami, użytkownikami i rangami **nie** znajduje się tutaj — patrz sekcja „Zarządzanie” niżej; logi mają też własną, osobną stronę
 
-### Zarządzanie *(dev only)*
+### ⚙️ Zarządzanie *(dev only)*
 - **Kategorie** — drzewo z podkategoriami, osobny tryb dostępu widz/redaktor (publiczny / role Discord / rangi / lista użytkowników), konfiguracja webhooka Discord per kategoria
 - **Użytkownicy** — podgląd roli i metody logowania, przypisywanie rang aplikacji, podgląd dostępu widza/redaktora per kategoria
 
-### Logi systemowe *(dev only)*
+### 📜 Logi systemowe *(dev only)*
 - Cztery zakładki: **Audit Log** (historia akcji redaktorów/deweloperów), **Watch Party** (utworzenia/zakończenia/dołączenia/akcje odtwarzacza), **Wyświetlenia**, **Logowania**
 - Filtrowanie i paginacja (liczba wpisów na stronę konfigurowalna w Ustawieniach)
 - Czyszczenie logów osobno dla każdego typu
 
-### Dev Tools *(dev only)*
+### 🧰 Dev Tools *(dev only)*
 - **Streaming** — statystyki serwera streamingu, menedżer plików, aktywne transkodowania na żywo
 - **Administracyjne** — zarządzanie aktywnymi Watch Party (wymuszone usuwanie), ręczne tworzenie kont użytkowników
 - **Kategorie** — narzędzie „Sprawdź uprawnienia”: lista użytkowników z dostępem do wybranej kategorii/filmu wraz z powodem dostępu (rola, ranga, publiczna, custom itd.)
 - **Ustawienia** — patrz sekcja niżej
 - **Debug** — konsola SQL, statystyki bazy, eksport/import bazy JSON, czyszczenie bazy danych
 
-### Inne
+> [!WARNING]
+> Czyszczenie bazy danych, hard-delete komentarzy i konsola SQL w Dev Tools są nieodwracalne i celują bezpośrednio w produkcyjną bazę — używaj ostrożnie i tylko z rolą `dev`.
+
+### 🎁 Inne
 - **Ulubione** — serduszko na filmie, strona ulubionych
 - **Historia** — nieograniczona historia obejrzanych filmów, grupowana po dacie
 - **Kontynuuj oglądanie** — zapamiętana pozycja odtwarzania per film i użytkownik
@@ -128,44 +144,52 @@ Prywatna platforma wideo dla społeczności [Alleria.pl](https://alleria.pl) z u
 - **Wersjonowanie** — numer wersji panelu i playera widoczny w sidebarze (`Panel: vX.X.X | Player: vX.X.X`), ze statusem kompatybilności streamera
 - **Kalendarz** — DateTimePicker z polskim kalendarzem, DD/MM/YYYY, 24h, przycisk „Teraz”
 
-## Role i dostęp do stron
+---
+
+## 👥 Role i dostęp do stron
 
 | Strona | Trasa | Wymagana rola |
-|--------|-------|----------------|
-| Baza filmów, film, ulubione, historia, autor, tag, Watch Party, profil | `/`, `/video/:id`, `/favorites`, `/history`, `/author/:id`, `/tag/:id`, `/watch-party`, `/profile` | zalogowany (member+) |
-| Panel Redaktora | `/admin` | admin, dev |
-| Statystyki | `/stats` | admin, dev |
-| Zarządzanie | `/manage` | dev |
-| Logi systemowe | `/logs` | dev |
-| Dev Tools | `/debug` | dev |
+|--------|-------|:---:|
+| Baza filmów, film, ulubione, historia, autor, tag, Watch Party, profil | `/`, `/video/:id`, `/favorites`, `/history`, `/author/:id`, `/tag/:id`, `/watch-party`, `/profile` | `member+` |
+| 🛠️ Panel Redaktora | `/admin` | `admin`, `dev` |
+| 📊 Statystyki | `/stats` | `admin`, `dev` |
+| ⚙️ Zarządzanie | `/manage` | `dev` |
+| 📜 Logi systemowe | `/logs` | `dev` |
+| 🧰 Dev Tools | `/debug` | `dev` |
 
 Role przypisywane są automatycznie na podstawie ról Discord (`DISCORD_MEMBER_ROLE_ID` / `DISCORD_ADMIN_ROLE_ID` / `DISCORD_DEV_ROLE_ID`) lub grup TeamSpeak (`TS_MEMBER_GROUP_ID` / `TS_ADMIN_GROUP_ID`), niezależnie od rang aplikacji (App Ranks), które służą wyłącznie do dostępu per kategoria.
 
-## Architektura
+---
 
-```
-┌─────────────────────────────────────────────────────┐
-│  Frontend (React 18 + Tailwind + Vite)              │
-│  SPA — sidebar layout, responsive                   │
-├─────────────────────────────────────────────────────┤
-│  Backend (Express.js + SQLite)                      │
-│  REST API, session auth, WebSocket Watch Party,     │
-│  reverse proxy to streaming                         │
-├─────────────────────────────────────────────────────┤
-│  Streaming Service (Express + FFmpeg)               │
-│  Chunked upload, HLS transcoding, AES-128 encryption│
-│  Może być na osobnym serwerze (Tailscale/VPN)       │
-└─────────────────────────────────────────────────────┘
+## 📐 Architektura
+
+```mermaid
+flowchart TB
+    User(["👤 Użytkownik"]) --> FE
+
+    FE["🖥️ <b>Frontend</b><br/>React 18 + Tailwind + Vite<br/>SPA, sidebar layout, responsive"]
+    FE --> BE
+
+    BE["⚙️ <b>Backend</b><br/>Express.js + SQLite<br/>REST API · sesje · WebSocket Watch Party · reverse proxy"]
+    BE --> ST
+
+    ST["🎞️ <b>Streaming Service</b><br/>Express + FFmpeg<br/>chunked upload · transkodowanie HLS · AES-128<br/><i>opcjonalnie na osobnym serwerze (Tailscale/VPN)</i>"]
+
+    style FE fill:#8b5cf6,color:#fff,stroke:#7c3aed,stroke-width:2px
+    style BE fill:#f43f5e,color:#fff,stroke:#e11d48,stroke-width:2px
+    style ST fill:#10b981,color:#fff,stroke:#059669,stroke-width:2px
 ```
 
-## Wymagania
+---
+
+## ✅ Wymagania
 
 - Docker + Docker Compose
 - Discord Application (OAuth2 + Bot Token)
 - Domena z HTTPS (Cloudflare Tunnel / nginx / traefik)
 - Opcjonalnie: TeamSpeak 3 lub 6 z włączonym ServerQuery (TCP 10011 dla TS3, HTTP 10080 dla TS6)
 
-## Instalacja
+## 🚀 Instalacja
 
 ### 1. Klonowanie
 
@@ -188,7 +212,8 @@ Wypełnij co najmniej:
 - `SESSION_SECRET` — losowy string
 - `STREAM_SECRET` — losowy string (musi zgadzać się między app a streaming)
 
-Ustawienia wyświetlania (filmy/strona, kolumny siatki, logi/strona, osadzanie w iframe) **nie** są już w `.env` — konfiguruje się je w aplikacji, patrz [Ustawienia w aplikacji](#ustawienia-w-aplikacji-dev-tools--ustawienia).
+> [!TIP]
+> Ustawienia wyświetlania (filmy/strona, kolumny siatki, logi/strona, osadzanie w iframe) **nie** są już w `.env` — konfiguruje się je w aplikacji, patrz [📋 Ustawienia w aplikacji](#-ustawienia-w-aplikacji-dev-tools--ustawienia).
 
 ### 3. Uruchomienie
 
@@ -215,7 +240,9 @@ cloudflared tunnel --url http://localhost:3000
 
 Lub konfiguracja permanentna w `~/.cloudflared/config.yml`.
 
-## Konfiguracja `.env`
+---
+
+## 🔧 Konfiguracja `.env`
 
 ### Discord
 | Zmienna | Opis |
@@ -278,24 +305,29 @@ Lub konfiguracja permanentna w `~/.cloudflared/config.yml`.
 | `STREAM_KEYS_DIR` | `{DATA_DIR}/keys` | Klucze szyfrowania AES |
 | `STREAM_UPLOAD_DIR` | `{DATA_DIR}/uploads` | Tymczasowe uploady |
 
-## Ustawienia w aplikacji (Dev Tools → Ustawienia)
+---
+
+## 📋 Ustawienia w aplikacji (Dev Tools → Ustawienia)
 
 Poniższe ustawienia **nie** są w `.env` — są zapisane w bazie (tabela `app_settings`) i edytowalne w aplikacji bez restartu kontenera:
 
 | Ustawienie | Domyślnie | Opis |
-|------------|-----------|------|
-| Filmów na stronę | 12 | Liczba filmów na stronę w bazie filmów (warto, by była wielokrotnością kolumn siatki) |
-| Kolumny siatki | 3 | Liczba kolumn siatki filmów na desktopie |
-| Logów na stronę | 50 | Liczba wpisów na stronę w Logach systemowych |
-| Limity treści | 50 / 1000 / 3000 znaków | Maksymalna długość nazwy wyświetlanej / bio / komentarza |
-| Ograniczenie domen webhooków | włączone | Blokuje webhooki kategorii wskazujące poza domeny Discorda (ochrona przed SSRF) |
+|------------|:---:|------|
+| Filmów na stronę | `12` | Liczba filmów na stronę w bazie filmów (warto, by była wielokrotnością kolumn siatki) |
+| Kolumny siatki | `3` | Liczba kolumn siatki filmów na desktopie |
+| Logów na stronę | `50` | Liczba wpisów na stronę w Logach systemowych |
+| Limity treści | `50` / `1000` / `3000` znaków | Maksymalna długość nazwy wyświetlanej / bio / komentarza |
+| Ograniczenie domen webhooków | ✅ włączone | Blokuje webhooki kategorii wskazujące poza domeny Discorda (ochrona przed SSRF) |
 | Wysyłka kodu logowania (TS3) | wiadomość | Jak bot dostarcza kod logowania: wiadomość prywatna / poke / oba |
-| Osadzanie w iframe | wyłączone | Zezwala na osadzanie odtwarzacza na domenach z `IFRAME_ALLOWED_ORIGINS` |
-| Górny pasek | włączony | Pokazuje/ukrywa górny pasek (tytuł + smart search + profil); wyłączenie przywraca klasyczny układ z tytułem strony i profilem w sidebarze |
+| Osadzanie w iframe | ❌ wyłączone | Zezwala na osadzanie odtwarzacza na domenach z `IFRAME_ALLOWED_ORIGINS` |
+| Górny pasek | ✅ włączony | Pokazuje/ukrywa górny pasek (tytuł + smart search + profil); wyłączenie przywraca klasyczny układ z tytułem strony i profilem w sidebarze |
 
-Zakładka Ustawienia pokazuje też ostrzeżenie, jeśli w `.env` znajdują się **zmienne przeniesione do bazy** (np. stare `VIDEOS_PER_PAGE`) albo **nazwy przypominające literówkę** znanej zmiennej (np. `DISCORD_GULID_ID` zamiast `DISCORD_GUILD_ID`) — bezpieczne do sprawdzenia bez ujawniania wartości.
+> [!TIP]
+> Zakładka Ustawienia pokazuje też ostrzeżenie, jeśli w `.env` znajdują się **zmienne przeniesione do bazy** (np. stare `VIDEOS_PER_PAGE`) albo **nazwy przypominające literówkę** znanej zmiennej (np. `DISCORD_GULID_ID` zamiast `DISCORD_GUILD_ID`) — bezpieczne do sprawdzenia bez ujawniania wartości.
 
-## Streaming na osobnym serwerze
+---
+
+## 🌐 Streaming na osobnym serwerze
 
 Aby przenieść transkodowanie i storage na inny serwer (np. przez Tailscale):
 
@@ -306,7 +338,12 @@ Aby przenieść transkodowanie i storage na inny serwer (np. przez Tailscale):
 
 Szczegóły: [streaming-standalone/README.md](streaming-standalone/README.md)
 
-## Struktura plików
+---
+
+## 📦 Struktura plików
+
+<details>
+<summary><b>Kliknij, aby rozwinąć pełne drzewo katalogów</b></summary>
 
 ```
 alleria-filmy/
@@ -362,7 +399,14 @@ alleria-filmy/
 └── README.md
 ```
 
-## Baza danych (SQLite)
+</details>
+
+---
+
+## 💾 Baza danych (SQLite)
+
+<details>
+<summary><b>Kliknij, aby rozwinąć pełną listę tabel</b></summary>
 
 | Tabela | Opis |
 |--------|------|
@@ -386,7 +430,14 @@ alleria-filmy/
 | `app_settings` | Ustawienia runtime edytowalne w Dev Tools → Ustawienia (klucz/wartość) |
 | `sessions` | Sesje express-session |
 
-## API Endpoints
+</details>
+
+---
+
+## 🔌 API Endpoints
+
+<details>
+<summary><b>Kliknij, aby rozwinąć pełną listę endpointów</b></summary>
 
 ### Auth
 - `GET /auth/discord` — Start Discord OAuth2 (+`?returnTo=` dla redirect)
@@ -454,17 +505,27 @@ alleria-filmy/
 - `DELETE /api/logs/watch/clear` / `DELETE /api/logs/login/clear` / `DELETE /api/logs/watch-party/clear` — Czyszczenie logów
 - `GET /api/version` / `GET /api/version/streaming` — Wersje panelu i streamingu
 
-## Technologie
+</details>
 
-- **Frontend**: React 18, Tailwind CSS 3, Vite 6, hls.js, YouTube IFrame API, Lucide icons, React Router 7
-- **Backend**: Express.js, better-sqlite3, express-session, multer, ws (WebSocket)
-- **Streaming**: FFmpeg (Alpine), AES-128 HLS encryption
-- **Deploy**: Docker, Docker Compose, Cloudflare Tunnel, GitHub Actions
+---
 
-## Licencja
+## 🧱 Technologie
+
+| Warstwa | Stack |
+|---------|-------|
+| **Frontend** | React 18, Tailwind CSS 3, Vite 6, hls.js, YouTube IFrame API, Lucide icons, React Router 7 |
+| **Backend** | Express.js, better-sqlite3, express-session, multer, ws (WebSocket) |
+| **Streaming** | FFmpeg (Alpine), AES-128 HLS encryption |
+| **Deploy** | Docker, Docker Compose, Cloudflare Tunnel, GitHub Actions |
+
+## 📄 Licencja
 
 Projekt prywatny dla społeczności Alleria.pl.
 
 ---
 
-© 2025–2026 Alleria.pl | built by [Matthew](https://github.com/mrfroncu)
+<div align="center">
+
+© 2025–2026 Alleria.pl · built by [Matthew](https://github.com/mrfroncu)
+
+</div>
