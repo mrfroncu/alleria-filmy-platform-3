@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { api } from '../utils/api';
 import {
-  Film, Shield, Menu, X, Wrench, ChevronRight, ChevronDown,
+  Film, Shield, Menu, X, Wrench, ChevronRight, ChevronDown, LogOut,
   Heart, Clock, BarChart3, FolderOpen, FileText, MessageSquarePlus
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
@@ -69,7 +70,9 @@ function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlu
 }
 
 export default function Layout({ children }) {
-  const { isAdmin, isDev } = useAuth();
+  const { user, logout, isAdmin, isDev } = useAuth();
+  const { config } = useSettings();
+  const showTopBar = config.showTopBar;
   const location = useLocation();
   const mainRef = useRef(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -225,6 +228,29 @@ export default function Layout({ children }) {
           </div>
         </div>
 
+        {/* User card — only shown when the top bar (which hosts the profile menu) is off */}
+        {!showTopBar && user && (
+          <div className="px-4 relative z-10 shrink-0">
+            <div className="p-3 bg-zinc-50 dark:bg-white/5 rounded-2xl border border-zinc-200 dark:border-white/10">
+              <div className="flex items-center gap-3">
+                <Link to="/profile" className="flex items-center gap-3 flex-1 min-w-0 group">
+                  <img src={user.avatar || `https://ui-avatars.com/api/?name=${user.display_name || 'U'}&background=6366f1&color=fff&size=80`} alt="" className="w-9 h-9 rounded-xl shadow-sm border border-zinc-200 dark:border-white/10 object-cover shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-bold text-zinc-900 dark:text-white truncate group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors">{user.display_name || user.username}</p>
+                    <p className="text-[10px] text-zinc-500 truncate font-mono flex items-center gap-1">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${user.role === 'dev' ? 'bg-red-400' : user.role === 'admin' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                      {user.role?.toUpperCase()}
+                    </p>
+                  </div>
+                </Link>
+                <button onClick={logout} className="p-1.5 rounded-lg text-zinc-400 hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 transition-all duration-300 shrink-0" title="Wyloguj">
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Version info */}
         <div className="p-4 relative z-10 shrink-0">
           {versions.panel && (
@@ -240,31 +266,35 @@ export default function Layout({ children }) {
       </aside>
 
       <main ref={mainRef} className="flex-1 overflow-y-auto relative flex flex-col">
-        {/* Mobile top bar */}
+        {/* Mobile top bar — always present (hamburger is the only way to reach the sidebar on mobile) */}
         <div className="lg:hidden shrink-0 flex items-center justify-between gap-3 p-4 bg-gradient-to-r from-violet-50/70 via-white to-fuchsia-50/50 dark:from-violet-500/[0.08] dark:via-zinc-950 dark:to-fuchsia-500/[0.06] border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
           <div className="flex items-center gap-2.5 min-w-0">
             <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain shrink-0" />
-            <span className="font-bold text-zinc-900 dark:text-white font-display text-sm truncate">{pageTitle}</span>
+            {showTopBar
+              ? <span className="font-bold text-zinc-900 dark:text-white font-display text-sm truncate">{pageTitle}</span>
+              : <span className="font-bold text-zinc-900 dark:text-white font-display text-sm">ALLERIA FILMY</span>}
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <GlobalSearch compact />
-            <ProfileMenu compact />
+            {showTopBar && <GlobalSearch compact />}
+            {showTopBar && <ProfileMenu compact />}
             <button onClick={() => setSidebarOpen(true)} className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white">
               <Menu className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Desktop top bar — page title, global search, profile menu */}
-        <div className="hidden lg:flex shrink-0 items-center gap-6 px-8 py-3 bg-gradient-to-r from-violet-50/70 via-white to-fuchsia-50/50 dark:from-violet-500/[0.08] dark:via-zinc-950 dark:to-fuchsia-500/[0.06] border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
-          <h1 className="text-zinc-900 dark:text-white font-bold text-lg font-display shrink-0 truncate max-w-[240px]">{pageTitle}</h1>
-          <div className="flex-1 flex justify-center">
-            <GlobalSearch />
+        {/* Desktop top bar — page title, global search, profile menu (optional, Dev Tools > Ustawienia) */}
+        {showTopBar && (
+          <div className="hidden lg:flex shrink-0 items-center gap-6 px-8 py-3 bg-gradient-to-r from-violet-50/70 via-white to-fuchsia-50/50 dark:from-violet-500/[0.08] dark:via-zinc-950 dark:to-fuchsia-500/[0.06] border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
+            <h1 className="text-zinc-900 dark:text-white font-bold text-lg font-display shrink-0 truncate max-w-[240px]">{pageTitle}</h1>
+            <div className="flex-1 flex justify-center">
+              <GlobalSearch />
+            </div>
+            <div className="shrink-0">
+              <ProfileMenu />
+            </div>
           </div>
-          <div className="shrink-0">
-            <ProfileMenu />
-          </div>
-        </div>
+        )}
 
         <div className="flex-1">{children}</div>
 

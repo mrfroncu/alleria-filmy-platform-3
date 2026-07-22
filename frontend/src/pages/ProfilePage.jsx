@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X } from 'lucide-react';
+import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
+import { useSettings } from '../contexts/SettingsContext';
 
 export default function ProfilePage() {
+  const { config: siteConfig } = useSettings();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -12,6 +14,7 @@ export default function ProfilePage() {
   const [editBio, setEditBio] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savingAvatarSource, setSavingAvatarSource] = useState(false);
   const [config, setConfig] = useState({ limitDisplayName: 50, limitBio: 1000 });
 
   useEffect(() => { api.getConfig().then(c => setConfig(prev => ({ ...prev, ...c }))).catch(() => {}); }, []);
@@ -41,6 +44,18 @@ export default function ProfilePage() {
     setSaving(false);
   };
 
+  const handleAvatarSourceChange = async (source) => {
+    if (!profile || profile.avatar_source === source || savingAvatarSource) return;
+    setSavingAvatarSource(true);
+    try {
+      await api.updateProfile({ avatar_source: source });
+      load();
+    } catch (err) {
+      alert('Błąd: ' + err.message);
+    }
+    setSavingAvatarSource(false);
+  };
+
   if (loading) {
     return (
       <div className="p-6 sm:p-10 max-w-3xl mx-auto page-enter">
@@ -54,12 +69,14 @@ export default function ProfilePage() {
   return (
     <div className="p-6 sm:p-10 max-w-3xl mx-auto page-enter">
       <div className="mb-10">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center">
-            <User className="w-5 h-5 text-violet-500" />
+        {!siteConfig.showTopBar && (
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center">
+              <User className="w-5 h-5 text-violet-500" />
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Mój profil</h1>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Mój profil</h1>
-        </div>
+        )}
       </div>
 
       {saved && (
@@ -118,6 +135,54 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* Avatar source (Discord accounts only) */}
+      {profile.auth_method === 'discord' && (
+        <div className="card p-6 mb-6">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl flex items-center justify-center shrink-0">
+              <Globe className="w-5 h-5 text-indigo-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-1">Źródło avatara</h3>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+                Aby zmienić sam avatar, zrób to na Discordzie — nie da się tego zrobić na tej stronie. Możesz jedynie wybrać, skąd ma być on pobierany.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleAvatarSourceChange('global')}
+                  disabled={savingAvatarSource}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors disabled:opacity-50 ${
+                    (profile.avatar_source || 'global') !== 'guild'
+                      ? 'bg-violet-500 text-white'
+                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Globe className="w-3.5 h-3.5" /> Globalny (konto Discord)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAvatarSourceChange('guild')}
+                  disabled={savingAvatarSource || !profile.has_guild_avatar}
+                  title={!profile.has_guild_avatar ? 'Brak avatara serwerowego — wymaga Discord Nitro i ustawionego avatara na tym serwerze.' : undefined}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                    profile.avatar_source === 'guild'
+                      ? 'bg-violet-500 text-white'
+                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Server className="w-3.5 h-3.5" /> Serwerowy (ten serwer)
+                </button>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-3">
+                Avatar serwerowy (ustawiony osobno na tym serwerze Discord) jest dostępny tylko dla użytkowników z Discord Nitro
+                {!profile.has_guild_avatar ? ' — obecnie nie masz ustawionego avatara serwerowego.' : '.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-3 gap-4 mb-6">

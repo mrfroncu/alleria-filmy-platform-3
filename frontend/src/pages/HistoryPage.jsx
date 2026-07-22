@@ -3,8 +3,10 @@ import { Link } from 'react-router-dom';
 import { Clock, Film, Play } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
+import { useSettings } from '../contexts/SettingsContext';
 
 export default function HistoryPage() {
+  const { config } = useSettings();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -22,12 +24,14 @@ export default function HistoryPage() {
   return (
     <div className="p-6 sm:p-10 max-w-5xl mx-auto page-enter">
       <div className="mb-10">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 bg-blue-50 dark:bg-blue-500/10 rounded-xl flex items-center justify-center">
-            <Clock className="w-5 h-5 text-blue-500" />
+        {!config.showTopBar && (
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 bg-blue-50 dark:bg-blue-500/10 rounded-xl flex items-center justify-center">
+              <Clock className="w-5 h-5 text-blue-500" />
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Historia</h1>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Historia</h1>
-        </div>
+        )}
         <p className="text-zinc-500 dark:text-zinc-400">Ostatnio obejrzane filmy — Twoja osobista historia przeglądania.</p>
       </div>
 

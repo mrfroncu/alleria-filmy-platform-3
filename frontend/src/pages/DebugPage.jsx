@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug, Lock } from 'lucide-react';
+import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug, Lock, LayoutGrid, FileText, Frame, PanelTop } from 'lucide-react';
 import { api } from '../utils/api';
+import { useSettings } from '../contexts/SettingsContext';
 
 // Dev Tools tabs — selected at the top of the page
 const TABS = [
@@ -23,6 +24,7 @@ function formatBytes(bytes) {
 const TAB_IDS = TABS.map(t => t.id);
 
 export default function DebugPage() {
+  const { config } = useSettings();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -209,6 +211,9 @@ export default function DebugPage() {
   const [settings, setSettingsState] = useState(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [limitForm, setLimitForm] = useState({ limit_display_name: '', limit_bio: '', limit_comment: '' });
+  const [displayForm, setDisplayForm] = useState({ videos_per_page: '', grid_columns: '' });
+  const [logsForm, setLogsForm] = useState({ logs_per_page: '' });
+  const [envCheck, setEnvCheck] = useState(null);
 
   useEffect(() => {
     api.getSettings().then(s => {
@@ -218,7 +223,10 @@ export default function DebugPage() {
         limit_bio: s.limit_bio,
         limit_comment: s.limit_comment,
       });
+      setDisplayForm({ videos_per_page: s.videos_per_page, grid_columns: s.grid_columns });
+      setLogsForm({ logs_per_page: s.logs_per_page });
     }).catch(() => {});
+    api.envCheck().then(setEnvCheck).catch(() => {});
   }, []);
 
   const saveLimits = async () => {
@@ -259,6 +267,61 @@ export default function DebugPage() {
       setSettingsState(s => ({ ...s, ts3_code_delivery: r.ts3_code_delivery }));
       const label = value === 'pm' ? 'prywatna wiadomość' : value === 'poke' ? 'poke' : 'wiadomość + poke';
       setStatus({ type: 'success', msg: `Wysyłka kodu TS3: ${label}` });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const saveDisplaySettings = async () => {
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({
+        videos_per_page: parseInt(displayForm.videos_per_page, 10),
+        grid_columns: parseInt(displayForm.grid_columns, 10),
+      });
+      setSettingsState(r);
+      setDisplayForm({ videos_per_page: r.videos_per_page, grid_columns: r.grid_columns });
+      setStatus({ type: 'success', msg: 'Ustawienia wyświetlania filmów zapisane.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const saveLogsSettings = async () => {
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ logs_per_page: parseInt(logsForm.logs_per_page, 10) });
+      setSettingsState(r);
+      setLogsForm({ logs_per_page: r.logs_per_page });
+      setStatus({ type: 'success', msg: 'Ustawienia logów zapisane.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const toggleIframeEmbed = async () => {
+    if (!settings) return;
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ iframe_embed_enabled: !settings.iframe_embed_enabled });
+      setSettingsState(s => ({ ...s, iframe_embed_enabled: r.iframe_embed_enabled }));
+      setStatus({ type: 'success', msg: `Osadzanie w iframe: ${r.iframe_embed_enabled ? 'WŁĄCZONE' : 'WYŁĄCZONE'}` });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const toggleTopBar = async () => {
+    if (!settings) return;
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ show_top_bar: !settings.show_top_bar });
+      setSettingsState(s => ({ ...s, show_top_bar: r.show_top_bar }));
+      setStatus({ type: 'success', msg: `Górny pasek: ${r.show_top_bar ? 'WŁĄCZONY' : 'WYŁĄCZONY'}` });
     } catch (e) {
       setStatus({ type: 'error', msg: e.message });
     }
@@ -353,12 +416,14 @@ export default function DebugPage() {
   return (
     <div className="p-6 sm:p-10 max-w-7xl mx-auto animate-fade-in">
       <div className="mb-8">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 bg-red-50 dark:bg-red-500/10 rounded-xl flex items-center justify-center">
-            <Wrench className="w-5 h-5 text-red-500" />
+        {!config.showTopBar && (
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 bg-red-50 dark:bg-red-500/10 rounded-xl flex items-center justify-center">
+              <Wrench className="w-5 h-5 text-red-500" />
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Dev Tools</h1>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Dev Tools</h1>
-        </div>
+        )}
         <p className="text-zinc-500 dark:text-zinc-400">Narzędzia deweloperskie do zarządzania platformą i bazą danych.</p>
       </div>
 
@@ -993,6 +1058,47 @@ export default function DebugPage() {
       {/* ============ USTAWIENIA ============ */}
       {activeTab === 'settings' && (
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-fade-in">
+        {/* .env sanity check warning */}
+        {envCheck && (envCheck.deprecated?.length > 0 || envCheck.suspicious?.length > 0) && (
+          <div className="card p-8 h-full flex flex-col xl:col-span-2 !border-amber-300 dark:!border-amber-500/30 bg-amber-50/50 dark:bg-amber-500/[0.06]">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6 text-amber-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Uwagi dotyczące pliku .env</h3>
+                {envCheck.deprecated?.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-sm text-zinc-600 dark:text-zinc-300 mb-1.5">
+                      Te zmienne są teraz zarządzane z poziomu tej strony i można je bezpiecznie usunąć z <code className="font-mono text-xs">.env</code>:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {envCheck.deprecated.map(name => (
+                        <span key={name} className="px-2.5 py-1 rounded-lg bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 text-xs font-mono font-bold">{name}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {envCheck.suspicious?.length > 0 && (
+                  <div>
+                    <p className="text-sm text-zinc-600 dark:text-zinc-300 mb-1.5">Podejrzane nazwy zmiennych (możliwa literówka):</p>
+                    <div className="space-y-1">
+                      {envCheck.suspicious.map(s => (
+                        <p key={s.found} className="text-xs font-mono">
+                          <span className="text-red-500 font-bold">{s.found}</span>
+                          <span className="text-zinc-400"> → czy chodziło o </span>
+                          <span className="text-emerald-600 dark:text-emerald-400 font-bold">{s.suggestion}</span>
+                          <span className="text-zinc-400">?</span>
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Content length limits */}
         <div className="card p-8 h-full flex flex-col xl:col-span-2">
           <div className="flex items-start gap-4">
@@ -1087,6 +1193,124 @@ export default function DebugPage() {
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Videos per page + grid columns */}
+        <div className="card p-8 h-full flex flex-col">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <LayoutGrid className="w-6 h-6 text-emerald-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Wyświetlanie filmów</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                Liczba filmów na stronę i liczba kolumn siatki w widoku bazy filmów.
+              </p>
+              <div className="grid grid-cols-2 gap-4 max-w-xs">
+                <div>
+                  <label className="label-field">Filmów na stronę</label>
+                  <input type="number" min="1" max="500" value={displayForm.videos_per_page}
+                    onChange={e => setDisplayForm(f => ({ ...f, videos_per_page: e.target.value }))}
+                    className="input-field !py-3 text-sm" />
+                </div>
+                <div>
+                  <label className="label-field">Kolumny siatki</label>
+                  <input type="number" min="1" max="12" value={displayForm.grid_columns}
+                    onChange={e => setDisplayForm(f => ({ ...f, grid_columns: e.target.value }))}
+                    className="input-field !py-3 text-sm" />
+                </div>
+              </div>
+              <button onClick={saveDisplaySettings} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
+                {savingSettings ? 'Zapisywanie...' : 'Zapisz'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Logs per page */}
+        <div className="card p-8 h-full flex flex-col">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <FileText className="w-6 h-6 text-amber-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Logi</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                Liczba wpisów na stronę w logach oglądania, logowania i watch party.
+              </p>
+              <div className="max-w-[140px]">
+                <label className="label-field">Logów na stronę</label>
+                <input type="number" min="1" max="500" value={logsForm.logs_per_page}
+                  onChange={e => setLogsForm(f => ({ ...f, logs_per_page: e.target.value }))}
+                  className="input-field !py-3 text-sm" />
+              </div>
+              <button onClick={saveLogsSettings} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
+                {savingSettings ? 'Zapisywanie...' : 'Zapisz'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Iframe embedding */}
+        <div className="card p-8 h-full flex flex-col">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <Frame className="w-6 h-6 text-blue-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Osadzanie w iframe</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                Zezwala na osadzanie odtwarzacza na dozwolonych zewnętrznych stronach (CSP <code className="font-mono text-xs">frame-ancestors</code>).
+              </p>
+              <button
+                type="button"
+                onClick={toggleIframeEmbed}
+                disabled={!settings || savingSettings}
+                className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-sm font-semibold text-zinc-700 dark:text-zinc-300 disabled:opacity-50"
+              >
+                {settings?.iframe_embed_enabled
+                  ? <CheckSquare className="w-5 h-5 text-emerald-500" />
+                  : <Square className="w-5 h-5 text-zinc-400" />}
+                {settings == null ? 'Ładowanie...' : (settings.iframe_embed_enabled ? 'Osadzanie: WŁĄCZONE' : 'Osadzanie: WYŁĄCZONE')}
+              </button>
+              {settings?.iframe_allowed_origins?.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mb-2 font-display">Dozwolone źródła (z .env)</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {settings.iframe_allowed_origins.map(origin => (
+                      <span key={origin} className="px-2 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-xs font-mono">{origin}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Top bar visibility */}
+        <div className="card p-8 h-full flex flex-col">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-pink-50 dark:bg-pink-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <PanelTop className="w-6 h-6 text-pink-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Górny pasek</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                Gdy włączony: tytuł strony, wyszukiwarka i profil użytkownika w górnym pasku. Gdy wyłączony: profil wraca do lewego dolnego rogu, a każda strona pokazuje własny tytuł.
+              </p>
+              <button
+                type="button"
+                onClick={toggleTopBar}
+                disabled={!settings || savingSettings}
+                className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-sm font-semibold text-zinc-700 dark:text-zinc-300 disabled:opacity-50"
+              >
+                {settings?.show_top_bar
+                  ? <CheckSquare className="w-5 h-5 text-emerald-500" />
+                  : <Square className="w-5 h-5 text-zinc-400" />}
+                {settings == null ? 'Ładowanie...' : (settings.show_top_bar ? 'Górny pasek: WŁĄCZONY' : 'Górny pasek: WYŁĄCZONY')}
+              </button>
             </div>
           </div>
         </div>

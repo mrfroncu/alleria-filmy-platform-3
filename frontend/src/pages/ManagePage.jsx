@@ -4,10 +4,12 @@ import { FolderOpen, Plus, Pencil, Trash2, Users, Shield } from 'lucide-react';
 import { api } from '../utils/api';
 import { buildCategoryTreeOptions, formatDate } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
+import { useSettings } from '../contexts/SettingsContext';
 
 const MANAGE_TAB_IDS = ['categories', 'users'];
 
 export default function ManagePage() {
+  const { config } = useSettings();
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState(MANAGE_TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'categories');
 
@@ -185,7 +187,7 @@ export default function ManagePage() {
   return (
     <div className="p-6 sm:p-10 max-w-5xl mx-auto page-enter">
       <div className="mb-8">
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">Zarządzanie</h1>
+        {!config.showTopBar && <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">Zarządzanie</h1>}
         <p className="text-zinc-500 dark:text-zinc-400">Zarządzaj kategoriami, uprawnieniami i użytkownikami.</p>
       </div>
 

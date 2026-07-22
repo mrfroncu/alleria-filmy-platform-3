@@ -3,10 +3,12 @@ import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, SlidersHorizontal, X, ChevronDown, Film, RotateCcw } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
+import { useSettings } from '../contexts/SettingsContext';
 
 export default function VideosPage() {
   const { authorId, tagId, categorySlug } = useParams();
   const navigate = useNavigate();
+  const { config } = useSettings();
   const [searchParams] = useSearchParams();
   const [videos, setVideos] = useState([]);
   const [tags, setTags] = useState([]);
@@ -95,11 +97,13 @@ export default function VideosPage() {
     <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
       {/* Header */}
       <div className="mb-10">
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">
-          {categorySlug
-            ? (categories.find(c => c.slug === categorySlug)?.name || categorySlug)
-            : 'Baza Filmów'}
-        </h1>
+        {!config.showTopBar && (
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">
+            {categorySlug
+              ? (categories.find(c => c.slug === categorySlug)?.name || categorySlug)
+              : 'Baza Filmów'}
+          </h1>
+        )}
         <div className="flex items-center justify-between gap-4">
           <p className="text-zinc-500 dark:text-zinc-400 text-base sm:text-lg">
             {categorySlug

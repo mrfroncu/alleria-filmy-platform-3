@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { SettingsProvider } from './contexts/SettingsContext';
 import { WatchPartyProvider } from './contexts/WatchPartyContext';
 import LoginPage from './pages/LoginPage';
 import Layout from './components/Layout';
@@ -50,6 +51,7 @@ const P = ({ children, ...props }) => <ProtectedRoute {...props}><Layout>{childr
 
 export default function App() {
   return (
+    <SettingsProvider>
     <AuthProvider>
       <WatchPartyProvider>
         <Routes>
@@ -72,5 +74,6 @@ export default function App() {
         </Routes>
       </WatchPartyProvider>
     </AuthProvider>
+    </SettingsProvider>
   );
 }

@@ -183,6 +183,7 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   }),
+  envCheck: () => request('/debug/env-check'),
   execSQL: (query) => request('/debug/sql', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

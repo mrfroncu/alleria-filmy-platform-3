@@ -112,7 +112,6 @@ app.use('/api/stream/upload', (req, res, next) => {
 app.set('trust proxy', 1);
 
 // DRM security headers — restrict screen capture APIs
-const iframeEnabled = process.env.IFRAME_EMBED_ENABLED === 'true';
 const iframeAllowedOrigins = (process.env.IFRAME_ALLOWED_ORIGINS || '')
   .split(',')
   .map(o => o.trim())
@@ -123,6 +122,8 @@ app.use((req, res, next) => {
   res.set('Permissions-Policy', 'display-capture=(), screen-wake-lock=()');
   // X-Frame-Options does not support allowlists; rely on CSP frame-ancestors for modern browsers
   res.set('X-Frame-Options', 'SAMEORIGIN');
+  // Read fresh each request (DB-backed setting, toggleable from Dev Tools without a restart)
+  const iframeEnabled = getSetting('iframe_embed_enabled', '0') === '1';
   if (iframeEnabled && iframeAllowedOrigins.length > 0) {
     // Allow embedding from same origin and the configured allowed origins
     res.set('Content-Security-Policy', `frame-ancestors 'self' ${iframeAllowedOrigins.join(' ')}`);
@@ -193,13 +194,15 @@ app.get('/api/health', (req, res) => {
 
 // Public config for frontend display settings
 app.get('/api/config', requireAuth, (req, res) => {
+  const s = settingsPayload();
   res.json({
-    videosPerPage: parseInt(process.env.VIDEOS_PER_PAGE) || 12,
-    gridColumns: parseInt(process.env.GRID_COLUMNS) || 3,
-    logsPerPage: parseInt(process.env.LOGS_PER_PAGE) || 50,
-    limitDisplayName: getLimit('limit_display_name'),
-    limitBio: getLimit('limit_bio'),
-    limitComment: getLimit('limit_comment'),
+    videosPerPage: s.videos_per_page,
+    gridColumns: s.grid_columns,
+    logsPerPage: s.logs_per_page,
+    limitDisplayName: s.limit_display_name,
+    limitBio: s.limit_bio,
+    limitComment: s.limit_comment,
+    showTopBar: s.show_top_bar,
   });
 });
 
@@ -431,21 +434,28 @@ async function discordCallbackHandler(req, res) {
     if (hasDevRole) role = 'dev';
     else if (hasAdminRole) role = 'admin';
 
-    const avatarUrl = discordUser.avatar
-      ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
-      : `https://cdn.discordapp.com/embed/avatars/${parseInt(discordUser.discriminator || '0') % 5}.png`;
+    // Discord avatar hashes — global (account) and per-server (guild, Nitro-only)
+    const discordAvatarHash = discordUser.avatar || null;
+    const discordGuildAvatarHash = member.avatar || null;
 
     // Upsert user
     const existing = db.prepare('SELECT * FROM users WHERE discord_id = ?').get(discordUser.id);
+    const avatarSource = existing?.avatar_source || 'global';
+    const avatarUrl = (avatarSource === 'guild' && discordGuildAvatarHash)
+      ? `https://cdn.discordapp.com/guilds/${process.env.DISCORD_GUILD_ID}/users/${discordUser.id}/avatars/${discordGuildAvatarHash}.png`
+      : (discordAvatarHash
+        ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordAvatarHash}.png`
+        : `https://cdn.discordapp.com/embed/avatars/${parseInt(discordUser.discriminator || '0') % 5}.png`);
+
     let userId;
     const rolesJson = JSON.stringify(roles);
     if (existing) {
-      db.prepare(`UPDATE users SET username = ?, display_name = ?, avatar = ?, role = ?, discord_roles = ?, last_login = datetime('now') WHERE discord_id = ?`)
-        .run(discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, role, rolesJson, discordUser.id);
+      db.prepare(`UPDATE users SET username = ?, display_name = ?, avatar = ?, role = ?, discord_roles = ?, discord_avatar_hash = ?, discord_guild_avatar_hash = ?, last_login = datetime('now') WHERE discord_id = ?`)
+        .run(discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, role, rolesJson, discordAvatarHash, discordGuildAvatarHash, discordUser.id);
       userId = existing.id;
     } else {
-      const result = db.prepare('INSERT INTO users (discord_id, username, display_name, avatar, role, auth_method, discord_roles) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run(discordUser.id, discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, role, 'discord', rolesJson);
+      const result = db.prepare('INSERT INTO users (discord_id, username, display_name, avatar, role, auth_method, discord_roles, discord_avatar_hash, discord_guild_avatar_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(discordUser.id, discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, role, 'discord', rolesJson, discordAvatarHash, discordGuildAvatarHash);
       userId = result.lastInsertRowid;
     }
 
@@ -1786,7 +1796,7 @@ app.post('/api/debug/create-user', requireDev, (req, res) => {
 // ============ LOGS API ============
 app.get('/api/logs/watch', requireAdmin, (req, res) => {
   const page = parseInt(req.query.page) || 1;
-  const perPage = parseInt(process.env.LOGS_PER_PAGE) || 50;
+  const perPage = parseInt(getSetting('logs_per_page', '50'), 10) || 50;
   const offset = (page - 1) * perPage;
   const total = db.prepare('SELECT COUNT(*) AS c FROM watch_logs').get().c;
   const logs = db.prepare(`
@@ -1801,7 +1811,7 @@ app.get('/api/logs/watch', requireAdmin, (req, res) => {
 
 app.get('/api/logs/login', requireAdmin, (req, res) => {
   const page = parseInt(req.query.page) || 1;
-  const perPage = parseInt(process.env.LOGS_PER_PAGE) || 50;
+  const perPage = parseInt(getSetting('logs_per_page', '50'), 10) || 50;
   const offset = (page - 1) * perPage;
   const total = db.prepare('SELECT COUNT(*) AS c FROM login_logs').get().c;
   const logs = db.prepare('SELECT * FROM login_logs ORDER BY logged_at DESC LIMIT ? OFFSET ?').all(perPage, offset);
@@ -1918,17 +1928,18 @@ app.get('/api/stats', requireAuth, (req, res) => {
 
 // ============ PROFILE API ============
 app.get('/api/profile', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, username, display_name, avatar, role, bio, auth_method, created_at, last_login FROM users WHERE id = ?').get(req.session.user.id);
+  const user = db.prepare('SELECT id, username, display_name, avatar, role, bio, auth_method, avatar_source, discord_guild_avatar_hash, created_at, last_login FROM users WHERE id = ?').get(req.session.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   const videoCount = db.prepare('SELECT COUNT(*) AS c FROM videos WHERE author_id = ?').get(user.id).c;
   const viewCount = db.prepare('SELECT COUNT(*) AS c FROM watch_logs WHERE user_id = ?').get(user.id).c;
   const favCount = db.prepare('SELECT COUNT(*) AS c FROM favorites WHERE user_id = ?').get(user.id).c;
-  res.json({ ...user, videoCount, viewCount, favCount });
+  const { discord_guild_avatar_hash, ...userFields } = user;
+  res.json({ ...userFields, has_guild_avatar: !!discord_guild_avatar_hash, videoCount, viewCount, favCount });
 });
 
 app.put('/api/profile', requireAuth, (req, res) => {
   try {
-    const { display_name, bio } = req.body;
+    const { display_name, bio, avatar_source } = req.body;
     const maxName = getLimit('limit_display_name');
     const maxBio = getLimit('limit_bio');
     if (display_name !== undefined) {
@@ -1942,6 +1953,25 @@ app.put('/api/profile', requireAuth, (req, res) => {
       const b = String(bio);
       if (b.length > maxBio) return res.status(400).json({ error: `Bio może mieć maksymalnie ${maxBio} znaków.` });
       db.prepare('UPDATE users SET bio = ? WHERE id = ?').run(b.slice(0, maxBio), req.session.user.id);
+    }
+    if (avatar_source !== undefined) {
+      if (!['global', 'guild'].includes(avatar_source)) {
+        return res.status(400).json({ error: 'Nieprawidłowa wartość avatar_source.' });
+      }
+      const u = db.prepare('SELECT discord_id, discord_avatar_hash, discord_guild_avatar_hash, auth_method FROM users WHERE id = ?').get(req.session.user.id);
+      if (u.auth_method !== 'discord') {
+        return res.status(400).json({ error: 'Źródło avatara dostępne tylko dla kont zalogowanych przez Discord.' });
+      }
+      if (avatar_source === 'guild' && !u.discord_guild_avatar_hash) {
+        return res.status(400).json({ error: 'Brak avatara serwerowego — ta funkcja wymaga Discord Nitro oraz ustawionego avatara na tym serwerze.' });
+      }
+      const newAvatarUrl = avatar_source === 'guild'
+        ? `https://cdn.discordapp.com/guilds/${process.env.DISCORD_GUILD_ID}/users/${u.discord_id}/avatars/${u.discord_guild_avatar_hash}.png`
+        : (u.discord_avatar_hash
+          ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.discord_avatar_hash}.png`
+          : `https://cdn.discordapp.com/embed/avatars/0.png`);
+      db.prepare('UPDATE users SET avatar_source = ?, avatar = ? WHERE id = ?').run(avatar_source, newAvatarUrl, req.session.user.id);
+      req.session.user.avatar = newAvatarUrl;
     }
     req.session.save(() => {});
     res.json({ success: true });
@@ -2152,6 +2182,12 @@ function settingsPayload() {
     limit_bio: getLimit('limit_bio'),
     limit_comment: getLimit('limit_comment'),
     ts3_code_delivery: getSetting('ts3_code_delivery', 'pm'),
+    videos_per_page: parseInt(getSetting('videos_per_page', '12'), 10) || 12,
+    grid_columns: parseInt(getSetting('grid_columns', '3'), 10) || 3,
+    logs_per_page: parseInt(getSetting('logs_per_page', '50'), 10) || 50,
+    iframe_embed_enabled: getSetting('iframe_embed_enabled', '0') === '1',
+    iframe_allowed_origins: (process.env.IFRAME_ALLOWED_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean),
+    show_top_bar: getSetting('show_top_bar', '1') === '1',
   };
 }
 
@@ -2186,7 +2222,79 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
     setSetting('ts3_code_delivery', v);
     audit(req.session.user.id, 'edit', 'settings', null, `ts3_code_delivery → ${v}`);
   }
+  // Display settings — videos per page / grid columns / logs per page (formerly .env-only)
+  for (const key of ['videos_per_page', 'grid_columns', 'logs_per_page']) {
+    if (req.body[key] !== undefined) {
+      const n = parseInt(req.body[key], 10);
+      if (!Number.isInteger(n) || n < 1 || n > 500) {
+        return res.status(400).json({ error: `Nieprawidłowa wartość dla ${key} (dozwolone 1–500).` });
+      }
+      setSetting(key, n);
+      audit(req.session.user.id, 'edit', 'settings', null, `${key} → ${n}`);
+    }
+  }
+  // iframe embedding toggle (formerly .env-only)
+  if (req.body.iframe_embed_enabled !== undefined) {
+    setSetting('iframe_embed_enabled', req.body.iframe_embed_enabled ? '1' : '0');
+    audit(req.session.user.id, 'edit', 'settings', null,
+      `iframe_embed_enabled → ${req.body.iframe_embed_enabled ? 'ON' : 'OFF'}`);
+  }
+  // Top bar (page title + search + profile) visibility
+  if (req.body.show_top_bar !== undefined) {
+    setSetting('show_top_bar', req.body.show_top_bar ? '1' : '0');
+    audit(req.session.user.id, 'edit', 'settings', null,
+      `show_top_bar → ${req.body.show_top_bar ? 'ON' : 'OFF'}`);
+  }
   res.json({ success: true, ...settingsPayload() });
+});
+
+// .env sanity check — variable names only, values are never inspected/returned
+const KNOWN_ENV_VARS = [
+  'DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_REDIRECT_URI', 'DISCORD_BOT_TOKEN', 'DISCORD_GUILD_ID',
+  'DISCORD_MEMBER_ROLE_ID', 'DISCORD_ADMIN_ROLE_ID', 'DISCORD_DEV_ROLE_ID',
+  'TS_SERVER_HOST', 'TS6_HOST', 'TS_API_PORT', 'TS6_QUERY_PORT', 'TS_USERNAME', 'TS6_USERNAME', 'TS_PASSWORD', 'TS6_PASSWORD',
+  'TS_API_KEY', 'TS6_API_KEY', 'TS_SERVER_ID', 'TS6_SERVER_ID', 'TS_MEMBER_GROUP_ID', 'TS6_MEMBER_GROUP_ID',
+  'TS_ADMIN_GROUP_ID', 'TS6_ADMIN_GROUP_ID', 'TS_BOT_NICKNAME',
+  'TS3_HOST', 'TS3_PORT', 'TS3_USERNAME', 'TS3_PASSWORD', 'TS3_SERVER_ID', 'TS3_MEMBER_GROUP_ID', 'TS3_ADMIN_GROUP_ID',
+  'SESSION_SECRET', 'PORT', 'NODE_ENV', 'IFRAME_ALLOWED_ORIGINS',
+  'STREAM_SECRET', 'STREAM_URL', 'ALLOWED_ORIGIN',
+];
+const DEPRECATED_ENV_VARS = ['VIDEOS_PER_PAGE', 'GRID_COLUMNS', 'LOGS_PER_PAGE', 'IFRAME_EMBED_ENABLED'];
+const APP_ENV_PREFIXES = /^(DISCORD_|TS3_|TS6_|TS_|SESSION_|STREAM_|IFRAME_|ALLOWED_ORIGIN|NODE_ENV|PORT)/;
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+app.get('/api/debug/env-check', requireDev, (req, res) => {
+  const present = Object.keys(process.env);
+  const known = new Set([...KNOWN_ENV_VARS, ...DEPRECATED_ENV_VARS]);
+
+  const deprecated = DEPRECATED_ENV_VARS.filter(name => process.env[name] !== undefined);
+
+  const suspicious = [];
+  for (const name of present) {
+    if (known.has(name) || !APP_ENV_PREFIXES.test(name)) continue;
+    let best = null;
+    for (const candidate of KNOWN_ENV_VARS) {
+      const dist = levenshtein(name, candidate);
+      if (dist > 0 && dist <= 2 && (!best || dist < best.dist)) best = { name: candidate, dist };
+    }
+    if (best) suspicious.push({ found: name, suggestion: best.name });
+  }
+
+  res.json({ deprecated, suspicious });
 });
 
 // ============ WATCH PARTY MANAGEMENT (admin) ============
@@ -2220,7 +2328,7 @@ app.delete('/api/logs/login/clear', requireAdmin, (req, res) => {
 // Watch Party logs
 app.get('/api/logs/watch-party', requireAdmin, (req, res) => {
   try {
-    const perPage = parseInt(process.env.LOGS_PER_PAGE) || 50;
+    const perPage = parseInt(getSetting('logs_per_page', '50'), 10) || 50;
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const code = (req.query.code || '').toUpperCase();
     const action = req.query.action || '';

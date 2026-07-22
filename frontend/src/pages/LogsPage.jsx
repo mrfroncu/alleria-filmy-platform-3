@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Eye, LogIn, Shield, Users, Search, Trash2 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
+import { useSettings } from '../contexts/SettingsContext';
 
 const LOGS_TAB_IDS = ['audit', 'watchparty', 'watch', 'login'];
 
@@ -29,6 +30,7 @@ function actionMeta(action) {
 }
 
 export default function LogsPage() {
+  const { config } = useSettings();
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState(LOGS_TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'audit');
 
@@ -99,7 +101,7 @@ export default function LogsPage() {
   return (
     <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
       <div className="mb-8">
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">Logi systemowe</h1>
+        {!config.showTopBar && <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">Logi systemowe</h1>}
         <p className="text-zinc-500 dark:text-zinc-400">Przeglądanie logów wyświetleń, logowania, audytu i Watch Party.</p>
       </div>
 

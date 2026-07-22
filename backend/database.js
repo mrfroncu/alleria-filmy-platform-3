@@ -195,6 +195,11 @@ function initDB() {
   try { db.exec(`ALTER TABLE videos ADD COLUMN mirror5_url TEXT`); } catch (e) {}
   try { db.exec(`ALTER TABLE videos ADD COLUMN mirror5_type TEXT DEFAULT 'link'`); } catch (e) {}
 
+  // Discord avatar source (global vs. per-server/Nitro)
+  try { db.exec(`ALTER TABLE users ADD COLUMN discord_avatar_hash TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN discord_guild_avatar_hash TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN avatar_source TEXT DEFAULT 'global'`); } catch (e) {}
+
   // Audit logs
   db.exec(`CREATE TABLE IF NOT EXISTS audit_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { BarChart3, Film, Users, Eye, Tag, Trophy, TrendingUp, Heart, Play } from 'lucide-react';
 import { api } from '../utils/api';
+import { useSettings } from '../contexts/SettingsContext';
 
 export default function StatsPage() {
+  const { config } = useSettings();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -40,12 +42,14 @@ export default function StatsPage() {
   return (
     <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
       <div className="mb-10">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center">
-            <BarChart3 className="w-5 h-5 text-violet-500" />
+        {!config.showTopBar && (
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center">
+              <BarChart3 className="w-5 h-5 text-violet-500" />
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Statystyki</h1>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Statystyki</h1>
-        </div>
+        )}
         <p className="text-zinc-500 dark:text-zinc-400">Podsumowanie aktywności społeczności i Twoje osobiste statystyki.</p>
       </div>
 
