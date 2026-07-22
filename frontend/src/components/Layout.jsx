@@ -227,8 +227,8 @@ export default function Layout({ children }) {
           </div>
         </div>
 
-        {/* Desktop top bar */}
-        <div className="hidden lg:flex items-center justify-end px-8 py-3 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
+        {/* Desktop profile menu — floats over content in the corner, doesn't push the page down, stays put on scroll */}
+        <div className="hidden lg:block fixed top-5 right-8 z-40">
           <ProfileMenu />
         </div>
 
