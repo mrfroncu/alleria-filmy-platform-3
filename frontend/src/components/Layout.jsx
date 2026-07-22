@@ -241,27 +241,25 @@ export default function Layout({ children }) {
 
       <main ref={mainRef} className="flex-1 overflow-y-auto relative flex flex-col">
         {/* Mobile top bar */}
-        <div className="lg:hidden flex items-center justify-between gap-3 p-4 bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 sticky top-0 z-30 shadow-lg shadow-violet-900/10">
+        <div className="lg:hidden flex items-center justify-between gap-3 p-4 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
           <div className="flex items-center gap-2.5 min-w-0">
             <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain shrink-0" />
-            <span className="font-bold text-white font-display text-sm truncate">{pageTitle}</span>
+            <span className="font-bold text-zinc-900 dark:text-white font-display text-sm truncate">{pageTitle}</span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <GlobalSearch compact />
             <ProfileMenu compact />
-            <button onClick={() => setSidebarOpen(true)} className="p-2 text-white/80 hover:text-white">
+            <button onClick={() => setSidebarOpen(true)} className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white">
               <Menu className="w-5 h-5" />
             </button>
           </div>
         </div>
 
         {/* Desktop top bar — page title, global search, profile menu */}
-        <div className="hidden lg:flex items-center gap-6 px-8 py-3 bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 sticky top-0 z-30 shadow-lg shadow-violet-900/10">
-          <h1 className="text-white font-bold text-lg font-display shrink-0 truncate max-w-[260px]">{pageTitle}</h1>
+        <div className="hidden lg:flex items-center gap-6 px-8 py-3 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
+          <h1 className="text-zinc-900 dark:text-white font-bold text-lg font-display shrink-0 truncate max-w-[240px]">{pageTitle}</h1>
           <div className="flex-1 flex justify-center">
-            <div className="w-full max-w-xl">
-              <GlobalSearch />
-            </div>
+            <GlobalSearch />
           </div>
           <div className="shrink-0">
             <ProfileMenu />

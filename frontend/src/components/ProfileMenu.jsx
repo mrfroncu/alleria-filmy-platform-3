@@ -32,7 +32,7 @@ export default function ProfileMenu({ compact = false }) {
     <div className="relative" ref={rootRef}>
       <button
         onClick={() => setOpen(v => !v)}
-        className={`flex items-center gap-2.5 rounded-xl transition-all ${compact ? 'p-1 hover:bg-white/15' : 'py-1.5 pl-1.5 pr-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md hover:border-zinc-300 dark:hover:border-zinc-700'}`}
+        className={`flex items-center gap-2.5 rounded-xl transition-colors hover:bg-zinc-100 dark:hover:bg-white/5 ${compact ? 'p-1' : 'py-1.5 pl-1.5 pr-3'}`}
       >
         <img src={avatarUrl} alt="" className="w-8 h-8 rounded-lg shadow-sm border border-zinc-200 dark:border-white/10 object-cover shrink-0" />
         {!compact && (
