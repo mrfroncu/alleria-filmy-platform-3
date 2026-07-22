@@ -85,6 +85,8 @@ function matchReason(video, query) {
     const excerpt = (start > 0 ? '…' : '') + video.description.slice(start, idx + q.length + 20) + '…';
     return { label: 'opis', text: excerpt };
   }
+  const matchedTag = video.tags?.find(t => t.name?.toLowerCase().includes(q));
+  if (matchedTag) return { label: 'tag', text: matchedTag.name };
   return null;
 }
 

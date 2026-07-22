@@ -1082,9 +1082,10 @@ app.get('/api/videos', requireAuth, (req, res) => {
   }
 
   if (search) {
-    conditions.push('(v.title LIKE ? OR v.description LIKE ? OR u.display_name LIKE ? OR u.username LIKE ?)');
+    conditions.push(`(v.title LIKE ? OR v.description LIKE ? OR u.display_name LIKE ? OR u.username LIKE ?
+      OR v.id IN (SELECT vt.video_id FROM video_tags vt JOIN tags t ON vt.tag_id = t.id WHERE t.name LIKE ?))`);
     const like = `%${search}%`;
-    params.push(like, like, like, like);
+    params.push(like, like, like, like, like);
   }
 
   if (author) {
