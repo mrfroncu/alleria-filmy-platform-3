@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import VideoModal from '../components/VideoModal';
+import { tabPanel } from '../utils/motion';
 
 export default function AdminPage() {
   const [videos, setVideos] = useState([]);
@@ -150,16 +152,17 @@ export default function AdminPage() {
       </div>
 
       {/* === VIDEOS TAB === */}
+      <AnimatePresence mode="wait">
       {tab === 'videos' && (
-        <div>
+        <motion.div key="videos" variants={tabPanel} initial="hidden" animate="show" exit="exit">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
               <input type="text" value={searchVideos} onChange={e => setSearchVideos(e.target.value)} placeholder="Szukaj filmów..." className="input-field pl-11 !py-3 text-sm" />
             </div>
-            <button onClick={() => { setEditingVideo(null); setIsModalOpen(true); }} className="btn-primary flex items-center gap-2 text-sm">
+            <motion.button layoutId="video-modal-new" onClick={() => { setEditingVideo(null); setIsModalOpen(true); }} className="btn-primary flex items-center gap-2 text-sm">
               <Plus className="w-4 h-4" /> Dodaj film
-            </button>
+            </motion.button>
           </div>
 
           {/* Bulk action toolbar */}
@@ -267,9 +270,9 @@ export default function AdminPage() {
                         <td className="px-4 py-3 text-xs text-zinc-500 font-mono whitespace-nowrap">{formatDate(video.publish_date)}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => { setEditingVideo(video); setIsModalOpen(true); }} className="btn-icon-violet">
+                            <motion.button layoutId={`video-modal-${video.id}`} onClick={() => { setEditingVideo(video); setIsModalOpen(true); }} className="btn-icon-violet">
                               <Pencil className="w-3.5 h-3.5" />
-                            </button>
+                            </motion.button>
                             <button onClick={() => setDeleteConfirm(video)} className="btn-icon-red">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -282,12 +285,12 @@ export default function AdminPage() {
               </table>
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* === TAGS TAB === */}
       {tab === 'tags' && (
-        <div>
+        <motion.div key="tags" variants={tabPanel} initial="hidden" animate="show" exit="exit">
           <h2 className="text-xl font-bold text-zinc-900 dark:text-white font-display mb-4">Zarządzanie tagami</h2>
           <div className="card overflow-hidden">
             {tags.length === 0 ? (
@@ -341,8 +344,9 @@ export default function AdminPage() {
               </div>
             )}
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* Video Modal */}
       <VideoModal

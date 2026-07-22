@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug, Lock } from 'lucide-react';
 import { api } from '../utils/api';
+import { modalBackdrop, modalPanel, tabPanel, tapScale } from '../utils/motion';
 
 // Dev Tools tabs — selected at the top of the page
 const TABS = [
@@ -390,8 +392,9 @@ export default function DebugPage() {
       )}
 
       {/* ============ STREAMING ============ */}
+      <AnimatePresence mode="wait">
       {activeTab === 'streaming' && (
-      <div className="animate-fade-in">
+      <motion.div key="streaming" variants={tabPanel} initial="hidden" animate="show" exit="exit">
       {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <div className="card p-5 text-center">
@@ -694,12 +697,12 @@ export default function DebugPage() {
         </div>
       </div>
 
-      </div>
+      </motion.div>
       )}
 
       {/* ============ ADMINISTRACYJNE ============ */}
       {activeTab === 'admin' && (
-      <div className="animate-fade-in">
+      <motion.div key="admin" variants={tabPanel} initial="hidden" animate="show" exit="exit">
       {/* Watch Party manager */}
       <div className="card p-6 mb-4">
         <div className="flex items-center justify-between mb-4">
@@ -843,12 +846,12 @@ export default function DebugPage() {
         </div>
       </div>
 
-      </div>
+      </motion.div>
       )}
 
       {/* ============ KATEGORIE ============ */}
       {activeTab === 'categories' && (
-      <div className="animate-fade-in grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+      <motion.div key="categories" variants={tabPanel} initial="hidden" animate="show" exit="exit" className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
       {/* Access Checker */}
       <div className="card p-6 xl:col-span-2">
         <div className="flex items-center gap-3 mb-5">
@@ -983,12 +986,12 @@ export default function DebugPage() {
         </div>
       </div>
 
-      </div>
+      </motion.div>
       )}
 
       {/* ============ USTAWIENIA ============ */}
       {activeTab === 'settings' && (
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-fade-in">
+      <motion.div key="settings" variants={tabPanel} initial="hidden" animate="show" exit="exit" className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {/* Content length limits */}
         <div className="card p-8 h-full flex flex-col xl:col-span-2">
           <div className="flex items-start gap-4">
@@ -1086,13 +1089,13 @@ export default function DebugPage() {
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       )}
 
       {/* ============ DEBUG ============ */}
       {activeTab === 'debug' && (
-      <div className="animate-fade-in">
+      <motion.div key="debug" variants={tabPanel} initial="hidden" animate="show" exit="exit">
       {/* Database stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
         <div className="card p-5 text-center">
@@ -1313,54 +1316,63 @@ export default function DebugPage() {
           </div>
         </div>
 
-      </div>
+      </motion.div>
       )}
+      </AnimatePresence>
 
       {/* Clear DB confirmation modal */}
-      {clearDbOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
-          onClick={() => { if (!loading) { setClearDbOpen(false); setClearDbText(''); } }}
-        >
-          <div className="card w-full max-w-md p-6 border-red-300 dark:border-red-500/30" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 bg-red-50 dark:bg-red-500/10 rounded-xl flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-5 h-5 text-red-500" />
+      <AnimatePresence>
+        {clearDbOpen && (
+          <motion.div
+            variants={modalBackdrop}
+            initial="hidden"
+            animate="show"
+            exit="exit"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={() => { if (!loading) { setClearDbOpen(false); setClearDbText(''); } }}
+          >
+            <motion.div variants={modalPanel} className="card w-full max-w-md p-6 border-red-300 dark:border-red-500/30" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-red-50 dark:bg-red-500/10 rounded-xl flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-red-500" />
+                </div>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Wyczyść bazę danych</h3>
               </div>
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Wyczyść bazę danych</h3>
-            </div>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
-              Ta operacja usunie wszystkie filmy, tagi i logi i jest <strong className="text-red-600 dark:text-red-400">nieodwracalna</strong>.
-              Aby potwierdzić, wpisz poniżej dokładnie <span className="font-mono font-bold text-red-600 dark:text-red-400">{CLEAR_DB_PHRASE}</span>.
-            </p>
-            <input
-              type="text"
-              value={clearDbText}
-              onChange={e => setClearDbText(e.target.value)}
-              placeholder={CLEAR_DB_PHRASE}
-              autoFocus
-              className="input-field !py-3 text-sm mb-4"
-              onKeyDown={e => { if (e.key === 'Enter' && clearDbText === CLEAR_DB_PHRASE) performClear(); }}
-            />
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => { setClearDbOpen(false); setClearDbText(''); }}
-                disabled={loading}
-                className="btn-secondary text-sm"
-              >
-                Anuluj
-              </button>
-              <button
-                onClick={performClear}
-                disabled={loading || clearDbText !== CLEAR_DB_PHRASE}
-                className="btn-danger text-sm"
-              >
-                {loading ? 'Czyszczenie...' : 'Wyczyść wszystko'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+                Ta operacja usunie wszystkie filmy, tagi i logi i jest <strong className="text-red-600 dark:text-red-400">nieodwracalna</strong>.
+                Aby potwierdzić, wpisz poniżej dokładnie <span className="font-mono font-bold text-red-600 dark:text-red-400">{CLEAR_DB_PHRASE}</span>.
+              </p>
+              <input
+                type="text"
+                value={clearDbText}
+                onChange={e => setClearDbText(e.target.value)}
+                placeholder={CLEAR_DB_PHRASE}
+                autoFocus
+                className="input-field !py-3 text-sm mb-4"
+                onKeyDown={e => { if (e.key === 'Enter' && clearDbText === CLEAR_DB_PHRASE) performClear(); }}
+              />
+              <div className="flex gap-3 justify-end">
+                <motion.button
+                  whileTap={tapScale}
+                  onClick={() => { setClearDbOpen(false); setClearDbText(''); }}
+                  disabled={loading}
+                  className="btn-secondary text-sm"
+                >
+                  Anuluj
+                </motion.button>
+                <motion.button
+                  whileTap={tapScale}
+                  onClick={performClear}
+                  disabled={loading || clearDbText !== CLEAR_DB_PHRASE}
+                  className="btn-danger text-sm"
+                >
+                  {loading ? 'Czyszczenie...' : 'Wyczyść wszystko'}
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Eye, LogIn, Shield, Users, Search, Trash2 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
+import { tabPanel } from '../utils/motion';
 
 const WP_ACTIONS = [
   { key: '', label: 'Wszystkie' },
@@ -121,8 +123,9 @@ export default function LogsPage() {
       </div>
 
       {/* ─── AUDIT ─── */}
+      <AnimatePresence mode="wait">
       {tab === 'audit' && (
-        <div>
+        <motion.div key="audit" variants={tabPanel} initial="hidden" animate="show" exit="exit">
           <div className="flex flex-wrap gap-2 mb-4">
             {['', 'video', 'comment', 'category', 'tag'].map(t => (
               <button key={t} onClick={() => { setAuditType(t); setAuditPage(1); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${auditType === t ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>
@@ -163,12 +166,12 @@ export default function LogsPage() {
               ))}
             </div>
           )}
-        </div>
+        </motion.div>
       )}
 
       {/* ─── WATCH PARTY ─── */}
       {tab === 'watchparty' && (
-        <div className="space-y-4">
+        <motion.div key="watchparty" variants={tabPanel} initial="hidden" animate="show" exit="exit" className="space-y-4">
           {/* Filters */}
           <div className="flex flex-wrap gap-2 items-center">
             {/* Code filter */}
@@ -281,12 +284,12 @@ export default function LogsPage() {
             )}
             <Pagination meta={wpMeta} onPage={p => loadWpLogs(p)} />
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* ─── WATCH ─── */}
       {tab === 'watch' && (
-        <div className="card overflow-hidden">
+        <motion.div key="watch" variants={tabPanel} initial="hidden" animate="show" exit="exit" className="card overflow-hidden">
           <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
             <div className="w-9 h-9 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center shrink-0">
               <Eye className="w-4 h-4 text-violet-500" />
@@ -314,12 +317,12 @@ export default function LogsPage() {
             </table>
           </div>
           <Pagination meta={watchMeta} onPage={loadWatch} />
-        </div>
+        </motion.div>
       )}
 
       {/* ─── LOGIN ─── */}
       {tab === 'login' && (
-        <div className="card overflow-hidden">
+        <motion.div key="login" variants={tabPanel} initial="hidden" animate="show" exit="exit" className="card overflow-hidden">
           <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
             <div className="w-9 h-9 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center shrink-0">
               <LogIn className="w-4 h-4 text-violet-500" />
@@ -351,8 +354,9 @@ export default function LogsPage() {
             </table>
           </div>
           <Pagination meta={loginMeta} onPage={loadLogin} />
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }

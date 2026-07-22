@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { FolderOpen, Plus, Pencil, Trash2, Users, Shield } from 'lucide-react';
 import { api } from '../utils/api';
 import { buildCategoryTreeOptions, formatDate } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
+import { tabPanel } from '../utils/motion';
 
 export default function ManagePage() {
   const [tab, setTab] = useState('categories');
@@ -227,8 +229,9 @@ export default function ManagePage() {
       )}
 
       {/* === CATEGORIES TAB === */}
+      <AnimatePresence mode="wait">
       {tab === 'categories' && (
-        <>
+        <motion.div key="categories" variants={tabPanel} initial="hidden" animate="show" exit="exit">
           {/* Category form */}
           <div className="card p-8 mb-8">
             <div className="flex items-center gap-3 mb-6">
@@ -444,12 +447,12 @@ export default function ManagePage() {
               </div>
             )}
           </div>
-        </>
+        </motion.div>
       )}
 
       {/* === USERS TAB === */}
       {tab === 'users' && (
-        <div className="card overflow-hidden">
+        <motion.div key="users" variants={tabPanel} initial="hidden" animate="show" exit="exit" className="card overflow-hidden">
           {editingUserRanks && (
             <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-indigo-50 dark:bg-indigo-500/10">
               <div className="flex items-center gap-3 flex-wrap">
@@ -598,8 +601,9 @@ export default function ManagePage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }

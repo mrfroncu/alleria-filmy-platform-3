@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { BarChart3, Film, Users, Eye, Tag, Trophy, TrendingUp, Heart, Play } from 'lucide-react';
 import { api } from '../utils/api';
+import { fadeSlideUp, staggerContainer } from '../utils/motion';
 
 export default function StatsPage() {
   const [stats, setStats] = useState(null);
@@ -25,7 +27,7 @@ export default function StatsPage() {
   if (!stats) return null;
 
   const StatCard = ({ icon: Icon, label, value, color, sub }) => (
-    <div className="card p-6 group hover:shadow-lg transition-all">
+    <motion.div variants={fadeSlideUp} whileHover={{ y: -4 }} className="card p-6 group hover:shadow-lg transition-shadow">
       <div className="flex items-start justify-between mb-3">
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
           <Icon className="w-5 h-5" />
@@ -34,7 +36,7 @@ export default function StatsPage() {
       <p className="text-2xl sm:text-3xl font-bold text-zinc-900 dark:text-white font-display tracking-tight">{value}</p>
       <p className="text-xs text-zinc-500 font-medium mt-1">{label}</p>
       {sub && <p className="text-[10px] text-zinc-400 mt-0.5">{sub}</p>}
-    </div>
+    </motion.div>
   );
 
   return (
@@ -50,20 +52,20 @@ export default function StatsPage() {
       </div>
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <motion.div initial="hidden" animate="show" variants={staggerContainer(0.07)} className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard icon={Film} label="Filmów w bazie" value={stats.totalVideos} color="bg-violet-50 dark:bg-violet-500/10 text-violet-500" />
         <StatCard icon={Users} label="Użytkowników" value={stats.totalUsers} color="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500" />
         <StatCard icon={Eye} label="Łącznie wyświetleń" value={stats.totalViews} color="bg-amber-50 dark:bg-amber-500/10 text-amber-500" />
         <StatCard icon={Tag} label="Tagów" value={stats.totalTags} color="bg-pink-50 dark:bg-pink-500/10 text-pink-500" />
-      </div>
+      </motion.div>
 
       {/* Personal Stats */}
       <div className="card p-6 mb-8">
         <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-4 flex items-center gap-2">
           <TrendingUp className="w-5 h-5 text-violet-500" /> Twoje statystyki
         </h2>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex items-center gap-4 p-5 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl">
+        <motion.div initial="hidden" animate="show" variants={staggerContainer(0.1)} className="grid grid-cols-2 gap-4">
+          <motion.div variants={fadeSlideUp} className="flex items-center gap-4 p-5 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl">
             <div className="w-11 h-11 rounded-xl bg-violet-100 dark:bg-violet-500/15 flex items-center justify-center shrink-0">
               <Eye className="w-5 h-5 text-violet-500" />
             </div>
@@ -71,8 +73,8 @@ export default function StatsPage() {
               <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display leading-tight">{stats.myStats.views}</p>
               <p className="text-xs text-zinc-500">Obejrzanych filmów</p>
             </div>
-          </div>
-          <div className="flex items-center gap-4 p-5 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl">
+          </motion.div>
+          <motion.div variants={fadeSlideUp} className="flex items-center gap-4 p-5 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl">
             <div className="w-11 h-11 rounded-xl bg-pink-100 dark:bg-pink-500/15 flex items-center justify-center shrink-0">
               <Heart className="w-5 h-5 text-pink-500" />
             </div>
@@ -80,13 +82,13 @@ export default function StatsPage() {
               <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display leading-tight">{stats.myStats.favorites}</p>
               <p className="text-xs text-zinc-500">Ulubionych</p>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <motion.div initial="hidden" animate="show" variants={staggerContainer(0.08)} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Most Watched */}
-        <div className="card p-6">
+        <motion.div variants={fadeSlideUp} className="card p-6">
           <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-4 flex items-center gap-2">
             <Trophy className="w-5 h-5 text-amber-500" /> Najczęściej oglądane
           </h2>
@@ -116,10 +118,10 @@ export default function StatsPage() {
               ))}
             </div>
           )}
-        </div>
+        </motion.div>
 
         {/* Top Viewers */}
-        <div className="card p-6">
+        <motion.div variants={fadeSlideUp} className="card p-6">
           <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-4 flex items-center gap-2">
             <Play className="w-5 h-5 text-violet-500" /> Najbardziej aktywni
           </h2>
@@ -140,10 +142,10 @@ export default function StatsPage() {
               ))}
             </div>
           )}
-        </div>
+        </motion.div>
 
         {/* Top Authors */}
-        <div className="card p-6">
+        <motion.div variants={fadeSlideUp} className="card p-6">
           <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-4 flex items-center gap-2">
             <Film className="w-5 h-5 text-emerald-500" /> Top autorzy
           </h2>
@@ -160,10 +162,10 @@ export default function StatsPage() {
               ))}
             </div>
           )}
-        </div>
+        </motion.div>
 
         {/* Tag Cloud */}
-        <div className="card p-6">
+        <motion.div variants={fadeSlideUp} className="card p-6">
           <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-4 flex items-center gap-2">
             <Tag className="w-5 h-5 text-pink-500" /> Popularne tagi
           </h2>
@@ -186,8 +188,8 @@ export default function StatsPage() {
               })}
             </div>
           )}
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }

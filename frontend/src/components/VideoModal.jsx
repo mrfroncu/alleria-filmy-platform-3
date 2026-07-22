@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { X, Upload, Plus } from 'lucide-react';
 import { api } from '../utils/api';
 import { extractYoutubeId, buildCategoryTreeOptions } from '../utils/helpers';
 import DateTimePicker from './DateTimePicker';
 import { useAuth } from '../contexts/AuthContext';
+import { modalBackdrop, modalPanel } from '../utils/motion';
 
 function SmartThumbnail({ ytId, customSrc, alt }) {
   const [src, setSrc] = useState('');
@@ -413,12 +415,14 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     }
   };
 
-  if (!isOpen) return null;
+  const layoutId = video ? `video-modal-${video.id}` : 'video-modal-new';
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-backdrop" onClick={onClose} />
-      <div className="modal-content max-w-2xl" style={{ animation: 'slideUp 0.3s ease-out' }}>
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div variants={modalBackdrop} initial="hidden" animate="show" exit="exit" className="modal-overlay">
+          <div className="modal-backdrop" onClick={onClose} />
+          <motion.div layoutId={layoutId} variants={modalPanel} className="modal-content max-w-2xl">
         <div className="p-8 sm:p-10">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">
@@ -886,12 +890,14 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
               </div>
             )}
 
-            <button type="submit" disabled={submitting} className="w-full py-5 bg-gradient-to-br from-violet-500 to-violet-600 text-white rounded-2xl font-bold hover:from-violet-600 hover:to-violet-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-4 shadow-xl shadow-violet-500/20 active:scale-[0.98]">
+            <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} type="submit" disabled={submitting} className="w-full py-5 bg-gradient-to-br from-violet-500 to-violet-600 text-white rounded-2xl font-bold hover:from-violet-600 hover:to-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-4 shadow-xl shadow-violet-500/20">
               {submitting ? 'Zapisywanie...' : isEdit ? 'Zapisz zmiany' : 'Dodaj film'}
-            </button>
+            </motion.button>
           </form>
         </div>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

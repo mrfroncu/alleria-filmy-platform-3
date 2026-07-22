@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import {
@@ -7,36 +8,42 @@ import {
   Heart, Clock, BarChart3, FolderOpen, FileText, MessageSquarePlus
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
+import { spring } from '../utils/motion';
+import useViewTransitionNavigate from '../hooks/useViewTransitionNavigate';
 import WatchPartyTab from './WatchPartyTab';
 import ProfileMenu from './ProfileMenu';
 
 const LOGO_URL = 'https://alleria.pl/image/favicon.png';
 
-function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlug }) {
+function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlug, vtNavigate }) {
   const children = cats.filter(c => (c.parent_id || null) === parentId);
   if (children.length === 0) return null;
   return children.map(cat => {
     const hasKids = cats.some(c => c.parent_id === cat.id);
     const active = location.pathname === `/category/${cat.slug}` || activeCatSlug === cat.slug;
     const pl = depth === 0 ? 'pl-9' : depth === 1 ? 'pl-12' : 'pl-14';
+    const to = `/category/${cat.slug}`;
     return (
       <div key={cat.id}>
         <Link
-          to={`/category/${cat.slug}`}
-          onClick={() => setSidebarOpen(false)}
-          className={`w-full flex items-center ${pl} pr-4 py-2 rounded-xl transition-all duration-300 group ${
+          to={to}
+          onClick={(e) => { e.preventDefault(); setSidebarOpen(false); vtNavigate(to); }}
+          className={`relative w-full flex items-center ${pl} pr-4 py-2 rounded-xl transition-colors duration-300 group ${
             active
-              ? 'bg-violet-500/10 text-violet-500 dark:text-violet-400'
+              ? 'text-violet-500 dark:text-violet-400'
               : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white'
           }`}
         >
+          {active && (
+            <motion.div layoutId="nav-active-pill" transition={spring} className="absolute inset-0 rounded-xl bg-violet-500/10 -z-10" />
+          )}
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
             <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-violet-500' : hasKids ? 'bg-zinc-400 dark:bg-zinc-500' : 'bg-zinc-300 dark:bg-zinc-600'}`} />
             <span className="font-semibold text-[13px] truncate">{cat.name}</span>
             <span className="text-[10px] text-zinc-400 shrink-0">{cat.videoCount || 0}</span>
           </div>
         </Link>
-        {hasKids && <CatTree cats={cats} parentId={cat.id} depth={depth + 1} location={location} setSidebarOpen={setSidebarOpen} activeCatSlug={activeCatSlug} />}
+        {hasKids && <CatTree cats={cats} parentId={cat.id} depth={depth + 1} location={location} setSidebarOpen={setSidebarOpen} activeCatSlug={activeCatSlug} vtNavigate={vtNavigate} />}
       </div>
     );
   });
@@ -45,6 +52,7 @@ function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlu
 export default function Layout({ children }) {
   const { isAdmin, isDev } = useAuth();
   const location = useLocation();
+  const vtNavigate = useViewTransitionNavigate();
   const mainRef = useRef(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [categories, setCategories] = useState([]);
@@ -79,13 +87,20 @@ export default function Layout({ children }) {
   const NavLink = ({ to, icon: Icon, label, active, indent }) => (
     <Link
       to={to}
-      onClick={() => setSidebarOpen(false)}
-      className={`sidebar-link w-full flex items-center justify-between ${indent ? 'pl-9 pr-4' : 'px-4'} py-2.5 rounded-xl group ${
+      onClick={(e) => { e.preventDefault(); setSidebarOpen(false); vtNavigate(to); }}
+      className={`sidebar-link relative w-full flex items-center justify-between ${indent ? 'pl-9 pr-4' : 'px-4'} py-2.5 rounded-xl group ${
         active
-          ? indent ? 'active bg-violet-500/10 text-violet-500 dark:text-violet-400' : 'active bg-violet-500 text-white shadow-lg shadow-violet-500/20'
+          ? indent ? 'active text-violet-500 dark:text-violet-400' : 'active text-white'
           : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
       }`}
     >
+      {active && (
+        <motion.div
+          layoutId="nav-active-pill"
+          transition={spring}
+          className={`absolute inset-0 rounded-xl -z-10 ${indent ? 'bg-violet-500/10' : 'bg-violet-500 shadow-lg shadow-violet-500/20'}`}
+        />
+      )}
       <div className="flex items-center gap-3">
         {Icon && <Icon className="w-[18px] h-[18px]" />}
         {!Icon && indent && <div className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-violet-500' : 'bg-zinc-400 dark:bg-zinc-600'}`} />}
@@ -110,9 +125,17 @@ export default function Layout({ children }) {
 
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950 font-sans selection:bg-violet-100 selection:text-violet-900 relative overflow-hidden transition-colors duration-300">
-      {sidebarOpen && (
-        <div className="fixed inset-0 bg-zinc-950/60 backdrop-blur-sm z-40 lg:hidden animate-fade-in" onClick={() => setSidebarOpen(false)} />
-      )}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-zinc-950/60 backdrop-blur-sm z-40 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+      </AnimatePresence>
 
       <aside className={`
         fixed lg:static inset-y-0 left-0 w-[272px] bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-white/5 flex flex-col z-50 lg:z-10 transition-all duration-300 ease-in-out overflow-hidden
@@ -126,7 +149,7 @@ export default function Layout({ children }) {
         {/* Logo */}
         <div className="px-6 pt-7 pb-2 relative z-10 shrink-0">
           <div className="flex items-center justify-between mb-7">
-            <Link to="/" className="flex items-center gap-3 group" onClick={() => setSidebarOpen(false)}>
+            <Link to="/" className="flex items-center gap-3 group" onClick={(e) => { e.preventDefault(); setSidebarOpen(false); vtNavigate('/'); }}>
               <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden shadow-lg shadow-violet-500/10 group-hover:shadow-violet-500/30 transition-shadow bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10 border border-white/10">
                 <img src={LOGO_URL} alt="Alleria" className="w-9 h-9 object-contain" />
               </div>
@@ -162,7 +185,7 @@ export default function Layout({ children }) {
                 </button>
                 {catsExpanded && (
                   <div className="space-y-0.5 animate-fade-in">
-                    <CatTree cats={categories} parentId={null} depth={0} location={location} setSidebarOpen={setSidebarOpen} activeCatSlug={activeCatSlug} />
+                    <CatTree cats={categories} parentId={null} depth={0} location={location} setSidebarOpen={setSidebarOpen} activeCatSlug={activeCatSlug} vtNavigate={vtNavigate} />
                   </div>
                 )}
               </>

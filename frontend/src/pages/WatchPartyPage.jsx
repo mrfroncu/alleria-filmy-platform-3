@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
   Users, Crown, X, Play, SkipForward, Trash2, Plus, Search, Film,
   ChevronRight, Settings2, AlertTriangle, Loader2, Shield
@@ -9,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import SecurePlayer from '../components/SecurePlayer';
 import { youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
+import { tapScale } from '../utils/motion';
 
 // Blob iframe for HTML embed sources (same as VideoPage)
 function HtmlEmbed({ html }) {
@@ -685,8 +687,8 @@ export default function WatchPartyPage() {
                   ))}
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => setAddingVideo(null)} className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-sm font-semibold transition-all">Wróć</button>
-                  <button onClick={() => handleAddToQueue(addingVideo, addSourceKey)} className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-sm font-bold transition-all">Dodaj do kolejki</button>
+                  <motion.button whileHover={{ y: -2 }} whileTap={tapScale} onClick={() => setAddingVideo(null)} className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-sm font-semibold transition-colors">Wróć</motion.button>
+                  <motion.button whileHover={{ y: -2 }} whileTap={tapScale} onClick={() => handleAddToQueue(addingVideo, addSourceKey)} className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-sm font-bold transition-colors">Dodaj do kolejki</motion.button>
                 </div>
               </div>
             ) : (

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle } from 'lucide-react';
 import { api } from '../utils/api';
@@ -7,6 +8,7 @@ import { formatDate, youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
 import SecurePlayer from '../components/SecurePlayer';
 import VideoModal from '../components/VideoModal';
+import { modalBackdrop, modalPanel, tapScale, popIn } from '../utils/motion';
 
 function Portal({ children }) { return ReactDOM.createPortal(children, document.body); }
 
@@ -376,11 +378,13 @@ export default function VideoPage() {
           <div className="flex-1">
             <div className="flex items-start gap-3 mb-3">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display flex-1">{video.title}</h1>
-              {canEdit && <button onClick={openEditModal} className="shrink-0 p-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-500/20 transition-all hover:scale-110 active:scale-95"><Pencil className="w-5 h-5" /></button>}
-              <button onClick={toggleFav} disabled={favLoading} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl transition-all duration-300 hover:scale-105 active:scale-95 ${isFav ? 'bg-pink-50 dark:bg-pink-500/10 text-pink-500 shadow-lg shadow-pink-500/10' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-pink-500'}`}>
-                <Heart className={`w-5 h-5 transition-all ${isFav ? 'fill-current scale-110' : ''}`} />
+              {canEdit && <motion.button layoutId={`video-modal-${video.id}`} whileHover={{ scale: 1.1 }} whileTap={tapScale} onClick={openEditModal} className="shrink-0 p-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-500/20 transition-colors"><Pencil className="w-5 h-5" /></motion.button>}
+              <motion.button whileHover={{ scale: 1.05 }} whileTap={tapScale} onClick={toggleFav} disabled={favLoading} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl transition-colors duration-300 ${isFav ? 'bg-pink-50 dark:bg-pink-500/10 text-pink-500 shadow-lg shadow-pink-500/10' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-pink-500'}`}>
+                <motion.span key={isFav} variants={popIn} initial="hidden" animate="show" className="inline-flex">
+                  <Heart className={`w-5 h-5 ${isFav ? 'fill-current' : ''}`} />
+                </motion.span>
                 {favCount > 0 && <span className="text-xs font-bold">{favCount}</span>}
-              </button>
+              </motion.button>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <Link to={`/author/${video.author_id}`} className="text-sm font-bold text-violet-500 hover:text-violet-600 transition-colors">{video.author_display_name || video.author_name}</Link>
@@ -506,9 +510,43 @@ export default function VideoPage() {
       </div>
 
       {/* All modals via Portal — always centered in viewport */}
-      {deleteConfirm && <Portal><div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}><div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',backdropFilter:'blur(8px)'}} onClick={()=>setDeleteConfirm(null)}/><div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center" style={{position:'relative',zIndex:1,animation:'modalIn 0.35s cubic-bezier(0.16,1,0.3,1)'}}><Trash2 className="w-12 h-12 text-red-500 mx-auto mb-4"/><h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć komentarz?</h3><p className="text-sm text-zinc-500 mb-6">Treść zostanie ukryta, wątek zachowany.</p><div className="flex gap-3 justify-center"><button onClick={()=>setDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button><button onClick={softDel} className="btn-danger text-sm">Usuń</button></div></div></div></Portal>}
-      {hardDeleteConfirm && <Portal><div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}><div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',backdropFilter:'blur(8px)'}} onClick={()=>setHardDeleteConfirm(null)}/><div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center" style={{position:'relative',zIndex:1,animation:'modalIn 0.35s cubic-bezier(0.16,1,0.3,1)'}}><AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4"/><h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć permanentnie?</h3><p className="text-sm text-zinc-500 mb-6">Komentarz i odpowiedzi usunięte na zawsze.</p><div className="flex gap-3 justify-center"><button onClick={()=>setHardDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button><button onClick={hardDel} className="btn-danger text-sm">Usuń</button></div></div></div></Portal>}
-      {showEditModal && <Portal><VideoModal isOpen={showEditModal} onClose={()=>setShowEditModal(false)} video={video} users={editUsers} onSaved={()=>{setShowEditModal(false);api.getVideo(id).then(v=>setVideo(v)).catch(()=>{})}}/></Portal>}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <Portal>
+            <motion.div variants={modalBackdrop} initial="hidden" animate="show" exit="exit" style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }} onClick={() => setDeleteConfirm(null)} />
+              <motion.div variants={modalPanel} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center" style={{ position: 'relative', zIndex: 1 }}>
+                <Trash2 className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć komentarz?</h3>
+                <p className="text-sm text-zinc-500 mb-6">Treść zostanie ukryta, wątek zachowany.</p>
+                <div className="flex gap-3 justify-center">
+                  <button onClick={() => setDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button>
+                  <button onClick={softDel} className="btn-danger text-sm">Usuń</button>
+                </div>
+              </motion.div>
+            </motion.div>
+          </Portal>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {hardDeleteConfirm && (
+          <Portal>
+            <motion.div variants={modalBackdrop} initial="hidden" animate="show" exit="exit" style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }} onClick={() => setHardDeleteConfirm(null)} />
+              <motion.div variants={modalPanel} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center" style={{ position: 'relative', zIndex: 1 }}>
+                <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć permanentnie?</h3>
+                <p className="text-sm text-zinc-500 mb-6">Komentarz i odpowiedzi usunięte na zawsze.</p>
+                <div className="flex gap-3 justify-center">
+                  <button onClick={() => setHardDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button>
+                  <button onClick={hardDel} className="btn-danger text-sm">Usuń</button>
+                </div>
+              </motion.div>
+            </motion.div>
+          </Portal>
+        )}
+      </AnimatePresence>
+      <Portal><VideoModal isOpen={showEditModal} onClose={()=>setShowEditModal(false)} video={video} users={editUsers} onSaved={()=>{setShowEditModal(false);api.getVideo(id).then(v=>setVideo(v)).catch(()=>{})}}/></Portal>
     </>
   );
 }

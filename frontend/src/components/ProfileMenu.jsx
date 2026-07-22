@@ -1,8 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, User, LogOut } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { roleBadgeClass, roleDotClass } from '../utils/roleColors';
+import { tapScale } from '../utils/motion';
+
+const dropdownVariants = {
+  hidden: { opacity: 0, scale: 0.92, y: -8 },
+  show: { opacity: 1, scale: 1, y: 0, transition: { type: 'spring', stiffness: 400, damping: 28 } },
+  exit: { opacity: 0, scale: 0.95, y: -4, transition: { duration: 0.12 } },
+};
 
 export default function ProfileMenu({ compact = false }) {
   const { user, logout } = useAuth();
@@ -30,9 +38,10 @@ export default function ProfileMenu({ compact = false }) {
 
   return (
     <div className="relative" ref={rootRef}>
-      <button
+      <motion.button
+        whileTap={tapScale}
         onClick={() => setOpen(v => !v)}
-        className={`flex items-center gap-2.5 rounded-xl transition-all hover:bg-zinc-100 dark:hover:bg-white/5 ${compact ? 'p-1' : 'py-1.5 pl-1.5 pr-3'}`}
+        className={`flex items-center gap-2.5 rounded-xl transition-colors hover:bg-zinc-100 dark:hover:bg-white/5 ${compact ? 'p-1' : 'py-1.5 pl-1.5 pr-3'}`}
       >
         <img src={avatarUrl} alt="" className="w-8 h-8 rounded-lg shadow-sm border border-zinc-200 dark:border-white/10 object-cover shrink-0" />
         {!compact && (
@@ -44,39 +53,50 @@ export default function ProfileMenu({ compact = false }) {
                 <span className="text-zinc-500 dark:text-zinc-400">{user.role}</span>
               </span>
             </div>
-            <ChevronDown className={`hidden sm:block w-3.5 h-3.5 text-zinc-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+            <motion.div animate={{ rotate: open ? 180 : 0 }} className="hidden sm:block">
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+            </motion.div>
           </>
         )}
-      </button>
+      </motion.button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl z-50 overflow-hidden animate-scale-in origin-top-right">
-          <div className="p-4 flex items-center gap-3 border-b border-zinc-100 dark:border-zinc-800">
-            <img src={avatarUrl} alt="" className="w-11 h-11 rounded-xl shadow-sm border border-zinc-200 dark:border-white/10 object-cover shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-zinc-900 dark:text-white truncate">{user.display_name || user.username}</p>
-              <span className={`inline-flex mt-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border ${roleBadgeClass(user.role)}`}>
-                {user.role?.toUpperCase()}
-              </span>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            variants={dropdownVariants}
+            initial="hidden"
+            animate="show"
+            exit="exit"
+            style={{ transformOrigin: 'top right' }}
+            className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl z-50 overflow-hidden"
+          >
+            <div className="p-4 flex items-center gap-3 border-b border-zinc-100 dark:border-zinc-800">
+              <img src={avatarUrl} alt="" className="w-11 h-11 rounded-xl shadow-sm border border-zinc-200 dark:border-white/10 object-cover shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-zinc-900 dark:text-white truncate">{user.display_name || user.username}</p>
+                <span className={`inline-flex mt-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border ${roleBadgeClass(user.role)}`}>
+                  {user.role?.toUpperCase()}
+                </span>
+              </div>
             </div>
-          </div>
-          <div className="p-1.5">
-            <Link
-              to="/profile"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white transition-colors"
-            >
-              <User className="w-4 h-4" /> Mój profil
-            </Link>
-            <button
-              onClick={logout}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-500/10 transition-colors"
-            >
-              <LogOut className="w-4 h-4" /> Wyloguj
-            </button>
-          </div>
-        </div>
-      )}
+            <div className="p-1.5">
+              <Link
+                to="/profile"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white transition-colors"
+              >
+                <User className="w-4 h-4" /> Mój profil
+              </Link>
+              <button
+                onClick={logout}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-500/10 transition-colors"
+              >
+                <LogOut className="w-4 h-4" /> Wyloguj
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

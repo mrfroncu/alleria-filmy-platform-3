@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { Search, SlidersHorizontal, X, ChevronDown, Film, RotateCcw } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
+
+const MotionLink = motion(Link);
 
 export default function VideosPage() {
   const { authorId, tagId, categorySlug } = useParams();
@@ -251,8 +254,9 @@ export default function VideosPage() {
           <style>{`@media(min-width:1280px){.video-grid{grid-template-columns:repeat(${config.gridColumns},minmax(0,1fr))!important}}`}</style>
           <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 video-grid">
             {videos.slice((page - 1) * config.videosPerPage, page * config.videosPerPage).map((video, idx) => (
-            <Link
+            <MotionLink
               key={video.id}
+              layout
               to={`/video/${video.id}${categorySlug ? `?from=${categorySlug}` : ''}`}
               className="video-card card overflow-hidden group"
               style={{ animationDelay: `${idx * 50}ms` }}
@@ -322,7 +326,7 @@ export default function VideosPage() {
                   </div>
                 )}
               </div>
-            </Link>
+            </MotionLink>
             ))}
           </div>
 
