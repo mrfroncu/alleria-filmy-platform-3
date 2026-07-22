@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import VideoModal from '../components/VideoModal';
 
+const ADMIN_TAB_IDS = ['videos', 'tags'];
+
 export default function AdminPage() {
+  const [searchParams] = useSearchParams();
   const [videos, setVideos] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [tags, setTags] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [tab, setTab] = useState('videos');
+  const [tab, setTab] = useState(ADMIN_TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'videos');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVideo, setEditingVideo] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);

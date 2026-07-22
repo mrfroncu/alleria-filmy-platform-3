@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Eye, LogIn, Shield, Users, Search, Trash2 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
+
+const LOGS_TAB_IDS = ['audit', 'watchparty', 'watch', 'login'];
 
 const WP_ACTIONS = [
   { key: '', label: 'Wszystkie' },
@@ -26,7 +29,8 @@ function actionMeta(action) {
 }
 
 export default function LogsPage() {
-  const [tab, setTab] = useState('audit');
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState(LOGS_TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'audit');
 
   const [watchLogs, setWatchLogs] = useState([]);
   const [watchMeta, setWatchMeta] = useState({ total: 0, page: 1, totalPages: 1 });

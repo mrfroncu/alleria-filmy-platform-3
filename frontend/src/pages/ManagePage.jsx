@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { FolderOpen, Plus, Pencil, Trash2, Users, Shield } from 'lucide-react';
 import { api } from '../utils/api';
 import { buildCategoryTreeOptions, formatDate } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
 
+const MANAGE_TAB_IDS = ['categories', 'users'];
+
 export default function ManagePage() {
-  const [tab, setTab] = useState('categories');
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState(MANAGE_TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'categories');
 
   // Category state
   const [cats, setCats] = useState([]);

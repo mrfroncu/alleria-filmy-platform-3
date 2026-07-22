@@ -241,12 +241,16 @@ export default function Layout({ children }) {
 
       <main ref={mainRef} className="flex-1 overflow-y-auto relative flex flex-col">
         {/* Mobile top bar */}
-        <div className="lg:hidden flex items-center justify-between gap-3 p-4 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
-          <div className="flex items-center gap-2.5 min-w-0">
+        <div className="lg:hidden relative overflow-hidden flex items-center justify-between gap-3 p-4 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
+          <div className="absolute inset-0 pointer-events-none opacity-[0.08] dark:opacity-[0.16]">
+            <div className="absolute -top-20 left-8 w-40 h-40 bg-violet-500 rounded-full blur-[70px]" />
+            <div className="absolute -bottom-20 right-8 w-40 h-40 bg-fuchsia-500 rounded-full blur-[70px]" />
+          </div>
+          <div className="relative z-10 flex items-center gap-2.5 min-w-0">
             <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain shrink-0" />
             <span className="font-bold text-zinc-900 dark:text-white font-display text-sm truncate">{pageTitle}</span>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="relative z-10 flex items-center gap-1 shrink-0">
             <GlobalSearch compact />
             <ProfileMenu compact />
             <button onClick={() => setSidebarOpen(true)} className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white">
@@ -256,12 +260,16 @@ export default function Layout({ children }) {
         </div>
 
         {/* Desktop top bar — page title, global search, profile menu */}
-        <div className="hidden lg:flex items-center gap-6 px-8 py-3 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
-          <h1 className="text-zinc-900 dark:text-white font-bold text-lg font-display shrink-0 truncate max-w-[240px]">{pageTitle}</h1>
-          <div className="flex-1 flex justify-center">
+        <div className="hidden lg:flex relative overflow-hidden items-center gap-6 px-8 py-3 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
+          <div className="absolute inset-0 pointer-events-none opacity-[0.07] dark:opacity-[0.15]">
+            <div className="absolute -top-16 left-1/4 w-56 h-56 bg-violet-500 rounded-full blur-[90px]" />
+            <div className="absolute -bottom-16 right-1/4 w-56 h-56 bg-fuchsia-500 rounded-full blur-[90px]" />
+          </div>
+          <h1 className="relative z-10 text-zinc-900 dark:text-white font-bold text-lg font-display shrink-0 truncate max-w-[240px]">{pageTitle}</h1>
+          <div className="relative z-10 flex-1 flex justify-center">
             <GlobalSearch />
           </div>
-          <div className="shrink-0">
+          <div className="relative z-10 shrink-0">
             <ProfileMenu />
           </div>
         </div>

@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Search, X, Film, Loader2, Heart, Clock, Users, User,
+  Search, Film, Loader2, Heart, Clock, Users, User, Tag as TagIcon,
   Shield, BarChart3, FolderOpen, FileText, Wrench, CornerDownLeft,
+  Eye, LogIn, HardDrive, UserPlus, ShieldCheck, Settings, Download,
+  Upload, Trash2, AlertTriangle, Terminal,
 } from 'lucide-react';
 import { api } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,6 +23,40 @@ const PAGES = [
   { label: 'Logi systemowe', to: '/logs', icon: FileText, devOnly: true },
   { label: 'Dev Tools', to: '/debug', icon: Wrench, devOnly: true },
 ];
+
+const SHORTCUT_PATHS = ['/', '/favorites', '/history'];
+
+// Settings/options/tabs living inside admin+dev pages — deep-link via ?tab= so search actually lands on the right tab
+const SEARCHABLE_ITEMS = [
+  { label: 'Biblioteka filmów', section: 'Panel Redaktora', to: '/admin?tab=videos', icon: Film, adminOnly: true },
+  { label: 'Zarządzanie tagami', section: 'Panel Redaktora', to: '/admin?tab=tags', icon: TagIcon, adminOnly: true },
+  { label: 'Kategorie', section: 'Zarządzanie', to: '/manage?tab=categories', icon: FolderOpen, devOnly: true },
+  { label: 'Rangi', section: 'Zarządzanie', to: '/manage?tab=categories', icon: Shield, devOnly: true },
+  { label: 'Użytkownicy', section: 'Zarządzanie', to: '/manage?tab=users', icon: Users, devOnly: true },
+  { label: 'Audit Log', section: 'Logi systemowe', to: '/logs?tab=audit', icon: FileText, devOnly: true },
+  { label: 'Logi Watch Party', section: 'Logi systemowe', to: '/logs?tab=watchparty', icon: Users, devOnly: true },
+  { label: 'Logi wyświetleń', section: 'Logi systemowe', to: '/logs?tab=watch', icon: Eye, devOnly: true },
+  { label: 'Logi logowania', section: 'Logi systemowe', to: '/logs?tab=login', icon: LogIn, devOnly: true },
+  { label: 'Pliki streamera', section: 'Dev Tools', to: '/debug?tab=streaming', icon: HardDrive, devOnly: true },
+  { label: 'Czyszczenie streamingu', section: 'Dev Tools', to: '/debug?tab=streaming', icon: Trash2, devOnly: true },
+  { label: 'Aktywne Watch Parties', section: 'Dev Tools', to: '/debug?tab=admin', icon: Users, devOnly: true },
+  { label: 'Dodaj użytkownika', section: 'Dev Tools', to: '/debug?tab=admin', icon: UserPlus, devOnly: true },
+  { label: 'Sprawdź uprawnienia', section: 'Dev Tools', to: '/debug?tab=categories', icon: ShieldCheck, devOnly: true },
+  { label: 'Limity treści', section: 'Dev Tools', to: '/debug?tab=settings', icon: Settings, devOnly: true },
+  { label: 'Ograniczenie domen webhooków', section: 'Dev Tools', to: '/debug?tab=settings', icon: ShieldCheck, devOnly: true },
+  { label: 'Wysyłka kodu logowania (TS3)', section: 'Dev Tools', to: '/debug?tab=settings', icon: ShieldCheck, devOnly: true },
+  { label: 'Eksportuj bazę danych', section: 'Dev Tools', to: '/debug?tab=debug', icon: Download, devOnly: true },
+  { label: 'Importuj bazę danych', section: 'Dev Tools', to: '/debug?tab=debug', icon: Upload, devOnly: true },
+  { label: 'Czyszczenie logów', section: 'Dev Tools', to: '/debug?tab=debug', icon: Trash2, devOnly: true },
+  { label: 'Wyczyść bazę danych', section: 'Dev Tools', to: '/debug?tab=debug', icon: AlertTriangle, devOnly: true },
+  { label: 'Konsola SQL', section: 'Dev Tools', to: '/debug?tab=debug', icon: Terminal, devOnly: true },
+];
+
+// Strip dots/dashes/underscores/spaces so "R.E.P.O." and "REPO" compare equal —
+// but keep it a plain substring check (not fuzzy) so "GTA VI" never matches tag "GTA V".
+function normalizeTag(str) {
+  return (str || '').toLowerCase().replace(/[.\-_\s]/g, '');
+}
 
 function Highlighted({ text, query }) {
   if (!query || !text) return <>{text}</>;
@@ -52,29 +88,73 @@ function matchReason(video, query) {
   return null;
 }
 
+function SectionLabel({ children }) {
+  return <p className="px-4 pt-2 pb-1.5 text-[10px] font-bold text-zinc-400 dark:text-zinc-600 uppercase tracking-[0.2em]">{children}</p>;
+}
+
+function ResultRow({ active, onMouseEnter, onClick, iconBox, title, subtitle }) {
+  return (
+    <button
+      onMouseEnter={onMouseEnter}
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 px-4 py-2.5 mx-2 rounded-xl text-left transition-colors ${active ? 'bg-violet-50 dark:bg-violet-500/15' : 'hover:bg-zinc-50 dark:hover:bg-white/5'}`}
+      style={{ width: 'calc(100% - 1rem)' }}
+    >
+      {iconBox}
+      <div className="flex-1 min-w-0">
+        {title}
+        {subtitle}
+      </div>
+      {active && <CornerDownLeft className="w-3.5 h-3.5 text-violet-500 shrink-0" />}
+    </button>
+  );
+}
+
 export default function GlobalSearch({ compact = false }) {
   const { isAdmin, isDev } = useAuth();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [allTags, setAllTags] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
+  const tagsLoadedRef = useRef(false);
   const navigate = useNavigate();
 
+  const trimmed = query.trim();
+  const isSearching = trimmed.length > 0;
+
   const visiblePages = useMemo(
-    () => PAGES.filter(p => (!p.adminOnly || isAdmin) && (!p.devOnly || isDev)),
+    () => PAGES.filter(p => (!p.adminOnly || isAdmin) && (!p.devOnly || isDev) && p.to !== location.pathname),
+    [isAdmin, isDev, location.pathname]
+  );
+  const visibleSettings = useMemo(
+    () => SEARCHABLE_ITEMS.filter(it => (!it.adminOnly || isAdmin) && (!it.devOnly || isDev)),
     [isAdmin, isDev]
   );
-  const trimmed = query.trim();
-  const matchedPages = trimmed
-    ? visiblePages.filter(p => p.label.toLowerCase().includes(trimmed.toLowerCase()))
-    : visiblePages;
-  const flatItems = useMemo(
-    () => [...matchedPages.map(p => ({ type: 'page', ...p })), ...results.map(v => ({ type: 'video', ...v }))],
-    [matchedPages, results]
+  const shortcuts = useMemo(
+    () => PAGES.filter(p => SHORTCUT_PATHS.includes(p.to) && p.to !== location.pathname),
+    [location.pathname]
   );
+
+  const matchedPages = isSearching
+    ? visiblePages.filter(p => p.label.toLowerCase().includes(trimmed.toLowerCase()))
+    : [];
+  const matchedSettings = isSearching
+    ? visibleSettings.filter(it => it.label.toLowerCase().includes(trimmed.toLowerCase()) || it.section.toLowerCase().includes(trimmed.toLowerCase()))
+    : [];
+  const matchedTags = isSearching
+    ? allTags.filter(t => normalizeTag(t.name).includes(normalizeTag(trimmed))).slice(0, 6)
+    : [];
+
+  const videoSearchActive = trimmed.length >= 2;
+  const flatCount = isSearching
+    ? matchedPages.length + matchedSettings.length + matchedTags.length + results.length
+    : shortcuts.length;
+  const nothingMatchedYet = isSearching && !videoSearchActive && matchedPages.length + matchedSettings.length + matchedTags.length === 0;
 
   // Global Cmd/Ctrl+K shortcut
   useEffect(() => {
@@ -88,9 +168,24 @@ export default function GlobalSearch({ compact = false }) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  // Escape closes the palette no matter what's focused inside it
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 50);
-    else { setQuery(''); setResults([]); setSelectedIndex(0); }
+    if (!open) return;
+    const onEsc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', onEsc);
+    return () => document.removeEventListener('keydown', onEsc);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 50);
+      if (!tagsLoadedRef.current) {
+        tagsLoadedRef.current = true;
+        api.getTags().then(setAllTags).catch(() => {});
+      }
+    } else {
+      setQuery(''); setResults([]); setSelectedIndex(0);
+    }
   }, [open]);
 
   useEffect(() => { setSelectedIndex(0); }, [trimmed]);
@@ -107,10 +202,11 @@ export default function GlobalSearch({ compact = false }) {
     return () => clearTimeout(debounceRef.current);
   }, [trimmed]);
 
-  const activate = (item) => {
+  const activate = (type, item) => {
     setOpen(false);
-    if (item.type === 'page') navigate(item.to);
-    else navigate(`/video/${item.id}`);
+    if (type === 'tag') navigate(`/tag/${item.id}`);
+    else if (type === 'video') navigate(`/video/${item.id}`);
+    else navigate(item.to);
   };
 
   const viewAllResults = () => {
@@ -122,16 +218,25 @@ export default function GlobalSearch({ compact = false }) {
   const onInputKeyDown = (e) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex(i => (flatItems.length ? (i + 1) % flatItems.length : 0));
+      setSelectedIndex(i => (flatCount ? (i + 1) % flatCount : 0));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelectedIndex(i => (flatItems.length ? (i - 1 + flatItems.length) % flatItems.length : 0));
+      setSelectedIndex(i => (flatCount ? (i - 1 + flatCount) % flatCount : 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (flatItems[selectedIndex]) activate(flatItems[selectedIndex]);
-      else viewAllResults();
-    } else if (e.key === 'Escape') {
-      setOpen(false);
+      if (!isSearching) {
+        if (shortcuts[selectedIndex]) activate('page', shortcuts[selectedIndex]);
+        return;
+      }
+      let idx = selectedIndex;
+      if (idx < matchedPages.length) { activate('page', matchedPages[idx]); return; }
+      idx -= matchedPages.length;
+      if (idx < matchedSettings.length) { activate('page', matchedSettings[idx]); return; }
+      idx -= matchedSettings.length;
+      if (idx < matchedTags.length) { activate('tag', matchedTags[idx]); return; }
+      idx -= matchedTags.length;
+      if (idx < results.length) { activate('video', results[idx]); return; }
+      viewAllResults();
     }
   };
 
@@ -151,7 +256,7 @@ export default function GlobalSearch({ compact = false }) {
       ) : (
         <button
           onClick={() => setOpen(true)}
-          className="flex items-center gap-2.5 pl-3.5 pr-2.5 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700/60 transition-colors text-left w-full max-w-[280px]"
+          className="flex items-center gap-2.5 pl-3.5 pr-2.5 py-2 rounded-xl bg-zinc-100/80 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700/60 transition-colors text-left w-full max-w-[280px]"
         >
           <Search className="w-4 h-4 text-violet-500 shrink-0" />
           <span className="flex-1 text-sm text-zinc-400 dark:text-zinc-500 truncate">Szukaj...</span>
@@ -162,10 +267,10 @@ export default function GlobalSearch({ compact = false }) {
       {/* Command palette */}
       {open && (
         <div
-          className="fixed inset-0 z-[60] flex items-start justify-center pt-[10vh] sm:pt-[14vh] px-4"
+          className="fixed inset-0 z-[60] flex items-start justify-center pt-[10vh] sm:pt-[14vh] px-4 bg-black/50 dark:bg-black/70 backdrop-blur-sm"
+          style={{ animation: 'fadeIn 0.15s ease-out' }}
           onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
         >
-          <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm" style={{ animation: 'fadeIn 0.15s ease-out' }} />
           <div
             className="relative w-full max-w-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl overflow-hidden"
             style={{ animation: 'modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)' }}
@@ -178,94 +283,156 @@ export default function GlobalSearch({ compact = false }) {
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 onKeyDown={onInputKeyDown}
-                placeholder="Szukaj filmów, przejdź do strony..."
+                placeholder="Szukaj filmów, tagów, przejdź do strony..."
                 className="flex-1 py-4 bg-transparent text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:outline-none"
               />
               <kbd className="shrink-0 px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-white/10 text-zinc-400 text-[10px] font-mono font-semibold">ESC</kbd>
             </div>
 
             <div className="max-h-[60vh] overflow-y-auto py-2">
-              {matchedPages.length > 0 && (
-                <div className="mb-1">
-                  <p className="px-4 pt-1 pb-1.5 text-[10px] font-bold text-zinc-400 dark:text-zinc-600 uppercase tracking-[0.2em]">Strony</p>
-                  {matchedPages.map((p, i) => {
-                    const idx = i;
-                    const active = idx === selectedIndex;
-                    const Icon = p.icon;
-                    return (
-                      <button
-                        key={p.to}
-                        onMouseEnter={() => setSelectedIndex(idx)}
-                        onClick={() => activate({ type: 'page', ...p })}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 mx-2 rounded-xl text-left transition-colors ${active ? 'bg-violet-50 dark:bg-violet-500/15' : 'hover:bg-zinc-50 dark:hover:bg-white/5'}`}
-                        style={{ width: 'calc(100% - 1rem)' }}
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-500/15 flex items-center justify-center shrink-0">
-                          <Icon className="w-4 h-4 text-violet-600 dark:text-violet-400" />
-                        </div>
-                        <span className="flex-1 text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">
-                          <Highlighted text={p.label} query={trimmed} />
-                        </span>
-                        {active && <CornerDownLeft className="w-3.5 h-3.5 text-violet-500 shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {trimmed.length >= 2 && (
-                <div>
-                  <p className="px-4 pt-2 pb-1.5 text-[10px] font-bold text-zinc-400 dark:text-zinc-600 uppercase tracking-[0.2em]">Filmy</p>
-                  {loading ? (
-                    <div className="px-4 py-4 flex items-center gap-2 text-sm text-zinc-400">
-                      <Loader2 className="w-4 h-4 animate-spin" /> Szukanie...
-                    </div>
-                  ) : results.length === 0 ? (
-                    <p className="px-4 py-4 text-sm text-zinc-400">Brak filmów dla „{trimmed}"</p>
-                  ) : (
-                    results.map((v, i) => {
-                      const idx = matchedPages.length + i;
-                      const active = idx === selectedIndex;
-                      const reason = matchReason(v, trimmed);
+              {!isSearching ? (
+                shortcuts.length > 0 && (
+                  <div>
+                    <SectionLabel>Skróty</SectionLabel>
+                    {shortcuts.map((p, i) => {
+                      const Icon = p.icon;
                       return (
-                        <button
-                          key={v.id}
-                          onMouseEnter={() => setSelectedIndex(idx)}
-                          onClick={() => activate({ type: 'video', ...v })}
-                          className={`flex items-center gap-3 px-4 py-2.5 mx-2 rounded-xl text-left transition-colors ${active ? 'bg-violet-50 dark:bg-violet-500/15' : 'hover:bg-zinc-50 dark:hover:bg-white/5'}`}
-                          style={{ width: 'calc(100% - 1rem)' }}
-                        >
-                          <div className="w-12 h-8 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-800 shrink-0 flex items-center justify-center">
-                            {v.thumbnail ? <img src={v.thumbnail} alt="" className="w-full h-full object-cover" /> : <Film className="w-3.5 h-3.5 text-zinc-300 dark:text-zinc-700" />}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">
-                              <Highlighted text={v.title} query={trimmed} />
-                            </p>
-                            {reason ? (
-                              <p className="text-[11px] text-zinc-400 truncate">{reason.label}: <Highlighted text={reason.text} query={trimmed} /></p>
-                            ) : (
-                              <p className="text-[11px] text-zinc-400 truncate">{v.author_display_name || v.author_name}</p>
-                            )}
-                          </div>
-                          {active && <CornerDownLeft className="w-3.5 h-3.5 text-violet-500 shrink-0" />}
-                        </button>
+                        <ResultRow
+                          key={p.to}
+                          active={i === selectedIndex}
+                          onMouseEnter={() => setSelectedIndex(i)}
+                          onClick={() => activate('page', p)}
+                          iconBox={
+                            <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-500/15 flex items-center justify-center shrink-0">
+                              <Icon className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                            </div>
+                          }
+                          title={<span className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate block">{p.label}</span>}
+                        />
                       );
-                    })
+                    })}
+                  </div>
+              )) : (
+                <>
+                  {matchedPages.length > 0 && (
+                    <div>
+                      <SectionLabel>Strony</SectionLabel>
+                      {matchedPages.map((p, i) => {
+                        const Icon = p.icon;
+                        return (
+                          <ResultRow
+                            key={p.to}
+                            active={i === selectedIndex}
+                            onMouseEnter={() => setSelectedIndex(i)}
+                            onClick={() => activate('page', p)}
+                            iconBox={
+                              <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-500/15 flex items-center justify-center shrink-0">
+                                <Icon className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                              </div>
+                            }
+                            title={<span className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate block"><Highlighted text={p.label} query={trimmed} /></span>}
+                          />
+                        );
+                      })}
+                    </div>
                   )}
-                  {results.length > 0 && (
-                    <button
-                      onClick={viewAllResults}
-                      className="w-full mt-1 px-4 py-2.5 text-xs font-bold text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 border-t border-zinc-100 dark:border-zinc-800 transition-colors"
-                    >
-                      Zobacz wszystkie wyniki dla „{trimmed}"
-                    </button>
-                  )}
-                </div>
-              )}
 
-              {matchedPages.length === 0 && trimmed.length >= 1 && trimmed.length < 2 && (
-                <p className="px-4 py-6 text-center text-sm text-zinc-400">Brak dopasowanych stron.</p>
+                  {matchedSettings.length > 0 && (
+                    <div>
+                      <SectionLabel>Ustawienia i funkcje</SectionLabel>
+                      {matchedSettings.map((it, i) => {
+                        const idx = matchedPages.length + i;
+                        const Icon = it.icon;
+                        return (
+                          <ResultRow
+                            key={it.section + it.label}
+                            active={idx === selectedIndex}
+                            onMouseEnter={() => setSelectedIndex(idx)}
+                            onClick={() => activate('page', it)}
+                            iconBox={
+                              <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                                <Icon className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+                              </div>
+                            }
+                            title={<span className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate block"><Highlighted text={it.label} query={trimmed} /></span>}
+                            subtitle={<span className="text-[11px] text-zinc-400 truncate block">{it.section}</span>}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {matchedTags.length > 0 && (
+                    <div>
+                      <SectionLabel>Tagi</SectionLabel>
+                      <div className="flex flex-wrap gap-2 px-4 pb-2">
+                        {matchedTags.map((t, i) => {
+                          const idx = matchedPages.length + matchedSettings.length + i;
+                          const active = idx === selectedIndex;
+                          return (
+                            <button
+                              key={t.id}
+                              onMouseEnter={() => setSelectedIndex(idx)}
+                              onClick={() => activate('tag', t)}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${active ? 'bg-violet-500 text-white border-violet-500' : 'bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-100 dark:border-violet-500/20'}`}
+                            >
+                              <TagIcon className="w-3 h-3" />
+                              <Highlighted text={t.name} query={trimmed} />
+                              <span className={active ? 'text-white/70' : 'text-violet-400 dark:text-violet-500'}>{t.video_count ?? t.videos?.length ?? 0}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {videoSearchActive && (
+                  <div>
+                    <SectionLabel>Filmy</SectionLabel>
+                    {loading ? (
+                      <div className="px-4 py-4 flex items-center gap-2 text-sm text-zinc-400">
+                        <Loader2 className="w-4 h-4 animate-spin" /> Szukanie...
+                      </div>
+                    ) : results.length === 0 ? (
+                      <p className="px-4 py-4 text-sm text-zinc-400">Brak filmów dla „{trimmed}"</p>
+                    ) : (
+                      results.map((v, i) => {
+                        const idx = matchedPages.length + matchedSettings.length + matchedTags.length + i;
+                        const reason = matchReason(v, trimmed);
+                        return (
+                          <ResultRow
+                            key={v.id}
+                            active={idx === selectedIndex}
+                            onMouseEnter={() => setSelectedIndex(idx)}
+                            onClick={() => activate('video', v)}
+                            iconBox={
+                              <div className="w-12 h-8 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-800 shrink-0 flex items-center justify-center">
+                                {v.thumbnail ? <img src={v.thumbnail} alt="" className="w-full h-full object-cover" /> : <Film className="w-3.5 h-3.5 text-zinc-300 dark:text-zinc-700" />}
+                              </div>
+                            }
+                            title={<span className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate block"><Highlighted text={v.title} query={trimmed} /></span>}
+                            subtitle={reason
+                              ? <span className="text-[11px] text-zinc-400 truncate block">{reason.label}: <Highlighted text={reason.text} query={trimmed} /></span>
+                              : <span className="text-[11px] text-zinc-400 truncate block">{v.author_display_name || v.author_name}</span>}
+                          />
+                        );
+                      })
+                    )}
+                    {results.length > 0 && (
+                      <button
+                        onClick={viewAllResults}
+                        className="w-full mt-1 px-4 py-2.5 text-xs font-bold text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 border-t border-zinc-100 dark:border-zinc-800 transition-colors"
+                      >
+                        Zobacz wszystkie wyniki dla „{trimmed}"
+                      </button>
+                    )}
+                  </div>
+                  )}
+
+                  {nothingMatchedYet && (
+                    <p className="px-4 py-6 text-center text-sm text-zinc-400">Brak wyników dla „{trimmed}"</p>
+                  )}
+                </>
               )}
             </div>
           </div>

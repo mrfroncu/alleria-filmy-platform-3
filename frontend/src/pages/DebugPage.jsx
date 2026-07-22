@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug, Lock } from 'lucide-react';
 import { api } from '../utils/api';
 
@@ -19,10 +20,13 @@ function formatBytes(bytes) {
   return bytes + ' B';
 }
 
+const TAB_IDS = TABS.map(t => t.id);
+
 export default function DebugPage() {
+  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('streaming');
+  const [activeTab, setActiveTab] = useState(TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'streaming');
   const fileInputRef = useRef(null);
 
   // SQL executor
