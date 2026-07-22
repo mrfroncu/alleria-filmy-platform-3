@@ -8,7 +8,7 @@ import { useSettings } from '../contexts/SettingsContext';
 export default function VideosPage() {
   const { authorId, tagId, categorySlug } = useParams();
   const navigate = useNavigate();
-  const { config } = useSettings();
+  const { config: siteConfig } = useSettings();
   const [searchParams] = useSearchParams();
   const [videos, setVideos] = useState([]);
   const [tags, setTags] = useState([]);
@@ -97,7 +97,7 @@ export default function VideosPage() {
     <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
       {/* Header */}
       <div className="mb-10">
-        {!config.showTopBar && (
+        {!siteConfig.showTopBar && (
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">
             {categorySlug
               ? (categories.find(c => c.slug === categorySlug)?.name || categorySlug)
