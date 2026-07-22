@@ -1082,8 +1082,9 @@ app.get('/api/videos', requireAuth, (req, res) => {
   }
 
   if (search) {
-    conditions.push('v.title LIKE ?');
-    params.push(`%${search}%`);
+    conditions.push('(v.title LIKE ? OR v.description LIKE ? OR u.display_name LIKE ? OR u.username LIKE ?)');
+    const like = `%${search}%`;
+    params.push(like, like, like, like);
   }
 
   if (author) {
@@ -1122,6 +1123,12 @@ app.get('/api/videos', requireAuth, (req, res) => {
     case 'title_asc': sql += ' ORDER BY v.title ASC'; break;
     case 'title_desc': sql += ' ORDER BY v.title DESC'; break;
     default: sql += ' ORDER BY v.publish_date DESC';
+  }
+
+  const limit = parseInt(req.query.limit);
+  if (limit > 0 && limit <= 50) {
+    sql += ' LIMIT ?';
+    params.push(limit);
   }
 
   try {

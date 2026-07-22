@@ -9,8 +9,34 @@ import {
 import { getCurrentYear } from '../utils/helpers';
 import WatchPartyTab from './WatchPartyTab';
 import ProfileMenu from './ProfileMenu';
+import GlobalSearch from './GlobalSearch';
 
 const LOGO_URL = 'https://alleria.pl/image/favicon.png';
+
+const STATIC_PAGE_TITLES = {
+  '/': 'Baza Filmów',
+  '/favorites': 'Ulubione',
+  '/history': 'Historia',
+  '/profile': 'Mój profil',
+  '/admin': 'Panel Redaktora',
+  '/stats': 'Statystyki',
+  '/manage': 'Zarządzanie',
+  '/logs': 'Logi systemowe',
+  '/debug': 'Dev Tools',
+  '/watch-party': 'Watch Party',
+};
+
+function getPageTitle(pathname, categories) {
+  if (STATIC_PAGE_TITLES[pathname]) return STATIC_PAGE_TITLES[pathname];
+  if (pathname.startsWith('/category/')) {
+    const cat = categories.find(c => c.slug === pathname.split('/')[2]);
+    return cat?.name || 'Kategoria';
+  }
+  if (pathname.startsWith('/video/')) return 'Film';
+  if (pathname.startsWith('/author/')) return 'Profil autora';
+  if (pathname.startsWith('/tag/')) return 'Tag';
+  return 'Alleria Filmy';
+}
 
 function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlug }) {
   const children = cats.filter(c => (c.parent_id || null) === parentId);
@@ -107,6 +133,7 @@ export default function Layout({ children }) {
   const anyCatActive = location.pathname.startsWith('/category/') || (onVideoPage && !!fromParam);
   const activeCatSlug = location.pathname.startsWith('/category/') ? location.pathname.split('/')[2] : fromParam;
   const allFilmsActive = (location.pathname === '/' || location.pathname.startsWith('/video') || location.pathname.startsWith('/author') || location.pathname.startsWith('/tag')) && !anyCatActive;
+  const pageTitle = getPageTitle(location.pathname, categories);
 
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950 font-sans selection:bg-violet-100 selection:text-violet-900 relative overflow-hidden transition-colors duration-300">
@@ -214,22 +241,31 @@ export default function Layout({ children }) {
 
       <main ref={mainRef} className="flex-1 overflow-y-auto relative flex flex-col">
         {/* Mobile top bar */}
-        <div className="lg:hidden flex items-center justify-between p-4 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
-          <div className="flex items-center gap-2.5">
-            <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain" />
-            <span className="font-bold text-zinc-900 dark:text-white font-display text-sm">ALLERIA FILMY</span>
+        <div className="lg:hidden flex items-center justify-between gap-3 p-4 bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 sticky top-0 z-30 shadow-lg shadow-violet-900/10">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain shrink-0" />
+            <span className="font-bold text-white font-display text-sm truncate">{pageTitle}</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
+            <GlobalSearch compact />
             <ProfileMenu compact />
-            <button onClick={() => setSidebarOpen(true)} className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white">
+            <button onClick={() => setSidebarOpen(true)} className="p-2 text-white/80 hover:text-white">
               <Menu className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Desktop profile menu — floats over content in the corner, doesn't push the page down, stays put on scroll */}
-        <div className="hidden lg:block fixed top-5 right-8 z-40">
-          <ProfileMenu />
+        {/* Desktop top bar — page title, global search, profile menu */}
+        <div className="hidden lg:flex items-center gap-6 px-8 py-3 bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 sticky top-0 z-30 shadow-lg shadow-violet-900/10">
+          <h1 className="text-white font-bold text-lg font-display shrink-0 truncate max-w-[260px]">{pageTitle}</h1>
+          <div className="flex-1 flex justify-center">
+            <div className="w-full max-w-xl">
+              <GlobalSearch />
+            </div>
+          </div>
+          <div className="shrink-0">
+            <ProfileMenu />
+          </div>
         </div>
 
         <div className="flex-1">{children}</div>

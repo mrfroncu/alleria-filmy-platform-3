@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, X, ChevronDown, Film, RotateCcw } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
@@ -7,13 +7,14 @@ import { formatDateShort } from '../utils/helpers';
 export default function VideosPage() {
   const { authorId, tagId, categorySlug } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [videos, setVideos] = useState([]);
   const [tags, setTags] = useState([]);
   const [authors, setAuthors] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('search') || '');
   const [selectedTags, setSelectedTags] = useState(tagId ? [parseInt(tagId)] : []);
   const [selectedAuthor, setSelectedAuthor] = useState(authorId || '');
   const [sort, setSort] = useState('newest');
@@ -40,6 +41,13 @@ export default function VideosPage() {
     if (tagId) setSelectedTags([parseInt(tagId)]);
     if (authorId) setSelectedAuthor(authorId);
   }, [tagId, authorId]);
+
+  // Global search bar navigates here with ?search= — pick it up even if this page was already mounted
+  useEffect(() => {
+    const urlSearch = searchParams.get('search');
+    if (urlSearch && urlSearch !== search) setSearch(urlSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   useEffect(() => {
     setLoading(true);
@@ -121,7 +129,7 @@ export default function VideosPage() {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Szukaj po tytule..."
+              placeholder="Szukaj po tytule, opisie, autorze..."
               className="input-field pl-14"
             />
             {search && (

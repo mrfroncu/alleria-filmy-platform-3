@@ -44,6 +44,7 @@ export const api = {
     if (params.sort) q.set('sort', params.sort);
     if (params.include_transcoding) q.set('include_transcoding', '1');
     if (params.category) q.set('category', params.category);
+    if (params.limit) q.set('limit', params.limit);
     return request(`/videos?${q}`);
   },
   getVideo: (id) => request(`/videos/${id}`),
