@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug, Lock, LayoutGrid, FileText, Frame, PanelTop } from 'lucide-react';
+import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug, Lock, LayoutGrid, FileText, Frame, PanelTop, X } from 'lucide-react';
 import { api } from '../utils/api';
 import { useSettings } from '../contexts/SettingsContext';
 
@@ -213,6 +213,8 @@ export default function DebugPage() {
   const [limitForm, setLimitForm] = useState({ limit_display_name: '', limit_bio: '', limit_comment: '' });
   const [displayForm, setDisplayForm] = useState({ videos_per_page: '', grid_columns: '' });
   const [logsForm, setLogsForm] = useState({ logs_per_page: '' });
+  const [originsForm, setOriginsForm] = useState([]);
+  const [originInput, setOriginInput] = useState('');
   const [envCheck, setEnvCheck] = useState(null);
 
   useEffect(() => {
@@ -225,6 +227,7 @@ export default function DebugPage() {
       });
       setDisplayForm({ videos_per_page: s.videos_per_page, grid_columns: s.grid_columns });
       setLogsForm({ logs_per_page: s.logs_per_page });
+      setOriginsForm(s.iframe_allowed_origins || []);
     }).catch(() => {});
     api.envCheck().then(setEnvCheck).catch(() => {});
   }, []);
@@ -309,6 +312,33 @@ export default function DebugPage() {
       const r = await api.setSettings({ iframe_embed_enabled: !settings.iframe_embed_enabled });
       setSettingsState(s => ({ ...s, iframe_embed_enabled: r.iframe_embed_enabled }));
       setStatus({ type: 'success', msg: `Osadzanie w iframe: ${r.iframe_embed_enabled ? 'WŁĄCZONE' : 'WYŁĄCZONE'}` });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const addOrigin = () => {
+    const val = originInput.trim();
+    if (!val) return;
+    if (!/^https?:\/\/[^;\s,]+$/.test(val)) {
+      setStatus({ type: 'error', msg: 'Nieprawidłowy format — oczekiwano np. https://alleria.pl' });
+      return;
+    }
+    if (originsForm.includes(val)) { setOriginInput(''); return; }
+    setOriginsForm(prev => [...prev, val]);
+    setOriginInput('');
+  };
+
+  const removeOrigin = (origin) => setOriginsForm(prev => prev.filter(o => o !== origin));
+
+  const saveOrigins = async () => {
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ iframe_allowed_origins: originsForm });
+      setSettingsState(s => ({ ...s, iframe_allowed_origins: r.iframe_allowed_origins }));
+      setOriginsForm(r.iframe_allowed_origins || []);
+      setStatus({ type: 'success', msg: 'Dozwolone domeny iframe zapisane.' });
     } catch (e) {
       setStatus({ type: 'error', msg: e.message });
     }
@@ -1275,16 +1305,34 @@ export default function DebugPage() {
                   : <Square className="w-5 h-5 text-zinc-400" />}
                 {settings == null ? 'Ładowanie...' : (settings.iframe_embed_enabled ? 'Osadzanie: WŁĄCZONE' : 'Osadzanie: WYŁĄCZONE')}
               </button>
-              {settings?.iframe_allowed_origins?.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mb-2 font-display">Dozwolone źródła (z .env)</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {settings.iframe_allowed_origins.map(origin => (
-                      <span key={origin} className="px-2 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-xs font-mono">{origin}</span>
-                    ))}
-                  </div>
+
+              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-5 mb-2 font-display">Dozwolone domeny</p>
+              <div className="flex gap-2 max-w-md">
+                <input
+                  type="text"
+                  value={originInput}
+                  onChange={e => setOriginInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addOrigin(); } }}
+                  placeholder="https://alleria.pl"
+                  className="input-field !py-2.5 text-sm font-mono flex-1"
+                />
+                <button type="button" onClick={addOrigin} className="btn-ghost-primary shrink-0">Dodaj</button>
+              </div>
+              {originsForm.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {originsForm.map(origin => (
+                    <span key={origin} className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-xs font-mono">
+                      {origin}
+                      <button type="button" onClick={() => removeOrigin(origin)} className="p-0.5 rounded hover:bg-red-500/10 hover:text-red-500 transition-colors" title="Usuń">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
                 </div>
               )}
+              <button onClick={saveOrigins} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
+                {savingSettings ? 'Zapisywanie...' : 'Zapisz domeny'}
+              </button>
             </div>
           </div>
         </div>
@@ -1387,7 +1435,7 @@ export default function DebugPage() {
             <div className="flex-1">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Czyszczenie logów</h3>
               <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">Usuń poszczególne typy logów bez wpływu na resztę bazy danych.</p>
-              <div className="flex flex-wrap gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   onClick={async () => {
                     if (!confirm('Wyczyścić logi wyświetleń filmów?')) return;
@@ -1396,7 +1444,7 @@ export default function DebugPage() {
                       setStatus({ type: 'success', msg: `Usunięto ${r.deleted} logów wyświetleń.` });
                     } catch (e) { setStatus({ type: 'error', msg: e.message }); }
                   }}
-                  className="btn-secondary text-sm"
+                  className="btn-secondary text-sm w-full"
                 >
                   Wyczyść logi wyświetleń
                 </button>
@@ -1408,7 +1456,7 @@ export default function DebugPage() {
                       setStatus({ type: 'success', msg: `Usunięto ${r.deleted} logów logowania.` });
                     } catch (e) { setStatus({ type: 'error', msg: e.message }); }
                   }}
-                  className="btn-secondary text-sm"
+                  className="btn-secondary text-sm w-full"
                 >
                   Wyczyść logi logowania
                 </button>
@@ -1420,7 +1468,7 @@ export default function DebugPage() {
                       setStatus({ type: 'success', msg: `Usunięto ${r.deleted} logów audytu.` });
                     } catch (e) { setStatus({ type: 'error', msg: e.message }); }
                   }}
-                  className="btn-secondary text-sm"
+                  className="btn-secondary text-sm w-full"
                 >
                   Wyczyść logi audytu
                 </button>
@@ -1432,7 +1480,7 @@ export default function DebugPage() {
                       setStatus({ type: 'success', msg: `Usunięto ${r.deleted} logów watch party.` });
                     } catch (e) { setStatus({ type: 'error', msg: e.message }); }
                   }}
-                  className="btn-secondary text-sm"
+                  className="btn-secondary text-sm w-full"
                 >
                   Wyczyść logi watch party
                 </button>

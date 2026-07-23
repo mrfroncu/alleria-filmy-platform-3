@@ -112,18 +112,19 @@ app.use('/api/stream/upload', (req, res, next) => {
 app.set('trust proxy', 1);
 
 // DRM security headers — restrict screen capture APIs
-const iframeAllowedOrigins = (process.env.IFRAME_ALLOWED_ORIGINS || '')
-  .split(',')
-  .map(o => o.trim())
-  .filter(o => /^https?:\/\/[^;\s]+$/.test(o));
+const IFRAME_ORIGIN_RE = /^https?:\/\/[^;\s,]+$/;
 
 app.use((req, res, next) => {
   // Permissions-Policy: deny display capture for the whole page
   res.set('Permissions-Policy', 'display-capture=(), screen-wake-lock=()');
   // X-Frame-Options does not support allowlists; rely on CSP frame-ancestors for modern browsers
   res.set('X-Frame-Options', 'SAMEORIGIN');
-  // Read fresh each request (DB-backed setting, toggleable from Dev Tools without a restart)
+  // Read fresh each request (DB-backed settings, toggleable from Dev Tools without a restart)
   const iframeEnabled = getSetting('iframe_embed_enabled', '0') === '1';
+  const iframeAllowedOrigins = getSetting('iframe_allowed_origins', '')
+    .split(',')
+    .map(o => o.trim())
+    .filter(o => IFRAME_ORIGIN_RE.test(o));
   if (iframeEnabled && iframeAllowedOrigins.length > 0) {
     // Allow embedding from same origin and the configured allowed origins
     res.set('Content-Security-Policy', `frame-ancestors 'self' ${iframeAllowedOrigins.join(' ')}`);
@@ -1978,6 +1979,39 @@ app.put('/api/profile', requireAuth, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Re-fetch avatar hashes (global + guild) from Discord via the bot — needed because they're
+// otherwise only captured during the OAuth login flow, so accounts that logged in before this
+// feature shipped (or whose guild avatar changed since) have stale/missing data until this runs.
+app.post('/api/profile/refresh-discord', requireAuth, async (req, res) => {
+  try {
+    const u = db.prepare('SELECT discord_id, auth_method, avatar_source FROM users WHERE id = ?').get(req.session.user.id);
+    if (!u || u.auth_method !== 'discord' || !u.discord_id) {
+      return res.status(400).json({ error: 'Ta funkcja jest dostępna tylko dla kont zalogowanych przez Discord.' });
+    }
+    const memberRes = await fetch(
+      `https://discord.com/api/guilds/${process.env.DISCORD_GUILD_ID}/members/${u.discord_id}`,
+      { headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` } }
+    );
+    if (!memberRes.ok) {
+      return res.status(502).json({ error: 'Nie udało się pobrać danych z Discorda.' });
+    }
+    const member = await memberRes.json();
+    const discordAvatarHash = member.user?.avatar || null;
+    const discordGuildAvatarHash = member.avatar || null;
+    const avatarSource = u.avatar_source || 'global';
+    const avatarUrl = (avatarSource === 'guild' && discordGuildAvatarHash)
+      ? `https://cdn.discordapp.com/guilds/${process.env.DISCORD_GUILD_ID}/users/${u.discord_id}/avatars/${discordGuildAvatarHash}.png`
+      : (discordAvatarHash
+        ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${discordAvatarHash}.png`
+        : `https://cdn.discordapp.com/embed/avatars/0.png`);
+    db.prepare('UPDATE users SET discord_avatar_hash = ?, discord_guild_avatar_hash = ?, avatar = ? WHERE id = ?')
+      .run(discordAvatarHash, discordGuildAvatarHash, avatarUrl, req.session.user.id);
+    req.session.user.avatar = avatarUrl;
+    req.session.save(() => {});
+    res.json({ success: true, has_guild_avatar: !!discordGuildAvatarHash, avatar: avatarUrl });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ============ DEBUG / DEV API ============
 
 app.get('/api/debug/access/:type/:id', requireDev, (req, res) => {
@@ -2186,7 +2220,7 @@ function settingsPayload() {
     grid_columns: parseInt(getSetting('grid_columns', '3'), 10) || 3,
     logs_per_page: parseInt(getSetting('logs_per_page', '50'), 10) || 50,
     iframe_embed_enabled: getSetting('iframe_embed_enabled', '0') === '1',
-    iframe_allowed_origins: (process.env.IFRAME_ALLOWED_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean),
+    iframe_allowed_origins: getSetting('iframe_allowed_origins', '').split(',').map(o => o.trim()).filter(Boolean),
     show_top_bar: getSetting('show_top_bar', '1') === '1',
   };
 }
@@ -2239,6 +2273,17 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
     audit(req.session.user.id, 'edit', 'settings', null,
       `iframe_embed_enabled → ${req.body.iframe_embed_enabled ? 'ON' : 'OFF'}`);
   }
+  // iframe allowed origins list (formerly IFRAME_ALLOWED_ORIGINS in .env)
+  if (req.body.iframe_allowed_origins !== undefined) {
+    const list = Array.isArray(req.body.iframe_allowed_origins) ? req.body.iframe_allowed_origins : [];
+    const cleaned = list.map(o => String(o).trim()).filter(Boolean);
+    const invalid = cleaned.filter(o => !IFRAME_ORIGIN_RE.test(o));
+    if (invalid.length > 0) {
+      return res.status(400).json({ error: `Nieprawidłowy format domeny: ${invalid.join(', ')} (oczekiwano np. https://alleria.pl, bez przecinków/spacji).` });
+    }
+    setSetting('iframe_allowed_origins', cleaned.join(','));
+    audit(req.session.user.id, 'edit', 'settings', null, `iframe_allowed_origins → ${cleaned.join(', ') || '(puste)'}`);
+  }
   // Top bar (page title + search + profile) visibility
   if (req.body.show_top_bar !== undefined) {
     setSetting('show_top_bar', req.body.show_top_bar ? '1' : '0');
@@ -2256,10 +2301,10 @@ const KNOWN_ENV_VARS = [
   'TS_API_KEY', 'TS6_API_KEY', 'TS_SERVER_ID', 'TS6_SERVER_ID', 'TS_MEMBER_GROUP_ID', 'TS6_MEMBER_GROUP_ID',
   'TS_ADMIN_GROUP_ID', 'TS6_ADMIN_GROUP_ID', 'TS_BOT_NICKNAME',
   'TS3_HOST', 'TS3_PORT', 'TS3_USERNAME', 'TS3_PASSWORD', 'TS3_SERVER_ID', 'TS3_MEMBER_GROUP_ID', 'TS3_ADMIN_GROUP_ID',
-  'SESSION_SECRET', 'PORT', 'NODE_ENV', 'IFRAME_ALLOWED_ORIGINS',
+  'SESSION_SECRET', 'PORT', 'NODE_ENV',
   'STREAM_SECRET', 'STREAM_URL', 'ALLOWED_ORIGIN',
 ];
-const DEPRECATED_ENV_VARS = ['VIDEOS_PER_PAGE', 'GRID_COLUMNS', 'LOGS_PER_PAGE', 'IFRAME_EMBED_ENABLED'];
+const DEPRECATED_ENV_VARS = ['VIDEOS_PER_PAGE', 'GRID_COLUMNS', 'LOGS_PER_PAGE', 'IFRAME_EMBED_ENABLED', 'IFRAME_ALLOWED_ORIGINS'];
 const APP_ENV_PREFIXES = /^(DISCORD_|TS3_|TS6_|TS_|SESSION_|STREAM_|IFRAME_|ALLOWED_ORIGIN|NODE_ENV|PORT)/;
 
 function levenshtein(a, b) {

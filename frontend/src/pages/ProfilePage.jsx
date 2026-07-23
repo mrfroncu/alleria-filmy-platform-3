@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server } from 'lucide-react';
+import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
@@ -15,6 +15,8 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savingAvatarSource, setSavingAvatarSource] = useState(false);
+  const [refreshingDiscord, setRefreshingDiscord] = useState(false);
+  const [refreshMsg, setRefreshMsg] = useState(null);
   const [config, setConfig] = useState({ limitDisplayName: 50, limitBio: 1000 });
 
   useEffect(() => { api.getConfig().then(c => setConfig(prev => ({ ...prev, ...c }))).catch(() => {}); }, []);
@@ -54,6 +56,20 @@ export default function ProfilePage() {
       alert('Błąd: ' + err.message);
     }
     setSavingAvatarSource(false);
+  };
+
+  const handleRefreshDiscord = async () => {
+    setRefreshingDiscord(true);
+    setRefreshMsg(null);
+    try {
+      const r = await api.refreshDiscordAvatar();
+      await load();
+      setRefreshMsg(r.has_guild_avatar ? 'Wykryto avatar serwerowy — możesz go teraz wybrać.' : 'Odświeżono — brak avatara serwerowego na tym koncie.');
+    } catch (err) {
+      setRefreshMsg('Błąd: ' + err.message);
+    }
+    setRefreshingDiscord(false);
+    setTimeout(() => setRefreshMsg(null), 4000);
   };
 
   if (loading) {
@@ -144,10 +160,25 @@ export default function ProfilePage() {
               <Globe className="w-5 h-5 text-indigo-500" />
             </div>
             <div className="flex-1">
-              <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-1">Źródło avatara</h3>
+              <div className="flex items-center justify-between gap-3 mb-1">
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Źródło avatara</h3>
+                <button
+                  type="button"
+                  onClick={handleRefreshDiscord}
+                  disabled={refreshingDiscord}
+                  className="btn-link-violet inline-flex items-center gap-1.5 text-xs shrink-0 disabled:opacity-50"
+                  title="Pobierz aktualne avatary z Discorda (przydatne, jeśli od ostatniego logowania coś się zmieniło)"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${refreshingDiscord ? 'animate-spin' : ''}`} />
+                  {refreshingDiscord ? 'Odświeżanie...' : 'Odśwież z Discorda'}
+                </button>
+              </div>
               <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
                 Aby zmienić sam avatar, zrób to na Discordzie — nie da się tego zrobić na tej stronie. Możesz jedynie wybrać, skąd ma być on pobierany.
               </p>
+              {refreshMsg && (
+                <p className={`text-xs font-medium mb-3 ${refreshMsg.startsWith('Błąd') ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>{refreshMsg}</p>
+              )}
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"

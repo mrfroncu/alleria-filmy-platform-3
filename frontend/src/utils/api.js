@@ -163,6 +163,7 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   }),
+  refreshDiscordAvatar: () => request('/profile/refresh-discord', { method: 'POST' }),
 
   // Watch Party management (admin)
   getActiveWatchParties: () => request('/admin/watch-parties'),

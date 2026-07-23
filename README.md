@@ -287,7 +287,6 @@ Lub konfiguracja permanentna w `~/.cloudflared/config.yml`.
 | `SESSION_SECRET` | Losowy sekret do podpisywania sesji |
 | `PORT` | Port, na którym nasłuchuje backend (domyślnie: 3000) |
 | `NODE_ENV` | `production` / `development` |
-| `IFRAME_ALLOWED_ORIGINS` | Lista domen (po przecinku) mogących osadzać odtwarzacz w iframe — używana tylko, gdy przełącznik „Osadzanie w iframe” w Ustawieniach jest włączony |
 
 ### Streaming
 | Zmienna | Opis |
@@ -319,7 +318,7 @@ Poniższe ustawienia **nie** są w `.env` — są zapisane w bazie (tabela `app_
 | Limity treści | `50` / `1000` / `3000` znaków | Maksymalna długość nazwy wyświetlanej / bio / komentarza |
 | Ograniczenie domen webhooków | ✅ włączone | Blokuje webhooki kategorii wskazujące poza domeny Discorda (ochrona przed SSRF) |
 | Wysyłka kodu logowania (TS3) | wiadomość | Jak bot dostarcza kod logowania: wiadomość prywatna / poke / oba |
-| Osadzanie w iframe | ❌ wyłączone | Zezwala na osadzanie odtwarzacza na domenach z `IFRAME_ALLOWED_ORIGINS` |
+| Osadzanie w iframe | ❌ wyłączone | Zezwala na osadzanie odtwarzacza na domenach z listy dozwolonych domen (dodawanych/usuwanych tuż obok, bez `.env`) |
 | Górny pasek | ✅ włączony | Pokazuje/ukrywa górny pasek (tytuł + smart search + profil); wyłączenie przywraca klasyczny układ z tytułem strony i profilem w sidebarze |
 
 > [!TIP]

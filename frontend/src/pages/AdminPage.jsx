@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp, FolderOpen, Loader2 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import VideoModal from '../components/VideoModal';
@@ -118,22 +118,42 @@ export default function AdminPage() {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <div className="card p-5 text-center">
-          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{loading ? '—' : videos.length}</p>
-          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Filmów</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <div className="card p-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center shrink-0">
+            <Film className="w-4 h-4 text-violet-500" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-lg font-bold text-zinc-900 dark:text-white font-display leading-tight">{loading ? '—' : videos.length}</p>
+            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider truncate">Filmów</p>
+          </div>
         </div>
-        <div className="card p-5 text-center">
-          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{loading ? '—' : tags.length}</p>
-          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Tagów</p>
+        <div className="card p-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-pink-50 dark:bg-pink-500/10 flex items-center justify-center shrink-0">
+            <Tag className="w-4 h-4 text-pink-500" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-lg font-bold text-zinc-900 dark:text-white font-display leading-tight">{loading ? '—' : tags.length}</p>
+            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider truncate">Tagów</p>
+          </div>
         </div>
-        <div className="card p-5 text-center">
-          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{loading ? '—' : categories.length}</p>
-          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Kategorii</p>
+        <div className="card p-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-cyan-50 dark:bg-cyan-500/10 flex items-center justify-center shrink-0">
+            <FolderOpen className="w-4 h-4 text-cyan-500" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-lg font-bold text-zinc-900 dark:text-white font-display leading-tight">{loading ? '—' : categories.length}</p>
+            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider truncate">Kategorii</p>
+          </div>
         </div>
-        <div className="card p-5 text-center">
-          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{loading ? '—' : videos.filter(v => v.stream_status === 'transcoding').length}</p>
-          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Transkodowanie</p>
+        <div className="card p-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center shrink-0">
+            <Loader2 className="w-4 h-4 text-amber-500" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-lg font-bold text-zinc-900 dark:text-white font-display leading-tight">{loading ? '—' : videos.filter(v => v.stream_status === 'transcoding').length}</p>
+            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider truncate">Transkodowanie</p>
+          </div>
         </div>
       </div>
 
