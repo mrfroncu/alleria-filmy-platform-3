@@ -185,6 +185,7 @@ export const api = {
     body: JSON.stringify(data),
   }),
   envCheck: () => request('/debug/env-check'),
+  categoryRoleOverview: () => request('/debug/category-role-overview'),
   execSQL: (query) => request('/debug/sql', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

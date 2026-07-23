@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug, Lock, LayoutGrid, FileText, Frame, PanelTop, X } from 'lucide-react';
+import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug, Lock, LayoutGrid, FileText, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info } from 'lucide-react';
 import { api } from '../utils/api';
 import { useSettings } from '../contexts/SettingsContext';
 
@@ -216,6 +216,11 @@ export default function DebugPage() {
   const [originsForm, setOriginsForm] = useState([]);
   const [originInput, setOriginInput] = useState('');
   const [envCheck, setEnvCheck] = useState(null);
+  const [ts6Form, setTs6Form] = useState({ host: '', port: '', username: '', password: '', api_key: '', server_id: '', member_group_id: '', admin_group_id: '' });
+  const [ts3Form, setTs3Form] = useState({ host: '', port: '', username: '', password: '', server_id: '', member_group_id: '', admin_group_id: '' });
+  const [botNickname, setBotNickname] = useState('');
+  const [discordRolesForm, setDiscordRolesForm] = useState({ member_role_id: '', admin_role_id: '' });
+  const [categoryRoleOverview, setCategoryRoleOverview] = useState([]);
 
   useEffect(() => {
     api.getSettings().then(s => {
@@ -228,8 +233,19 @@ export default function DebugPage() {
       setDisplayForm({ videos_per_page: s.videos_per_page, grid_columns: s.grid_columns });
       setLogsForm({ logs_per_page: s.logs_per_page });
       setOriginsForm(s.iframe_allowed_origins || []);
+      setTs6Form({
+        host: s.ts6_host || '', port: s.ts6_port || '', username: s.ts6_username || '', password: s.ts6_password || '',
+        api_key: s.ts6_api_key || '', server_id: s.ts6_server_id || '', member_group_id: s.ts6_member_group_id || '', admin_group_id: s.ts6_admin_group_id || '',
+      });
+      setTs3Form({
+        host: s.ts3_host || '', port: s.ts3_port || '', username: s.ts3_username || '', password: s.ts3_password || '',
+        server_id: s.ts3_server_id || '', member_group_id: s.ts3_member_group_id || '', admin_group_id: s.ts3_admin_group_id || '',
+      });
+      setBotNickname(s.ts_bot_nickname || '');
+      setDiscordRolesForm({ member_role_id: s.discord_member_role_id || '', admin_role_id: s.discord_admin_role_id || '' });
     }).catch(() => {});
     api.envCheck().then(setEnvCheck).catch(() => {});
+    api.categoryRoleOverview().then(setCategoryRoleOverview).catch(() => {});
   }, []);
 
   const saveLimits = async () => {
@@ -358,6 +374,73 @@ export default function DebugPage() {
     setSavingSettings(false);
   };
 
+  const saveBotNickname = async () => {
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ ts_bot_nickname: botNickname });
+      setSettingsState(s => ({ ...s, ts_bot_nickname: r.ts_bot_nickname }));
+      setBotNickname(r.ts_bot_nickname || '');
+      setStatus({ type: 'success', msg: 'Nazwa bota ServerQuery zapisana.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const saveTs6Settings = async () => {
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({
+        ts6_host: ts6Form.host, ts6_port: ts6Form.port, ts6_username: ts6Form.username, ts6_password: ts6Form.password,
+        ts6_api_key: ts6Form.api_key, ts6_server_id: ts6Form.server_id, ts6_member_group_id: ts6Form.member_group_id, ts6_admin_group_id: ts6Form.admin_group_id,
+      });
+      setSettingsState(s => ({ ...s, ...r }));
+      setTs6Form({
+        host: r.ts6_host || '', port: r.ts6_port || '', username: r.ts6_username || '', password: r.ts6_password || '',
+        api_key: r.ts6_api_key || '', server_id: r.ts6_server_id || '', member_group_id: r.ts6_member_group_id || '', admin_group_id: r.ts6_admin_group_id || '',
+      });
+      setStatus({ type: 'success', msg: 'Ustawienia TeamSpeak 6 zapisane.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const saveTs3Settings = async () => {
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({
+        ts3_host: ts3Form.host, ts3_port: ts3Form.port, ts3_username: ts3Form.username, ts3_password: ts3Form.password,
+        ts3_server_id: ts3Form.server_id, ts3_member_group_id: ts3Form.member_group_id, ts3_admin_group_id: ts3Form.admin_group_id,
+      });
+      setSettingsState(s => ({ ...s, ...r }));
+      setTs3Form({
+        host: r.ts3_host || '', port: r.ts3_port || '', username: r.ts3_username || '', password: r.ts3_password || '',
+        server_id: r.ts3_server_id || '', member_group_id: r.ts3_member_group_id || '', admin_group_id: r.ts3_admin_group_id || '',
+      });
+      setStatus({ type: 'success', msg: 'Ustawienia TeamSpeak 3 zapisane.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const saveDiscordRoles = async () => {
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({
+        discord_member_role_id: discordRolesForm.member_role_id,
+        discord_admin_role_id: discordRolesForm.admin_role_id,
+      });
+      setSettingsState(s => ({ ...s, ...r }));
+      setDiscordRolesForm({ member_role_id: r.discord_member_role_id || '', admin_role_id: r.discord_admin_role_id || '' });
+      setStatus({ type: 'success', msg: 'Role Discord zapisane.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
   const handleExport = async () => {
     setLoading(true);
     try {
@@ -442,6 +525,10 @@ export default function DebugPage() {
     }
     setCreatingUser(false);
   };
+
+  const tsLocked = settings?.ts_config_source !== 'panel';
+  const discordRolesLocked = settings?.discord_roles_config_source !== 'panel';
+  const sourceBadgeClass = (locked) => `text-[10px] font-bold px-2 py-0.5 rounded-lg ${locked ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500' : 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'}`;
 
   return (
     <div className="p-6 sm:p-10 max-w-7xl mx-auto animate-fade-in">
@@ -1359,6 +1446,168 @@ export default function DebugPage() {
                   : <Square className="w-5 h-5 text-zinc-400" />}
                 {settings == null ? 'Ładowanie...' : (settings.show_top_bar ? 'Górny pasek: WŁĄCZONY' : 'Górny pasek: WYŁĄCZONY')}
               </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ============ LOGOWANIE ============ */}
+        <div className="xl:col-span-2 flex items-center gap-3 mt-4 mb-1">
+          <LogIn className="w-5 h-5 text-zinc-400" />
+          <h2 className="text-sm font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Logowanie</h2>
+        </div>
+
+        <div className="card p-6 xl:col-span-2 !border-blue-200 dark:!border-blue-500/20 bg-blue-50/50 dark:bg-blue-500/[0.06]">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+            <p className="text-sm text-zinc-600 dark:text-zinc-300">
+              Z poziomu panelu można zdefiniować połączenie z TeamSpeak 3/6 (host, port, dane logowania, grupy) oraz — dla Discorda — wyłącznie ID roli <strong>Member</strong> i ogólnego <strong>Redaktora</strong>. Wymaga to ustawienia odpowiedniej flagi
+              (<code className="font-mono text-xs">TS_CONFIG_SOURCE</code> / <code className="font-mono text-xs">DISCORD_ROLES_CONFIG_SOURCE</code>) na <code className="font-mono text-xs">panel</code> w <code className="font-mono text-xs">.env</code> i restartu kontenera.
+              Pozostała konfiguracja Discord (Client ID/Secret, Bot Token, Guild ID, Redirect URI, rola Developera) jest zawsze wyłącznie w <code className="font-mono text-xs">.env</code> — bez możliwości podglądu ani edycji tutaj.
+            </p>
+          </div>
+        </div>
+
+        {/* Bot nickname (shared TS3/TS6) */}
+        <div className="card p-6 xl:col-span-2">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center shrink-0">
+              <Bot className="w-5 h-5 text-violet-500" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Nazwa bota ServerQuery</h3>
+                <span className="text-[11px] text-zinc-400 font-normal">(wspólna dla TS3 i TS6)</span>
+                <span className={sourceBadgeClass(tsLocked)}>{tsLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
+              </div>
+              {tsLocked && (
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">Sterowane przez <code className="font-mono">.env</code> (<code className="font-mono">TS_CONFIG_SOURCE=env</code>, domyślnie).</p>
+              )}
+              <div className="flex gap-2 max-w-md">
+                <input type="text" disabled={tsLocked} value={botNickname} onChange={e => setBotNickname(e.target.value)}
+                  className="input-field !py-2.5 text-sm flex-1 disabled:opacity-50" placeholder="ALLERIA VIDEOS PLATFORM" />
+                <button onClick={saveBotNickname} disabled={tsLocked || savingSettings || settings == null} className="btn-primary text-sm shrink-0 disabled:opacity-50">Zapisz</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* TeamSpeak 6 */}
+        <div className="card p-8 h-full flex flex-col">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <Headphones className="w-6 h-6 text-blue-500" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">TeamSpeak 6</h3>
+                <span className={sourceBadgeClass(tsLocked)}>{tsLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
+              </div>
+              {tsLocked && (
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">TS_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><label className="label-field">Host</label><input type="text" disabled={tsLocked} value={ts6Form.host} onChange={e => setTs6Form(f => ({ ...f, host: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                <div><label className="label-field">Port</label><input type="text" disabled={tsLocked} value={ts6Form.port} onChange={e => setTs6Form(f => ({ ...f, port: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                <div><label className="label-field">Server ID</label><input type="text" disabled={tsLocked} value={ts6Form.server_id} onChange={e => setTs6Form(f => ({ ...f, server_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                <div><label className="label-field">Użytkownik</label><input type="text" disabled={tsLocked} value={ts6Form.username} onChange={e => setTs6Form(f => ({ ...f, username: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                <div><label className="label-field">Hasło</label><input type="password" disabled={tsLocked} value={ts6Form.password} onChange={e => setTs6Form(f => ({ ...f, password: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                <div className="col-span-2"><label className="label-field">Klucz API</label><input type="password" disabled={tsLocked} value={ts6Form.api_key} onChange={e => setTs6Form(f => ({ ...f, api_key: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                <div><label className="label-field">ID grupy Member</label><input type="text" disabled={tsLocked} value={ts6Form.member_group_id} onChange={e => setTs6Form(f => ({ ...f, member_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                <div><label className="label-field">ID grupy Admin</label><input type="text" disabled={tsLocked} value={ts6Form.admin_group_id} onChange={e => setTs6Form(f => ({ ...f, admin_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+              </div>
+              <button onClick={saveTs6Settings} disabled={tsLocked || savingSettings || settings == null} className="btn-primary text-sm mt-4 disabled:opacity-50">
+                {savingSettings ? 'Zapisywanie...' : 'Zapisz TeamSpeak 6'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* TeamSpeak 3 */}
+        <div className="card p-8 h-full flex flex-col">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <Radio className="w-6 h-6 text-indigo-500" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">TeamSpeak 3</h3>
+                <span className={sourceBadgeClass(tsLocked)}>{tsLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
+              </div>
+              {tsLocked && (
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">TS_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><label className="label-field">Host</label><input type="text" disabled={tsLocked} value={ts3Form.host} onChange={e => setTs3Form(f => ({ ...f, host: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                <div><label className="label-field">Port</label><input type="text" disabled={tsLocked} value={ts3Form.port} onChange={e => setTs3Form(f => ({ ...f, port: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                <div><label className="label-field">Server ID</label><input type="text" disabled={tsLocked} value={ts3Form.server_id} onChange={e => setTs3Form(f => ({ ...f, server_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                <div><label className="label-field">Użytkownik</label><input type="text" disabled={tsLocked} value={ts3Form.username} onChange={e => setTs3Form(f => ({ ...f, username: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                <div><label className="label-field">Hasło</label><input type="password" disabled={tsLocked} value={ts3Form.password} onChange={e => setTs3Form(f => ({ ...f, password: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                <div><label className="label-field">ID grupy Member</label><input type="text" disabled={tsLocked} value={ts3Form.member_group_id} onChange={e => setTs3Form(f => ({ ...f, member_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                <div><label className="label-field">ID grupy Admin</label><input type="text" disabled={tsLocked} value={ts3Form.admin_group_id} onChange={e => setTs3Form(f => ({ ...f, admin_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+              </div>
+              <button onClick={saveTs3Settings} disabled={tsLocked || savingSettings || settings == null} className="btn-primary text-sm mt-4 disabled:opacity-50">
+                {savingSettings ? 'Zapisywanie...' : 'Zapisz TeamSpeak 3'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Discord — member/redaktor role IDs + category role overview */}
+        <div className="card p-8 h-full flex flex-col xl:col-span-2">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <MessageSquare className="w-6 h-6 text-indigo-500" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Discord — role Member / Redaktor</h3>
+                <span className={sourceBadgeClass(discordRolesLocked)}>{discordRolesLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
+              </div>
+              {discordRolesLocked && (
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">DISCORD_ROLES_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
+                <div>
+                  <label className="label-field">ID roli Member</label>
+                  <input type="text" disabled={discordRolesLocked} value={discordRolesForm.member_role_id}
+                    onChange={e => setDiscordRolesForm(f => ({ ...f, member_role_id: e.target.value }))}
+                    className="input-field !py-2.5 text-sm font-mono disabled:opacity-50" placeholder="123456789012345678" />
+                </div>
+                <div>
+                  <label className="label-field">ID roli Redaktor (Admin)</label>
+                  <input type="text" disabled={discordRolesLocked} value={discordRolesForm.admin_role_id}
+                    onChange={e => setDiscordRolesForm(f => ({ ...f, admin_role_id: e.target.value }))}
+                    className="input-field !py-2.5 text-sm font-mono disabled:opacity-50" placeholder="123456789012345679" />
+                </div>
+              </div>
+              <button onClick={saveDiscordRoles} disabled={discordRolesLocked || savingSettings || settings == null} className="btn-primary text-sm mt-4 disabled:opacity-50">
+                {savingSettings ? 'Zapisywanie...' : 'Zapisz role Discord'}
+              </button>
+
+              {categoryRoleOverview.length > 0 && (
+                <div className="mt-6 pt-6 border-t border-zinc-100 dark:border-zinc-800">
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mb-3 font-display">
+                    Kategorie z niestandardowymi rolami/użytkownikami Discord ({categoryRoleOverview.length})
+                  </p>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {categoryRoleOverview.map(c => (
+                      <div key={c.id} className="flex flex-wrap items-center gap-1.5 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
+                        <span className="text-sm font-bold text-zinc-900 dark:text-white mr-1">{c.name}</span>
+                        {c.discord_roles.map((r, i) => (
+                          <span key={`r-${i}`} className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${r.access_type === 'editor' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300'}`}>
+                            {r.access_type === 'editor' ? '✏️' : '👁️'} {r.role_id}
+                          </span>
+                        ))}
+                        {c.custom_users.map((u, i) => (
+                          <span key={`u-${i}`} className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300">
+                            {u.access_type === 'editor' ? '✏️' : '👁️'} {u.count} użytk. (custom)
+                          </span>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -418,9 +418,12 @@ async function discordCallbackHandler(req, res) {
     const roles = member.roles || [];
     console.log('[AUTH] User roles:', roles);
 
-    // Check if user has required role
-    const hasMemberRole = roles.includes(process.env.DISCORD_MEMBER_ROLE_ID);
-    const hasAdminRole = roles.includes(process.env.DISCORD_ADMIN_ROLE_ID);
+    // Check if user has required role — member/admin role IDs are optionally panel-managed
+    // (DISCORD_ROLES_CONFIG_SOURCE); the dev role always comes straight from .env, no override.
+    const memberRoleId = getDiscordRoleSetting('discord_member_role_id', process.env.DISCORD_MEMBER_ROLE_ID || '');
+    const adminRoleId = getDiscordRoleSetting('discord_admin_role_id', process.env.DISCORD_ADMIN_ROLE_ID || '');
+    const hasMemberRole = roles.includes(memberRoleId);
+    const hasAdminRole = roles.includes(adminRoleId);
     const hasDevRole = roles.includes(process.env.DISCORD_DEV_ROLE_ID);
 
     console.log('[AUTH] Role check - member:', hasMemberRole, 'admin:', hasAdminRole, 'dev:', hasDevRole);
@@ -600,8 +603,27 @@ function completeTsSession(req, res, user, method) {
 const challengeMessage = (code) =>
   `🔐 Alleria Filmy — Twój kod logowania: ${code}\nWpisz go na stronie, aby dokończyć logowanie. Kod ważny 5 minut. Jeśli to nie Ty — zignoruj tę wiadomość.`;
 
-// Nickname the ServerQuery bot shows as sender instead of the raw query login (e.g. "serveradmin")
-const TS_BOT_NICKNAME = process.env.TS_BOT_NICKNAME || 'ALLERIA VIDEOS PLATFORM';
+// Config-source flags — .env-only, boot-time (require a restart to flip), never editable from the panel.
+// This is the escape hatch: if a panel-managed value ever breaks TS/Discord login, flipping the
+// flag back to 'env' and restarting ignores whatever is in the DB and falls back to plain .env.
+function tsConfigSource() {
+  return (process.env.TS_CONFIG_SOURCE || 'env').toLowerCase() === 'panel' ? 'panel' : 'env';
+}
+function discordRolesConfigSource() {
+  return (process.env.DISCORD_ROLES_CONFIG_SOURCE || 'env').toLowerCase() === 'panel' ? 'panel' : 'env';
+}
+// Effective value for a TS3/TS6 config field: in 'panel' mode, DB setting wins (falling back to the
+// .env-derived value when no DB row exists yet — i.e. first save in the panel "copies" from .env);
+// in 'env' mode, the DB is ignored entirely and the .env-derived value always wins.
+function getTsSetting(dbKey, envValue) {
+  return tsConfigSource() === 'panel' ? getSetting(dbKey, envValue) : envValue;
+}
+function getDiscordRoleSetting(dbKey, envValue) {
+  return discordRolesConfigSource() === 'panel' ? getSetting(dbKey, envValue) : envValue;
+}
+function getTsBotNickname() {
+  return getTsSetting('ts_bot_nickname', process.env.TS_BOT_NICKNAME || 'ALLERIA VIDEOS PLATFORM');
+}
 
 // TS6 ServerQuery HTTP API — send the code to the matched client via private message
 async function sendTs6Code(tsBaseUrl, tsServerId, headers, clid, code) {
@@ -650,12 +672,12 @@ app.post('/api/auth/teamspeak', authLimiter, async (req, res) => {
   const clientIp = req.ip || req.socket.remoteAddress;
   const cleanIp = clientIp.replace('::ffff:', '');
 
-  const tsHost = process.env.TS6_HOST || process.env.TS_SERVER_HOST;
-  const tsQueryPort = process.env.TS6_QUERY_PORT || process.env.TS_API_PORT || '10080';
-  const tsUsername = process.env.TS6_USERNAME || process.env.TS_USERNAME || 'serveradmin';
-  const tsPassword = process.env.TS6_PASSWORD || process.env.TS_PASSWORD || '';
-  const tsApiKey = process.env.TS6_API_KEY || process.env.TS_API_KEY || '';
-  const tsServerId = process.env.TS6_SERVER_ID || process.env.TS_SERVER_ID || '1';
+  const tsHost = getTsSetting('ts6_host', process.env.TS6_HOST || process.env.TS_SERVER_HOST || '');
+  const tsQueryPort = getTsSetting('ts6_port', process.env.TS6_QUERY_PORT || process.env.TS_API_PORT || '10080');
+  const tsUsername = getTsSetting('ts6_username', process.env.TS6_USERNAME || process.env.TS_USERNAME || 'serveradmin');
+  const tsPassword = getTsSetting('ts6_password', process.env.TS6_PASSWORD || process.env.TS_PASSWORD || '');
+  const tsApiKey = getTsSetting('ts6_api_key', process.env.TS6_API_KEY || process.env.TS_API_KEY || '');
+  const tsServerId = getTsSetting('ts6_server_id', process.env.TS6_SERVER_ID || process.env.TS_SERVER_ID || '1');
 
   if (!tsHost) {
     logLogin(null, 'unknown', 'teamspeak', clientIp, 0, 'TS6 not configured');
@@ -678,7 +700,7 @@ app.post('/api/auth/teamspeak', authLimiter, async (req, res) => {
 
     // Rename the ServerQuery bot so messages arrive from TS_BOT_NICKNAME, not the query login
     try {
-      const nickRes = await fetch(`${tsBaseUrl}/${tsServerId}/clientupdate?client_nickname=${encodeURIComponent(TS_BOT_NICKNAME)}`, { headers });
+      const nickRes = await fetch(`${tsBaseUrl}/${tsServerId}/clientupdate?client_nickname=${encodeURIComponent(getTsBotNickname())}`, { headers });
       if (!nickRes.ok) console.log(`[TS6] clientupdate nickname HTTP ${nickRes.status}`);
     } catch (e) { console.log(`[TS6] clientupdate nickname failed: ${e.message}`); }
 
@@ -741,8 +763,8 @@ app.post('/api/auth/teamspeak', authLimiter, async (req, res) => {
 
     console.log(`[TS6] User "${tsNickname}" groups: [${groups.join(', ')}]`);
 
-    const memberGroupId = process.env.TS6_MEMBER_GROUP_ID || process.env.TS_MEMBER_GROUP_ID;
-    const adminGroupId = process.env.TS6_ADMIN_GROUP_ID || process.env.TS_ADMIN_GROUP_ID;
+    const memberGroupId = getTsSetting('ts6_member_group_id', process.env.TS6_MEMBER_GROUP_ID || process.env.TS_MEMBER_GROUP_ID || '');
+    const adminGroupId = getTsSetting('ts6_admin_group_id', process.env.TS6_ADMIN_GROUP_ID || process.env.TS_ADMIN_GROUP_ID || '');
 
     const hasMemberGroup = memberGroupId ? groups.includes(String(memberGroupId)) : true;
     const hasAdminGroup = adminGroupId ? groups.includes(String(adminGroupId)) : false;
@@ -923,11 +945,11 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
   const clientIp = req.ip || req.socket.remoteAddress;
   const cleanIp = clientIp.replace('::ffff:', '');
 
-  const tsHost = process.env.TS3_HOST;
-  const tsPort = process.env.TS3_PORT || '10011';
-  const tsUsername = process.env.TS3_USERNAME || 'serveradmin';
-  const tsPassword = process.env.TS3_PASSWORD || '';
-  const tsServerId = process.env.TS3_SERVER_ID || '1';
+  const tsHost = getTsSetting('ts3_host', process.env.TS3_HOST || '');
+  const tsPort = getTsSetting('ts3_port', process.env.TS3_PORT || '10011');
+  const tsUsername = getTsSetting('ts3_username', process.env.TS3_USERNAME || 'serveradmin');
+  const tsPassword = getTsSetting('ts3_password', process.env.TS3_PASSWORD || '');
+  const tsServerId = getTsSetting('ts3_server_id', process.env.TS3_SERVER_ID || '1');
 
   if (!tsHost) {
     logLogin(null, 'unknown', 'teamspeak3', clientIp, 0, 'TS3 not configured');
@@ -944,7 +966,7 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
 
     // Rename the ServerQuery bot so messages/pokes arrive from TS_BOT_NICKNAME, not the query login
     try {
-      await ts3.send(`clientupdate client_nickname=${ts3Escape(TS_BOT_NICKNAME)}`);
+      await ts3.send(`clientupdate client_nickname=${ts3Escape(getTsBotNickname())}`);
     } catch (e) { console.log(`[TS3] clientupdate nickname failed: ${e.message}`); }
 
     const clLines = await ts3.send('clientlist -uid -ip');
@@ -978,8 +1000,8 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
 
     console.log(`[TS3] User "${tsNickname}" groups: [${groups.join(', ')}]`);
 
-    const memberGroupId = process.env.TS3_MEMBER_GROUP_ID;
-    const adminGroupId = process.env.TS3_ADMIN_GROUP_ID;
+    const memberGroupId = getTsSetting('ts3_member_group_id', process.env.TS3_MEMBER_GROUP_ID || '');
+    const adminGroupId = getTsSetting('ts3_admin_group_id', process.env.TS3_ADMIN_GROUP_ID || '');
 
     const hasMemberGroup = memberGroupId ? groups.includes(String(memberGroupId)) : true;
     const hasAdminGroup = adminGroupId ? groups.includes(String(adminGroupId)) : false;
@@ -2222,6 +2244,31 @@ function settingsPayload() {
     iframe_embed_enabled: getSetting('iframe_embed_enabled', '0') === '1',
     iframe_allowed_origins: getSetting('iframe_allowed_origins', '').split(',').map(o => o.trim()).filter(Boolean),
     show_top_bar: getSetting('show_top_bar', '1') === '1',
+
+    // Login config — source flags are .env-only (boot-time, no panel override; see tsConfigSource/
+    // discordRolesConfigSource). The fields below always report the *effective* value, whichever
+    // source is currently active, so the panel can show something sensible either way.
+    ts_config_source: tsConfigSource(),
+    ts6_host: getTsSetting('ts6_host', process.env.TS6_HOST || process.env.TS_SERVER_HOST || ''),
+    ts6_port: getTsSetting('ts6_port', process.env.TS6_QUERY_PORT || process.env.TS_API_PORT || '10080'),
+    ts6_username: getTsSetting('ts6_username', process.env.TS6_USERNAME || process.env.TS_USERNAME || 'serveradmin'),
+    ts6_password: getTsSetting('ts6_password', process.env.TS6_PASSWORD || process.env.TS_PASSWORD || ''),
+    ts6_api_key: getTsSetting('ts6_api_key', process.env.TS6_API_KEY || process.env.TS_API_KEY || ''),
+    ts6_server_id: getTsSetting('ts6_server_id', process.env.TS6_SERVER_ID || process.env.TS_SERVER_ID || '1'),
+    ts6_member_group_id: getTsSetting('ts6_member_group_id', process.env.TS6_MEMBER_GROUP_ID || process.env.TS_MEMBER_GROUP_ID || ''),
+    ts6_admin_group_id: getTsSetting('ts6_admin_group_id', process.env.TS6_ADMIN_GROUP_ID || process.env.TS_ADMIN_GROUP_ID || ''),
+    ts3_host: getTsSetting('ts3_host', process.env.TS3_HOST || ''),
+    ts3_port: getTsSetting('ts3_port', process.env.TS3_PORT || '10011'),
+    ts3_username: getTsSetting('ts3_username', process.env.TS3_USERNAME || 'serveradmin'),
+    ts3_password: getTsSetting('ts3_password', process.env.TS3_PASSWORD || ''),
+    ts3_server_id: getTsSetting('ts3_server_id', process.env.TS3_SERVER_ID || '1'),
+    ts3_member_group_id: getTsSetting('ts3_member_group_id', process.env.TS3_MEMBER_GROUP_ID || ''),
+    ts3_admin_group_id: getTsSetting('ts3_admin_group_id', process.env.TS3_ADMIN_GROUP_ID || ''),
+    ts_bot_nickname: getTsBotNickname(),
+
+    discord_roles_config_source: discordRolesConfigSource(),
+    discord_member_role_id: getDiscordRoleSetting('discord_member_role_id', process.env.DISCORD_MEMBER_ROLE_ID || ''),
+    discord_admin_role_id: getDiscordRoleSetting('discord_admin_role_id', process.env.DISCORD_ADMIN_ROLE_ID || ''),
   };
 }
 
@@ -2290,16 +2337,50 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
     audit(req.session.user.id, 'edit', 'settings', null,
       `show_top_bar → ${req.body.show_top_bar ? 'ON' : 'OFF'}`);
   }
+  // TeamSpeak 3/6 connection config — always writable here regardless of TS_CONFIG_SOURCE, so
+  // values can be pre-staged in the panel before flipping the .env flag over to 'panel'.
+  // Empty string clears the row (falls back to the .env-derived value again).
+  const TS_TEXT_FIELDS = ['ts6_host', 'ts6_username', 'ts6_password', 'ts6_api_key', 'ts3_host', 'ts3_username', 'ts3_password', 'ts_bot_nickname'];
+  const TS_NUMERIC_FIELDS = ['ts6_port', 'ts6_server_id', 'ts6_member_group_id', 'ts6_admin_group_id', 'ts3_port', 'ts3_server_id', 'ts3_member_group_id', 'ts3_admin_group_id'];
+  for (const key of TS_TEXT_FIELDS) {
+    if (req.body[key] !== undefined) {
+      const v = String(req.body[key]).trim();
+      if (v === '') clearSetting(key); else setSetting(key, v);
+      const isSecret = key.includes('password') || key.includes('api_key');
+      audit(req.session.user.id, 'edit', 'settings', null, `${key} → ${isSecret ? '(zmieniono)' : (v || '(reset do .env)')}`);
+    }
+  }
+  for (const key of TS_NUMERIC_FIELDS) {
+    if (req.body[key] !== undefined) {
+      const v = String(req.body[key]).trim();
+      if (v !== '' && !/^\d+$/.test(v)) {
+        return res.status(400).json({ error: `Nieprawidłowa wartość dla ${key} — oczekiwano samych cyfr.` });
+      }
+      if (v === '') clearSetting(key); else setSetting(key, v);
+      audit(req.session.user.id, 'edit', 'settings', null, `${key} → ${v || '(reset do .env)'}`);
+    }
+  }
+  // Discord member/editor role IDs — always writable here regardless of DISCORD_ROLES_CONFIG_SOURCE.
+  for (const key of ['discord_member_role_id', 'discord_admin_role_id']) {
+    if (req.body[key] !== undefined) {
+      const v = String(req.body[key]).trim();
+      if (v !== '' && !/^\d{5,25}$/.test(v)) {
+        return res.status(400).json({ error: `Nieprawidłowe ID roli Discord dla ${key} — oczekiwano samych cyfr.` });
+      }
+      if (v === '') clearSetting(key); else setSetting(key, v);
+      audit(req.session.user.id, 'edit', 'settings', null, `${key} → ${v || '(reset do .env)'}`);
+    }
+  }
   res.json({ success: true, ...settingsPayload() });
 });
 
 // .env sanity check — variable names only, values are never inspected/returned
 const KNOWN_ENV_VARS = [
   'DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_REDIRECT_URI', 'DISCORD_BOT_TOKEN', 'DISCORD_GUILD_ID',
-  'DISCORD_MEMBER_ROLE_ID', 'DISCORD_ADMIN_ROLE_ID', 'DISCORD_DEV_ROLE_ID',
+  'DISCORD_MEMBER_ROLE_ID', 'DISCORD_ADMIN_ROLE_ID', 'DISCORD_DEV_ROLE_ID', 'DISCORD_ROLES_CONFIG_SOURCE',
   'TS_SERVER_HOST', 'TS6_HOST', 'TS_API_PORT', 'TS6_QUERY_PORT', 'TS_USERNAME', 'TS6_USERNAME', 'TS_PASSWORD', 'TS6_PASSWORD',
   'TS_API_KEY', 'TS6_API_KEY', 'TS_SERVER_ID', 'TS6_SERVER_ID', 'TS_MEMBER_GROUP_ID', 'TS6_MEMBER_GROUP_ID',
-  'TS_ADMIN_GROUP_ID', 'TS6_ADMIN_GROUP_ID', 'TS_BOT_NICKNAME',
+  'TS_ADMIN_GROUP_ID', 'TS6_ADMIN_GROUP_ID', 'TS_BOT_NICKNAME', 'TS_CONFIG_SOURCE',
   'TS3_HOST', 'TS3_PORT', 'TS3_USERNAME', 'TS3_PASSWORD', 'TS3_SERVER_ID', 'TS3_MEMBER_GROUP_ID', 'TS3_ADMIN_GROUP_ID',
   'SESSION_SECRET', 'PORT', 'NODE_ENV',
   'STREAM_SECRET', 'STREAM_URL', 'ALLOWED_ORIGIN',
@@ -2340,6 +2421,25 @@ app.get('/api/debug/env-check', requireDev, (req, res) => {
   }
 
   res.json({ deprecated, suspicious });
+});
+
+// Categories that have custom Discord role IDs or a custom Discord user list attached — an audit
+// view so a dev can see what's affected before changing the global member/redaktor role IDs.
+app.get('/api/debug/category-role-overview', requireDev, (req, res) => {
+  try {
+    const cats = db.prepare('SELECT id, name FROM categories ORDER BY sort_order, name').all();
+    const roleRows = db.prepare('SELECT category_id, discord_role_id, access_type FROM category_access').all();
+    const userRows = db.prepare('SELECT category_id, access_type, COUNT(*) AS c FROM category_user_access GROUP BY category_id, access_type').all();
+
+    const result = cats.map(c => ({
+      id: c.id,
+      name: c.name,
+      discord_roles: roleRows.filter(r => r.category_id === c.id).map(r => ({ role_id: r.discord_role_id, access_type: r.access_type })),
+      custom_users: userRows.filter(u => u.category_id === c.id).map(u => ({ access_type: u.access_type, count: u.c })),
+    })).filter(c => c.discord_roles.length > 0 || c.custom_users.length > 0);
+
+    res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ============ WATCH PARTY MANAGEMENT (admin) ============
@@ -2920,6 +3020,12 @@ function getSetting(key, defaultVal = null) {
 function setSetting(key, value) {
   db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
     .run(key, String(value));
+}
+
+// Removes a setting row entirely (as opposed to setting it to ''), so getSetting() falls back to
+// its .env-derived default again — this is how a panel field gets "reset to .env" from the UI.
+function clearSetting(key) {
+  db.prepare('DELETE FROM app_settings WHERE key = ?').run(key);
 }
 
 // Content length limits — configurable via Debug Tools, with defaults.
