@@ -193,7 +193,7 @@ export default function LoginPage() {
             </h1>
 
             <p className="text-zinc-400 text-base xl:text-lg leading-relaxed max-w-xs xl:max-w-sm mb-12">
-              Archiwum wspomnień, kompilacje z rozgrywek — wszystko w jednym miejscu, wyłącznie dla członków społecznościAlleria.
+              Archiwum wspomnień, kompilacje z rozgrywek - wszystko w jednym miejscu, wyłącznie dla członków społecznościAlleria.
             </p>
 
             {/* Feature badges */}

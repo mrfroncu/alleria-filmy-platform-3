@@ -32,7 +32,7 @@ function ToggleSwitch({ checked, onChange, disabled, label }) {
       disabled={disabled}
       className="inline-flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      <span className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${checked ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'}`}>
+      <span className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${checked ? 'bg-violet-500' : 'bg-zinc-300 dark:bg-zinc-700'}`}>
         <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
       </span>
       <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">{label}</span>
@@ -231,7 +231,7 @@ export default function DebugPage() {
   const [settings, setSettingsState] = useState(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [limitForm, setLimitForm] = useState({ limit_display_name: '', limit_bio: '', limit_comment: '' });
-  const [displayForm, setDisplayForm] = useState({ videos_per_page: '', grid_columns: '' });
+  const [displayForm, setDisplayForm] = useState({ videos_per_page: '', grid_columns: '', grid_card_min_width: '' });
   const [logsForm, setLogsForm] = useState({ logs_per_page: '' });
   const [originsForm, setOriginsForm] = useState([]);
   const [originInput, setOriginInput] = useState('');
@@ -250,7 +250,7 @@ export default function DebugPage() {
         limit_bio: s.limit_bio,
         limit_comment: s.limit_comment,
       });
-      setDisplayForm({ videos_per_page: s.videos_per_page, grid_columns: s.grid_columns });
+      setDisplayForm({ videos_per_page: s.videos_per_page, grid_columns: s.grid_columns, grid_card_min_width: s.grid_card_min_width });
       setLogsForm({ logs_per_page: s.logs_per_page });
       setOriginsForm(s.iframe_allowed_origins || []);
       setTs6Form({
@@ -318,9 +318,10 @@ export default function DebugPage() {
       const r = await api.setSettings({
         videos_per_page: parseInt(displayForm.videos_per_page, 10),
         grid_columns: parseInt(displayForm.grid_columns, 10),
+        grid_card_min_width: parseInt(displayForm.grid_card_min_width, 10),
       });
       setSettingsState(r);
-      setDisplayForm({ videos_per_page: r.videos_per_page, grid_columns: r.grid_columns });
+      setDisplayForm({ videos_per_page: r.videos_per_page, grid_columns: r.grid_columns, grid_card_min_width: r.grid_card_min_width });
       setStatus({ type: 'success', msg: 'Ustawienia wyświetlania filmów zapisane.' });
     } catch (e) {
       setStatus({ type: 'error', msg: e.message });
@@ -1089,7 +1090,7 @@ export default function DebugPage() {
             }
           </select>
           <button
-            onClick={checkAccess}
+            onClick={() => checkAccess()}
             disabled={!accessSelectedId || accessLoading}
             className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold rounded-xl transition-colors disabled:opacity-40 shrink-0"
           >
@@ -1362,7 +1363,7 @@ export default function DebugPage() {
             <div className="flex-1">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Wyświetlanie filmów</h3>
               <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Liczba filmów na stronę i maksymalna liczba kolumn siatki w widoku bazy filmów. Karty filmów mają stałą szerokość — na szerokich ekranach dokłada się kolejna kolumna zamiast ściskać istniejące, aż do tego limitu; na węższych ekranach nadal redukuje się jak dotychczas.
+                Liczba filmów na stronę, maksymalna liczba kolumn siatki i minimalna szerokość karty filmu (px) w widoku bazy filmów. Na szerokich ekranach dokłada się kolejna kolumna zamiast ściskać istniejące karty poniżej tej szerokości, aż do limitu kolumn; na węższych ekranach nadal redukuje się jak dotychczas. Jeśli po tej zmianie liczba kolumn na Twoim ekranie nadal nie zgadza się z oczekiwaniami, zmniejsz minimalną szerokość karty.
               </p>
               <div className="grid grid-cols-2 gap-4 max-w-xs">
                 <div>
@@ -1375,6 +1376,12 @@ export default function DebugPage() {
                   <label className="label-field">Maks. kolumn siatki</label>
                   <input type="number" min="1" max="12" value={displayForm.grid_columns}
                     onChange={e => setDisplayForm(f => ({ ...f, grid_columns: e.target.value }))}
+                    className="input-field !py-3 text-sm" />
+                </div>
+                <div className="col-span-2">
+                  <label className="label-field">Min. szerokość karty (px)</label>
+                  <input type="number" min="150" max="800" value={displayForm.grid_card_min_width}
+                    onChange={e => setDisplayForm(f => ({ ...f, grid_card_min_width: e.target.value }))}
                     className="input-field !py-3 text-sm" />
                 </div>
               </div>

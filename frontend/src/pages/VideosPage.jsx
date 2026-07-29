@@ -27,7 +27,7 @@ export default function VideosPage() {
   const [resetting, setResetting] = useState(false);
 
   // Display config — videosPerPage should be a multiple of gridColumns (default 3)
-  const [config, setConfig] = useState({ videosPerPage: 12, gridColumns: 3 });
+  const [config, setConfig] = useState({ videosPerPage: 12, gridColumns: 3, gridCardMinWidth: 300 });
 
   useEffect(() => {
     const tagPromise = categorySlug ? api.getCategoryTags(categorySlug) : api.getTags();
@@ -94,12 +94,14 @@ export default function VideosPage() {
     [continueWatching]
   );
 
-  // Card width is fixed — it matches exactly what 3 columns look like today (1280px page,
-  // 40px padding each side, 24px gaps): (1280 - 80 - 48) / 3 = 384px. "Kolumny siatki" is now a
-  // MAX, not a divisor: on wide screens, extra columns of this same fixed width appear as space
-  // allows, up to that max; the page itself grows just enough to fit them (never beyond the max),
-  // and below 1280px the existing responsive behavior (1 col / 2 cols) is untouched.
-  const CARD_MIN_WIDTH = 384;
+  // Card width is fixed (configurable in Dev Tools > Ustawienia — "Min. szerokość karty"),
+  // not derived from dividing the page — the sidebar (272px, see Layout.jsx) already eats into
+  // the space available next to it, so a card-width guess that ignores it runs short of columns
+  // on real laptop widths. "Kolumny siatki" is a MAX, not a divisor: on wide screens, extra
+  // columns of this same fixed width appear as space allows, up to that max; the page itself
+  // grows just enough to fit them (never beyond the max), and below 1280px the existing
+  // responsive behavior (1 col / 2 cols) is untouched.
+  const CARD_MIN_WIDTH = config.gridCardMinWidth || 300;
   const GRID_GAP = 24;
   const PAGE_PADDING_X = 80; // p-10 (2.5rem) on both sides — matches the ≥1280px breakpoint below
   const gridColumnsMax = Math.max(1, config.gridColumns || 3);

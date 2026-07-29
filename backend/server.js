@@ -199,6 +199,7 @@ app.get('/api/config', requireAuth, (req, res) => {
   res.json({
     videosPerPage: s.videos_per_page,
     gridColumns: s.grid_columns,
+    gridCardMinWidth: s.grid_card_min_width,
     logsPerPage: s.logs_per_page,
     limitDisplayName: s.limit_display_name,
     limitBio: s.limit_bio,
@@ -2261,6 +2262,7 @@ function settingsPayload() {
     ts3_code_delivery: getSetting('ts3_code_delivery', 'pm'),
     videos_per_page: parseInt(getSetting('videos_per_page', '12'), 10) || 12,
     grid_columns: parseInt(getSetting('grid_columns', '3'), 10) || 3,
+    grid_card_min_width: parseInt(getSetting('grid_card_min_width', '300'), 10) || 300,
     logs_per_page: parseInt(getSetting('logs_per_page', '50'), 10) || 50,
     iframe_embed_enabled: getSetting('iframe_embed_enabled', '0') === '1',
     iframe_allowed_origins: getSetting('iframe_allowed_origins', '').split(',').map(o => o.trim()).filter(Boolean),
@@ -2334,6 +2336,16 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
       setSetting(key, n);
       audit(req.session.user.id, 'edit', 'settings', null, `${key} → ${n}`);
     }
+  }
+  // Minimum video card width in px — the grid never squeezes cards narrower than this; it adds
+  // columns (up to the max above) as space allows instead. Bounded to sane, always-usable values.
+  if (req.body.grid_card_min_width !== undefined) {
+    const n = parseInt(req.body.grid_card_min_width, 10);
+    if (!Number.isInteger(n) || n < 150 || n > 800) {
+      return res.status(400).json({ error: 'Nieprawidłowa wartość dla grid_card_min_width (dozwolone 150–800).' });
+    }
+    setSetting('grid_card_min_width', n);
+    audit(req.session.user.id, 'edit', 'settings', null, `grid_card_min_width → ${n}`);
   }
   // iframe embedding toggle (formerly .env-only)
   if (req.body.iframe_embed_enabled !== undefined) {
