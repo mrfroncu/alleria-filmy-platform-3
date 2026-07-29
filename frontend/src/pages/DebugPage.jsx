@@ -21,6 +21,25 @@ function formatBytes(bytes) {
   return bytes + ' B';
 }
 
+// Standard on/off slider switch — used for the boolean settings toggles in the Ustawienia tab.
+function ToggleSwitch({ checked, onChange, disabled, label }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      disabled={disabled}
+      className="inline-flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      <span className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${checked ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'}`}>
+        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
+      </span>
+      <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">{label}</span>
+    </button>
+  );
+}
+
 const TAB_IDS = TABS.map(t => t.id);
 
 export default function DebugPage() {
@@ -176,12 +195,13 @@ export default function DebugPage() {
     api.getVideos({ include_transcoding: '1' }).then(setAccessVideos).catch(() => {});
   }, []);
 
-  const checkAccess = async () => {
-    if (!accessSelectedId) return;
+  const checkAccess = async (idOverride) => {
+    const id = idOverride || accessSelectedId;
+    if (!id) return;
     setAccessLoading(true);
     setAccessResult(null);
     try {
-      const data = await api.debugAccess(accessMode, accessSelectedId);
+      const data = await api.debugAccess(accessMode, id);
       setAccessResult(data);
     } catch (e) {
       setAccessResult({ error: e.message });
@@ -1077,6 +1097,30 @@ export default function DebugPage() {
           </button>
         </div>
 
+        {accessMode === 'video' && (() => {
+          const customVideos = accessVideos.filter(v => v.access_mode === 'custom');
+          return (
+            <div className="mb-4">
+              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mb-2 font-display">
+                Filmy z niestandardowymi uprawnieniami ({customVideos.length})
+              </p>
+              {customVideos.length === 0 ? (
+                <p className="text-xs text-zinc-400 italic">Brak filmów z uprawnieniami niezależnymi od kategorii.</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+                  {customVideos.map(v => (
+                    <button key={v.id} type="button"
+                      onClick={() => { setAccessSelectedId(String(v.id)); checkAccess(v.id); }}
+                      className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors ${accessSelectedId === String(v.id) ? 'bg-blue-500 text-white border-blue-500' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-blue-400'}`}>
+                      {v.title}{v.category_name ? ` · ${v.category_name}` : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {accessResult?.error && (
           <div className="p-3 bg-red-50 dark:bg-red-500/10 rounded-xl text-sm text-red-600 dark:text-red-400">{accessResult.error}</div>
         )}
@@ -1267,17 +1311,12 @@ export default function DebugPage() {
                 ({settings?.webhook_allowed_hosts?.join(', ') || 'discord.com, discordapp.com'}).
                 Chroni przed SSRF.
               </p>
-              <button
-                type="button"
-                onClick={toggleWebhookRestriction}
+              <ToggleSwitch
+                checked={!!settings?.webhook_domain_restriction}
+                onChange={toggleWebhookRestriction}
                 disabled={!settings || savingSettings}
-                className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-sm font-semibold text-zinc-700 dark:text-zinc-300 disabled:opacity-50"
-              >
-                {settings?.webhook_domain_restriction
-                  ? <CheckSquare className="w-5 h-5 text-emerald-500" />
-                  : <Square className="w-5 h-5 text-zinc-400" />}
-                {settings == null ? 'Ładowanie...' : (settings.webhook_domain_restriction ? 'Ograniczenie domen: WŁĄCZONE' : 'Ograniczenie domen: WYŁĄCZONE')}
-              </button>
+                label={settings == null ? 'Ładowanie...' : (settings.webhook_domain_restriction ? 'Ograniczenie domen: WŁĄCZONE' : 'Ograniczenie domen: WYŁĄCZONE')}
+              />
             </div>
           </div>
         </div>
@@ -1323,7 +1362,7 @@ export default function DebugPage() {
             <div className="flex-1">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Wyświetlanie filmów</h3>
               <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Liczba filmów na stronę i liczba kolumn siatki w widoku bazy filmów.
+                Liczba filmów na stronę i maksymalna liczba kolumn siatki w widoku bazy filmów. Karty filmów mają stałą szerokość — na szerokich ekranach dokłada się kolejna kolumna zamiast ściskać istniejące, aż do tego limitu; na węższych ekranach nadal redukuje się jak dotychczas.
               </p>
               <div className="grid grid-cols-2 gap-4 max-w-xs">
                 <div>
@@ -1333,7 +1372,7 @@ export default function DebugPage() {
                     className="input-field !py-3 text-sm" />
                 </div>
                 <div>
-                  <label className="label-field">Kolumny siatki</label>
+                  <label className="label-field">Maks. kolumn siatki</label>
                   <input type="number" min="1" max="12" value={displayForm.grid_columns}
                     onChange={e => setDisplayForm(f => ({ ...f, grid_columns: e.target.value }))}
                     className="input-field !py-3 text-sm" />
@@ -1379,19 +1418,14 @@ export default function DebugPage() {
             <div className="flex-1">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Osadzanie w iframe</h3>
               <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Zezwala na osadzanie odtwarzacza na dozwolonych zewnętrznych stronach (CSP <code className="font-mono text-xs">frame-ancestors</code>).
+                Lista domen platformy - zabezpieczenie przed dostępem do playera z innych domen. (CSP <code className="font-mono text-xs">frame-ancestors</code>).
               </p>
-              <button
-                type="button"
-                onClick={toggleIframeEmbed}
+              <ToggleSwitch
+                checked={!!settings?.iframe_embed_enabled}
+                onChange={toggleIframeEmbed}
                 disabled={!settings || savingSettings}
-                className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-sm font-semibold text-zinc-700 dark:text-zinc-300 disabled:opacity-50"
-              >
-                {settings?.iframe_embed_enabled
-                  ? <CheckSquare className="w-5 h-5 text-emerald-500" />
-                  : <Square className="w-5 h-5 text-zinc-400" />}
-                {settings == null ? 'Ładowanie...' : (settings.iframe_embed_enabled ? 'Osadzanie: WŁĄCZONE' : 'Osadzanie: WYŁĄCZONE')}
-              </button>
+                label={settings == null ? 'Ładowanie...' : (settings.iframe_embed_enabled ? 'Osadzanie: WŁĄCZONE' : 'Osadzanie: WYŁĄCZONE')}
+              />
 
               <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-5 mb-2 font-display">Dozwolone domeny</p>
               <div className="flex gap-2 max-w-md">
@@ -1435,17 +1469,12 @@ export default function DebugPage() {
               <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
                 Gdy włączony: tytuł strony, wyszukiwarka i profil użytkownika w górnym pasku. Gdy wyłączony: profil wraca do lewego dolnego rogu, a każda strona pokazuje własny tytuł.
               </p>
-              <button
-                type="button"
-                onClick={toggleTopBar}
+              <ToggleSwitch
+                checked={!!settings?.show_top_bar}
+                onChange={toggleTopBar}
                 disabled={!settings || savingSettings}
-                className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-sm font-semibold text-zinc-700 dark:text-zinc-300 disabled:opacity-50"
-              >
-                {settings?.show_top_bar
-                  ? <CheckSquare className="w-5 h-5 text-emerald-500" />
-                  : <Square className="w-5 h-5 text-zinc-400" />}
-                {settings == null ? 'Ładowanie...' : (settings.show_top_bar ? 'Górny pasek: WŁĄCZONY' : 'Górny pasek: WYŁĄCZONY')}
-              </button>
+                label={settings == null ? 'Ładowanie...' : (settings.show_top_bar ? 'Górny pasek: WŁĄCZONY' : 'Górny pasek: WYŁĄCZONY')}
+              />
             </div>
           </div>
         </div>
@@ -1594,13 +1623,14 @@ export default function DebugPage() {
                       <div key={c.id} className="flex flex-wrap items-center gap-1.5 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
                         <span className="text-sm font-bold text-zinc-900 dark:text-white mr-1">{c.name}</span>
                         {c.discord_roles.map((r, i) => (
-                          <span key={`r-${i}`} className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${r.access_type === 'editor' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300'}`}>
-                            {r.access_type === 'editor' ? '✏️' : '👁️'} {r.role_id}
+                          <span key={`r-${i}`} className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${r.access_type === 'editor' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300'}`}
+                            title={r.role_name ? undefined : 'Nie udało się pobrać nazwy roli z Discorda — pokazano surowe ID'}>
+                            {r.access_type === 'editor' ? '✏️' : '👁️'} {r.role_name || <span className="font-mono">{r.role_id}</span>}
                           </span>
                         ))}
                         {c.custom_users.map((u, i) => (
                           <span key={`u-${i}`} className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300">
-                            {u.access_type === 'editor' ? '✏️' : '👁️'} {u.count} użytk. (custom)
+                            {u.access_type === 'editor' ? '✏️' : '👁️'} {u.display_name}
                           </span>
                         ))}
                       </div>

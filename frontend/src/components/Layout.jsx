@@ -5,7 +5,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import { api } from '../utils/api';
 import {
   Film, Shield, Menu, X, Wrench, ChevronRight, ChevronDown, LogOut,
-  Heart, Clock, BarChart3, FolderOpen, FileText, MessageSquarePlus
+  Heart, Clock, BarChart3, FolderOpen, FileText, MessageSquarePlus, Lock
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
 import WatchPartyTab from './WatchPartyTab';
@@ -46,6 +46,27 @@ function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlu
     const hasKids = cats.some(c => c.parent_id === cat.id);
     const active = location.pathname === `/category/${cat.slug}` || activeCatSlug === cat.slug;
     const pl = depth === 0 ? 'pl-9' : depth === 1 ? 'pl-12' : 'pl-14';
+
+    // Locked: user can't view this category itself, but it's shown (grayed out, not clickable)
+    // because a subcategory beneath it IS accessible — otherwise that subcategory would have no
+    // way to be reached from the sidebar at all.
+    if (cat.locked) {
+      return (
+        <div key={cat.id}>
+          <div
+            title="Brak dostępu do tej kategorii"
+            className={`w-full flex items-center ${pl} pr-4 py-2 rounded-xl text-zinc-400 dark:text-zinc-600 cursor-not-allowed select-none`}
+          >
+            <div className="flex items-center gap-2.5 flex-1 min-w-0">
+              <Lock className="w-3 h-3 shrink-0" />
+              <span className="font-semibold text-[13px] truncate">{cat.name}</span>
+            </div>
+          </div>
+          {hasKids && <CatTree cats={cats} parentId={cat.id} depth={depth + 1} location={location} setSidebarOpen={setSidebarOpen} activeCatSlug={activeCatSlug} />}
+        </div>
+      );
+    }
+
     return (
       <div key={cat.id}>
         <Link

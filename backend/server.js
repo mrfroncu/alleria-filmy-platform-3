@@ -601,7 +601,7 @@ function completeTsSession(req, res, user, method) {
 }
 
 const challengeMessage = (code) =>
-  `🔐 Alleria Filmy — Twój kod logowania: ${code}\nWpisz go na stronie, aby dokończyć logowanie. Kod ważny 5 minut. Jeśli to nie Ty — zignoruj tę wiadomość.`;
+  `🔐 Alleria Filmy — Twój kod logowania: [b]${code}[/b]\nWpisz go na stronie, aby dokończyć logowanie. Kod ważny 5 minut. Jeśli to nie Ty — zignoruj tę wiadomość.`;
 
 // Config-source flags — .env-only, boot-time (require a restart to flip), never editable from the panel.
 // This is the escape hatch: if a panel-managed value ever breaks TS/Discord login, flipping the
@@ -1028,7 +1028,7 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
     }
     if (delivery === 'poke' || delivery === 'both') {
       try {
-        await ts3.send(`clientpoke clid=${matched.clid} msg=${ts3Escape('Kod logowania: ' + code)}`);
+        await ts3.send(`clientpoke clid=${matched.clid} msg=${ts3Escape('Kod logowania: [b]' + code + '[/b]')}`);
         codeSent = true;
       } catch (e) { console.log(`[TS3] clientpoke failed: ${e.message}`); }
     }
@@ -1515,13 +1515,34 @@ app.get('/api/categories', requireAuth, (req, res) => {
     const userId = user.id;
     const userRoles = user.discord_roles || [];
     const userRankIds = getUserRankIds(userId);
-    const cats = allCats.map(c => {
-      const access = db.prepare('SELECT * FROM category_access WHERE category_id = ?').all(c.id);
-      const rank_access = db.prepare('SELECT cra.*, r.name AS rank_name, r.color AS rank_color FROM category_rank_access cra JOIN app_ranks r ON cra.rank_id = r.id WHERE cra.category_id = ?').all(c.id);
+    const withAccess = allCats.map(c => {
       const { canView, canEdit } = checkCatAccess(c.id, c.access_mode, userId, userRoles, userRankIds);
-      const videoCount = db.prepare('SELECT COUNT(*) AS c FROM videos WHERE category_id = ?').get(c.id).c;
-      return { ...c, access, rank_access, videoCount, canView, canEdit };
-    }).filter(c => c.canView);
+      return { ...c, canView, canEdit };
+    });
+
+    // A category the user can't view is still included — as a minimal "locked" placeholder,
+    // no access/rank_access/webhook details — if it has an accessible descendant, so that
+    // descendant stays reachable in the category tree (sidebar) instead of silently vanishing
+    // because its parent chain got filtered out. Otherwise it's dropped entirely, as before.
+    const byParent = {};
+    for (const c of withAccess) {
+      const pid = c.parent_id || 0;
+      (byParent[pid] = byParent[pid] || []).push(c);
+    }
+    const hasAccessibleDescendant = (catId) =>
+      (byParent[catId] || []).some(ch => ch.canView || hasAccessibleDescendant(ch.id));
+
+    const cats = withAccess
+      .filter(c => c.canView || hasAccessibleDescendant(c.id))
+      .map(c => {
+        if (!c.canView) {
+          return { id: c.id, name: c.name, slug: c.slug, icon: c.icon, sort_order: c.sort_order, parent_id: c.parent_id, canView: false, canEdit: false, locked: true };
+        }
+        const access = db.prepare('SELECT * FROM category_access WHERE category_id = ?').all(c.id);
+        const rank_access = db.prepare('SELECT cra.*, r.name AS rank_name, r.color AS rank_color FROM category_rank_access cra JOIN app_ranks r ON cra.rank_id = r.id WHERE cra.category_id = ?').all(c.id);
+        const videoCount = db.prepare('SELECT COUNT(*) AS c FROM videos WHERE category_id = ?').get(c.id).c;
+        return { ...c, access, rank_access, videoCount };
+      });
 
     res.json(cats);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2425,17 +2446,44 @@ app.get('/api/debug/env-check', requireDev, (req, res) => {
 
 // Categories that have custom Discord role IDs or a custom Discord user list attached — an audit
 // view so a dev can see what's affected before changing the global member/redaktor role IDs.
-app.get('/api/debug/category-role-overview', requireDev, (req, res) => {
+app.get('/api/debug/category-role-overview', requireDev, async (req, res) => {
   try {
     const cats = db.prepare('SELECT id, name FROM categories ORDER BY sort_order, name').all();
     const roleRows = db.prepare('SELECT category_id, discord_role_id, access_type FROM category_access').all();
-    const userRows = db.prepare('SELECT category_id, access_type, COUNT(*) AS c FROM category_user_access GROUP BY category_id, access_type').all();
+    const userRows = db.prepare(`
+      SELECT cua.category_id, cua.access_type, u.id, u.display_name, u.username
+      FROM category_user_access cua
+      JOIN users u ON u.id = cua.user_id
+    `).all();
+
+    // Discord role IDs are just raw snowflakes in our DB (no name cached anywhere) — resolve
+    // names live from the guild, best-effort. Falls back to the bare ID if Discord is unreachable.
+    let roleNames = {};
+    if (roleRows.length > 0 && process.env.DISCORD_GUILD_ID && process.env.DISCORD_BOT_TOKEN) {
+      try {
+        const rolesRes = await fetch(`https://discord.com/api/guilds/${process.env.DISCORD_GUILD_ID}/roles`, {
+          headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` },
+        });
+        if (rolesRes.ok) {
+          const roles = await rolesRes.json();
+          roleNames = Object.fromEntries(roles.map(r => [r.id, r.name]));
+        }
+      } catch (e) { /* Discord unreachable — fall back to raw IDs below */ }
+    }
 
     const result = cats.map(c => ({
       id: c.id,
       name: c.name,
-      discord_roles: roleRows.filter(r => r.category_id === c.id).map(r => ({ role_id: r.discord_role_id, access_type: r.access_type })),
-      custom_users: userRows.filter(u => u.category_id === c.id).map(u => ({ access_type: u.access_type, count: u.c })),
+      discord_roles: roleRows.filter(r => r.category_id === c.id).map(r => ({
+        role_id: r.discord_role_id,
+        role_name: roleNames[r.discord_role_id] || null,
+        access_type: r.access_type,
+      })),
+      custom_users: userRows.filter(u => u.category_id === c.id).map(u => ({
+        id: u.id,
+        display_name: u.display_name || u.username,
+        access_type: u.access_type,
+      })),
     })).filter(c => c.discord_roles.length > 0 || c.custom_users.length > 0);
 
     res.json(result);

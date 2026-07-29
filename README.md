@@ -4,8 +4,6 @@
 
 **Prywatna platforma wideo społeczności [Alleria.pl](https://alleria.pl)**
 
-![Panel v3.22.0](https://img.shields.io/badge/Panel-v3.22.0-f43f5e) ![Streaming v1.9.4](https://img.shields.io/badge/Streaming-v1.9.4-10b981) ![License: Private](https://img.shields.io/badge/license-private-lightgrey)
-
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white) ![Node](https://img.shields.io/badge/Node-20-339933?logo=node.js&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-better--sqlite3-003B57?logo=sqlite&logoColor=white)
 
 </div>
@@ -13,9 +11,6 @@
 ---
 
 Uwierzytelnianie Discord/TeamSpeak 3/6, zarządzanie filmami, self-hosted streaming HLS z szyfrowaniem AES-128, kategorie z podkategoriami i własnym systemem rang, kontrola dostępu oparta na rolach, komentarze, planowane publikacje z powiadomieniami na Discordzie oraz Watch Party — synchroniczne wspólne oglądanie w czasie rzeczywistym.
-
-> [!NOTE]
-> Odznaki wersji na górze są utrzymywane ręcznie — źródło prawdy to `backend/versions.js` / `streaming/versions.js` oraz `GET /api/version`. Przy podbijaniu wersji pamiętaj o aktualizacji też tutaj.
 
 ## 📑 Spis treści
 

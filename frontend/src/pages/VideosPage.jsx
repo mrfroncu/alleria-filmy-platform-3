@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, SlidersHorizontal, X, ChevronDown, Film, RotateCcw } from 'lucide-react';
+import { Search, SlidersHorizontal, X, ChevronDown, Film, RotateCcw, Lock } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
 import { useSettings } from '../contexts/SettingsContext';
@@ -14,6 +14,7 @@ export default function VideosPage() {
   const [tags, setTags] = useState([]);
   const [authors, setAuthors] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState(searchParams.get('search') || '');
@@ -31,7 +32,7 @@ export default function VideosPage() {
   useEffect(() => {
     const tagPromise = categorySlug ? api.getCategoryTags(categorySlug) : api.getTags();
     Promise.all([tagPromise, api.getAuthors(), api.getCategories(), api.getConfig()])
-      .then(([t, a, c, cfg]) => { setTags(t); setAuthors(a); setCategories(c); if (cfg) setConfig(cfg); })
+      .then(([t, a, c, cfg]) => { setTags(t); setAuthors(a); setCategories(c); if (cfg) setConfig(cfg); setCategoriesLoaded(true); })
       .catch(console.error);
   }, [categorySlug]);
 
@@ -93,21 +94,40 @@ export default function VideosPage() {
     [continueWatching]
   );
 
+  // Card width is fixed — it matches exactly what 3 columns look like today (1280px page,
+  // 40px padding each side, 24px gaps): (1280 - 80 - 48) / 3 = 384px. "Kolumny siatki" is now a
+  // MAX, not a divisor: on wide screens, extra columns of this same fixed width appear as space
+  // allows, up to that max; the page itself grows just enough to fit them (never beyond the max),
+  // and below 1280px the existing responsive behavior (1 col / 2 cols) is untouched.
+  const CARD_MIN_WIDTH = 384;
+  const GRID_GAP = 24;
+  const PAGE_PADDING_X = 80; // p-10 (2.5rem) on both sides — matches the ≥1280px breakpoint below
+  const gridColumnsMax = Math.max(1, config.gridColumns || 3);
+  const gridContentWidth = gridColumnsMax * CARD_MIN_WIDTH + (gridColumnsMax - 1) * GRID_GAP;
+  const pageMaxWidth = gridContentWidth + PAGE_PADDING_X;
+
+  // A category is either absent from `categories` entirely (no visibility into it at all) or
+  // present-but-locked (kept around only so an accessible subcategory beneath it stays reachable
+  // in the sidebar) — both mean "you can't see what's in here", distinct from a category that's
+  // simply empty right now.
+  const currentCategory = categorySlug ? categories.find(c => c.slug === categorySlug) : null;
+  const categoryAccessDenied = categoriesLoaded && !!categorySlug && (!currentCategory || currentCategory.locked);
+
   return (
-    <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
+    <div className="p-6 sm:p-10 mx-auto page-enter" style={{ maxWidth: `${pageMaxWidth}px` }}>
       {/* Header */}
       <div className="mb-10">
         {!siteConfig.showTopBar && (
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">
-            {categorySlug
-              ? (categories.find(c => c.slug === categorySlug)?.name || categorySlug)
-              : 'Baza Filmów'}
+            {categorySlug ? (currentCategory?.name || categorySlug) : 'Baza Filmów'}
           </h1>
         )}
         <div className="flex items-center justify-between gap-4">
           <p className="text-zinc-500 dark:text-zinc-400 text-base sm:text-lg">
-            {categorySlug
-              ? (categories.find(c => c.slug === categorySlug)?.description || 'Filmy w tej kategorii.')
+            {categoryAccessDenied
+              ? 'Nie masz uprawnień do przeglądania zawartości tej kategorii.'
+              : categorySlug
+              ? (currentCategory?.description || 'Filmy w tej kategorii.')
               : 'Przeglądaj materiały wideo społeczności.'}
           </p>
           {continueWatching.length > 0 && (
@@ -124,6 +144,7 @@ export default function VideosPage() {
       </div>
 
       {/* Search & Filters Bar */}
+      {!categoryAccessDenied && (
       <div className="mb-8 space-y-4">
         <div className="flex flex-col sm:flex-row gap-4">
           {/* Search */}
@@ -234,9 +255,18 @@ export default function VideosPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Videos Grid */}
-      {loading ? (
+      {categoryAccessDenied ? (
+        <div className="card p-16 text-center">
+          <div className="w-20 h-20 bg-red-50 dark:bg-red-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
+            <Lock className="w-10 h-10 text-red-400" />
+          </div>
+          <h3 className="text-xl font-bold text-zinc-900 dark:text-white mb-2 font-display">Brak dostępu</h3>
+          <p className="text-zinc-500 text-sm">Nie masz uprawnień do przeglądania zawartości tej kategorii.</p>
+        </div>
+      ) : loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {[1,2,3,4,5,6].map(i => (
             <div key={i} className="card overflow-hidden">
@@ -258,9 +288,10 @@ export default function VideosPage() {
         </div>
       ) : (
         <>
-          {/* Grid — GRID_COLUMNS from .env is the MAX on desktop.
-              Mobile: 1 col, Tablet (sm): 2 cols, Desktop (xl): env value */}
-          <style>{`@media(min-width:1280px){.video-grid{grid-template-columns:repeat(${config.gridColumns},minmax(0,1fr))!important}}`}</style>
+          {/* Grid — "Kolumny siatki" is the MAX on desktop, not a fixed divisor: cards keep a fixed
+              width and auto-fill adds columns as the window widens, capped at that max.
+              Mobile: 1 col, Tablet (sm): 2 cols, Desktop (≥1280px): fixed-width columns, capped */}
+          <style>{`@media(min-width:1280px){.video-grid{grid-template-columns:repeat(auto-fill,minmax(${CARD_MIN_WIDTH}px,1fr))!important;max-width:${gridContentWidth}px!important}}`}</style>
           <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 video-grid">
             {videos.slice((page - 1) * config.videosPerPage, page * config.videosPerPage).map((video, idx) => (
             <Link
