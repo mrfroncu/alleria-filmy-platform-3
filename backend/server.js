@@ -1088,8 +1088,13 @@ app.get('/api/videos', requireAuth, (req, res) => {
   }
 
   // Hide scheduled (future) videos from regular users (admin+dev can see them)
+  // publish_date is stored as an ISO string (toISOString(), "T"/"Z"/ms) — datetime('now') returns
+  // SQLite's own "YYYY-MM-DD HH:MM:SS" format. Comparing those two TEXT formats directly is a raw
+  // string comparison: at the date/time boundary "T" (0x54) sorts after " " (0x20), so ANY video
+  // published earlier *today* still compares as "greater than" now and gets hidden all day.
+  // Wrapping both sides in datetime(...) normalizes them to the same format before comparing.
   if (!isAdminOrDev) {
-    conditions.push("v.publish_date <= datetime('now')");
+    conditions.push("datetime(v.publish_date) <= datetime('now')");
   }
 
   // Access control — only dev bypasses category/content restrictions
@@ -3294,7 +3299,7 @@ if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
         FROM videos v
         LEFT JOIN categories c ON v.category_id = c.id
         LEFT JOIN users u ON v.author_id = u.id
-        WHERE v.publish_date <= datetime('now')
+        WHERE datetime(v.publish_date) <= datetime('now')
         AND (v.webhook_sent IS NULL OR v.webhook_sent = 0)
         AND (v.stream_status IS NULL OR v.stream_status = 'ready')
       `).all();
