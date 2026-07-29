@@ -8,10 +8,10 @@ function parseTsError(msg, version) {
   if (!msg) return `Logowanie przez ${version} nie powiodło się.`;
   const m = msg.toLowerCase();
   if (m.includes('timeout') || m.includes('econnrefused') || m.includes('enotfound') || m.includes('connect')) {
-    return `Nie można połączyć się z serwerem ${version}. Serwer jest niedostępny lub adres jest błędny.`;
+    return `Wystąpił problem po naszej stronie. Użyj innej metody lub spróbuj później.`;
   }
   if (m.includes('ip') || m.includes('nie znaleziono klienta') || m.includes('znaleziono')) {
-    return `Nie znaleziono Twojego IP na serwerze ${version}. Upewnij się, że jesteś aktywnie połączony.`;
+    return `Nie znaleziono Twojego IP na serwerze ${version}. Upewnij się, że jesteś aktualnie połączony.`;
   }
   if (m.includes('grupy') || m.includes('group') || m.includes('wymaganej')) {
     return `Nie posiadasz wymaganej grupy serwerowej na ${version}.`;
@@ -193,7 +193,7 @@ export default function LoginPage() {
             </h1>
 
             <p className="text-zinc-400 text-base xl:text-lg leading-relaxed max-w-xs xl:max-w-sm mb-12">
-              Archiwum wspomnień, nagrane sesje, wspólne chwile — wszystko w jednym miejscu, wyłącznie dla członków Alleria.
+              Archiwum wspomnień, kompilacje z rozgrywek — wszystko w jednym miejscu, wyłącznie dla członków społecznościAlleria.
             </p>
 
             {/* Feature badges */}
@@ -201,7 +201,7 @@ export default function LoginPage() {
               {[
                 { icon: Film,        label: 'Biblioteka filmów i nagrań' },
                 { icon: Users,       label: 'Dostęp tylko dla społeczności' },
-                { icon: ShieldCheck, label: 'Bezpieczne logowanie przez Discord i TeamSpeak' },
+                { icon: ShieldCheck, label: 'Bezpieczne i wygodne logowanie przez Discord i TeamSpeak' },
               ].map(({ icon: Icon, label }) => (
                 <div key={label} className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
@@ -378,9 +378,9 @@ export default function LoginPage() {
             {tsInfoOpen && (
               <div className="text-[11px] text-zinc-500 dark:text-zinc-400 space-y-1.5 pl-3 border-l-2 border-violet-500/30 pb-1">
                 <p>• Musisz być <span className="font-semibold text-zinc-700 dark:text-zinc-300">aktywnie połączony</span> z serwerem TS w momencie logowania.</p>
-                <p>• Weryfikacja działa przez <span className="font-semibold text-zinc-700 dark:text-zinc-300">dopasowanie IP</span> — nie używaj VPN, który zmienia Twój adres.</p>
+                <p>• Weryfikacja działa przez <span className="font-semibold text-zinc-700 dark:text-zinc-300">dopasowanie IP</span> - nie używaj VPN.</p>
                 <p>• Wymagana jest <span className="font-semibold text-zinc-700 dark:text-zinc-300">odpowiednia grupa serwerowa</span> na TS.</p>
-                <p>• Po dopasowaniu bot wyśle Ci na TS <span className="font-semibold text-zinc-700 dark:text-zinc-300">6-znakowy kod</span> — wpisz go, aby potwierdzić logowanie.</p>
+                <p>• Po dopasowaniu bot wyśle Ci na TeamSpeaku <span className="font-semibold text-zinc-700 dark:text-zinc-300">6-znakowy kod</span> - wpisz go, aby się zalogować.</p>
               </div>
             )}
           </div>

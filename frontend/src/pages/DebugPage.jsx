@@ -541,7 +541,7 @@ export default function DebugPage() {
             <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Dev Tools</h1>
           </div>
         )}
-        <p className="text-zinc-500 dark:text-zinc-400">Narzędzia deweloperskie do zarządzania platformą i bazą danych.</p>
+        <p className="text-zinc-500 dark:text-zinc-400">Narzędzia deweloperskie do zarządzania platformą.</p>
       </div>
 
       {/* Tabs */}
@@ -1265,7 +1265,7 @@ export default function DebugPage() {
               <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
                 Gdy włączone, serwer wysyła powiadomienia tylko do domen Discord
                 ({settings?.webhook_allowed_hosts?.join(', ') || 'discord.com, discordapp.com'}).
-                Chroni przed SSRF — wskazaniem webhooka na adres wewnętrzny.
+                Chroni przed SSRF.
               </p>
               <button
                 type="button"

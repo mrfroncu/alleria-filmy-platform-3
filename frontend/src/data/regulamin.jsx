@@ -3,7 +3,7 @@
 //  Edytuj ten plik aby zmienić treść regulaminu lub datę.
 // ============================================================
 
-export const REGULAMIN_LAST_MODIFIED = '1 maja 2026 r.';
+export const REGULAMIN_LAST_MODIFIED = '29 lipca 2026 r.';
 
 export function RegulaminContent() {
   return (
@@ -53,15 +53,15 @@ export function RegulaminContent() {
             <p className="font-medium text-zinc-700 dark:text-zinc-300">Przetwarzane dane i cel</p>
             <ul className="list-disc list-inside space-y-1 mt-1 marker:text-violet-500">
               <li>
-                <strong>Discord:</strong> ID konta, nazwa użytkownika, awatar — pobierane przez protokół OAuth2
+                <strong>Discord:</strong> ID konta, nazwa użytkownika, awatar - pobierane przez protokół OAuth2
                 (platforma nie przechowuje hasła do konta Discord).
               </li>
               <li>
                 <strong>TeamSpeak:</strong> adres IP klienta w momencie logowania, unikalny identyfikator UID,
-                nazwa użytkownika (nickname) — wyłącznie w celu weryfikacji tożsamości.
+                nazwa użytkownika (nickname) - wyłącznie w celu weryfikacji tożsamości.
               </li>
               <li>
-                <strong>Aktywność:</strong> historia obejrzanych filmów i logi logowania — wyłącznie do celów
+                <strong>Aktywność:</strong> historia obejrzanych filmów i logi logowania - wyłącznie do celów
                 statystycznych i bezpieczeństwa platformy.
               </li>
             </ul>
@@ -70,7 +70,7 @@ export function RegulaminContent() {
             <p className="font-medium text-zinc-700 dark:text-zinc-300">Podstawa prawna przetwarzania</p>
             <p>
               Art. 6 ust. 1 lit. b RODO (realizacja usługi) oraz art. 6 ust. 1 lit. f RODO (prawnie uzasadniony
-              interes administratora — bezpieczeństwo i integralność platformy).
+              interes administratora - bezpieczeństwo i integralność platformy).
             </p>
           </div>
           <div>
@@ -92,7 +92,7 @@ export function RegulaminContent() {
             <ul className="list-disc list-inside space-y-1 marker:text-violet-500">
               <li><strong>dostępu</strong> do swoich danych osobowych (art. 15)</li>
               <li><strong>sprostowania</strong> nieprawidłowych danych (art. 16)</li>
-              <li><strong>usunięcia</strong> danych — „prawo do bycia zapomnianym" (art. 17)</li>
+              <li><strong>usunięcia</strong> danych - „prawo do bycia zapomnianym" (art. 17)</li>
               <li><strong>ograniczenia przetwarzania</strong> (art. 18)</li>
               <li><strong>przenoszenia danych</strong> (art. 20)</li>
               <li><strong>sprzeciwu</strong> wobec przetwarzania danych (art. 21)</li>

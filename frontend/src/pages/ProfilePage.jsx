@@ -141,7 +141,7 @@ export default function ProfilePage() {
                 {profile.bio ? (
                   <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed mb-4">{profile.bio}</p>
                 ) : (
-                  <p className="text-sm text-zinc-400 italic mb-4">Brak opisu — kliknij edytuj, żeby dodać.</p>
+                  <p className="text-sm text-zinc-400 italic mb-4">Brak opisu - kliknij edytuj, żeby dodać.</p>
                 )}
                 <button onClick={() => setEditing(true)} className="btn-link-violet inline-flex items-center gap-2 text-sm">
                   <Pencil className="w-4 h-4" /> Edytuj profil
@@ -170,11 +170,11 @@ export default function ProfilePage() {
                   title="Pobierz aktualne avatary z Discorda (przydatne, jeśli od ostatniego logowania coś się zmieniło)"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${refreshingDiscord ? 'animate-spin' : ''}`} />
-                  {refreshingDiscord ? 'Odświeżanie...' : 'Odśwież z Discorda'}
+                  {refreshingDiscord ? 'Odświeżanie...' : 'Odśwież dane z Discorda'}
                 </button>
               </div>
               <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
-                Aby zmienić sam avatar, zrób to na Discordzie — nie da się tego zrobić na tej stronie. Możesz jedynie wybrać, skąd ma być on pobierany.
+                Możesz wybrać źródło avatara, aby zmienić sam avatar musisz zrobić to na Discordzie.
               </p>
               {refreshMsg && (
                 <p className={`text-xs font-medium mb-3 ${refreshMsg.startsWith('Błąd') ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>{refreshMsg}</p>
@@ -207,7 +207,7 @@ export default function ProfilePage() {
                 </button>
               </div>
               <p className="text-[11px] text-zinc-400 mt-3">
-                Avatar serwerowy (ustawiony osobno na tym serwerze Discord) jest dostępny tylko dla użytkowników z Discord Nitro
+                Avatar serwerowy (ustawiony osobno serwerze Discord społeczności) jest dostępny tylko dla użytkowników z Discord Nitro
                 {!profile.has_guild_avatar ? ' — obecnie nie masz ustawionego avatara serwerowego.' : '.'}
               </p>
             </div>

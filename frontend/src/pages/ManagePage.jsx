@@ -352,54 +352,15 @@ export default function ManagePage() {
               <div><label className="label-field">Discord Webhook URL (opcjonalnie)</label><input type="text" value={catWebhookUrl} onChange={e => setCatWebhookUrl(e.target.value)} className="input-field font-mono" placeholder="https://discord.com/api/webhooks/..." /></div>
               <div>
                 <label className="label-field">Szablon wiadomości webhook</label>
-                <textarea value={catWebhookTemplate} onChange={e => setCatWebhookTemplate(e.target.value)} className="input-field font-mono resize-none h-20" placeholder={'🎬 **Nowy film:** {title}\n👤 Autor: {author}\n📁 Kategoria: {category}\n🔗 {url}'} />
+                <textarea value={catWebhookTemplate} onChange={e => setCatWebhookTemplate(e.target.value)} className="input-field font-mono resize-y h-36 min-h-[6rem]" placeholder={'🎬 **Nowy film:** {title}\n👤 Autor: {author}\n📁 Kategoria: {category}\n🔗 {url}'} />
                 <p className="text-[9px] text-zinc-400 mt-1">Placeholdery: {'{title}'} {'{author}'} {'{category}'} {'{description}'} {'{date}'} {'{id}'} {'{url}'} {'{thumbnail}'}</p>
               </div>
               <button onClick={saveCategory} className="btn-primary text-sm">{editingCat ? 'Zapisz zmiany' : 'Dodaj kategorię'}</button>
             </div>
           </div>
 
-          {/* Rank management */}
-          <div className="card p-8 mb-8">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center">
-                <Shield className="w-5 h-5 text-indigo-500" />
-              </div>
-              <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display">{editingRank ? `Edycja rangi: ${editingRank.name}` : 'Nowa ranga'}</h2>
-              {editingRank && <button onClick={resetRankForm} className="btn-link-zinc ml-auto">Anuluj edycję</button>}
-            </div>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-2"><label className="label-field">Nazwa rangi</label><input type="text" value={rankName} onChange={e => setRankName(e.target.value)} className="input-field" placeholder="np. Redaktor" /></div>
-                <div><label className="label-field">Kolor</label><div className="flex gap-2 items-center"><input type="color" value={rankColor} onChange={e => setRankColor(e.target.value)} className="w-10 h-10 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer p-0.5 bg-transparent" /><span className="text-sm font-mono text-zinc-500">{rankColor}</span></div></div>
-              </div>
-              <div><label className="label-field">Opis (opcjonalnie)</label><input type="text" value={rankDesc} onChange={e => setRankDesc(e.target.value)} className="input-field" placeholder="Opis rangi" /></div>
-              <button onClick={saveRank} className="btn-primary text-sm">{editingRank ? 'Zapisz rangę' : 'Dodaj rangę'}</button>
-            </div>
-
-            {ranks.length > 0 && (
-              <div className="mt-6 pt-6 border-t border-zinc-100 dark:border-zinc-800">
-                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">Istniejące rangi ({ranks.length})</p>
-                <div className="space-y-2">
-                  {ranks.map(r => (
-                    <div key={r.id} className="flex items-center gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
-                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm font-bold text-zinc-900 dark:text-white">{r.name}</span>
-                        {r.description && <span className="text-xs text-zinc-400 ml-2">{r.description}</span>}
-                      </div>
-                      <span className="text-[10px] font-mono text-zinc-400">ID:{r.id}</span>
-                      <button onClick={() => { setEditingRank(r); setRankName(r.name); setRankDesc(r.description || ''); setRankColor(r.color || '#6366f1'); }} className="btn-icon-indigo"><Pencil className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => deleteRank(r)} className="btn-icon-red"><Trash2 className="w-3.5 h-3.5" /></button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* Category list */}
-          <div className="card p-8">
+          <div className="card p-8 mb-8">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 bg-cyan-50 dark:bg-cyan-500/10 rounded-2xl flex items-center justify-center">
                 <FolderOpen className="w-5 h-5 text-cyan-500" />
@@ -447,6 +408,45 @@ export default function ManagePage() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+
+          {/* Rank management */}
+          <div className="card p-8 mb-8">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center">
+                <Shield className="w-5 h-5 text-indigo-500" />
+              </div>
+              <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display">{editingRank ? `Edycja rangi: ${editingRank.name}` : 'Nowa ranga'}</h2>
+              {editingRank && <button onClick={resetRankForm} className="btn-link-zinc ml-auto">Anuluj edycję</button>}
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-2"><label className="label-field">Nazwa rangi</label><input type="text" value={rankName} onChange={e => setRankName(e.target.value)} className="input-field" placeholder="np. Redaktor" /></div>
+                <div><label className="label-field">Kolor</label><div className="flex gap-2 items-center"><input type="color" value={rankColor} onChange={e => setRankColor(e.target.value)} className="w-10 h-10 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer p-0.5 bg-transparent" /><span className="text-sm font-mono text-zinc-500">{rankColor}</span></div></div>
+              </div>
+              <div><label className="label-field">Opis (opcjonalnie)</label><input type="text" value={rankDesc} onChange={e => setRankDesc(e.target.value)} className="input-field" placeholder="Opis rangi" /></div>
+              <button onClick={saveRank} className="btn-primary text-sm">{editingRank ? 'Zapisz rangę' : 'Dodaj rangę'}</button>
+            </div>
+
+            {ranks.length > 0 && (
+              <div className="mt-6 pt-6 border-t border-zinc-100 dark:border-zinc-800">
+                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">Istniejące rangi ({ranks.length})</p>
+                <div className="space-y-2">
+                  {ranks.map(r => (
+                    <div key={r.id} className="flex items-center gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-bold text-zinc-900 dark:text-white">{r.name}</span>
+                        {r.description && <span className="text-xs text-zinc-400 ml-2">{r.description}</span>}
+                      </div>
+                      <span className="text-[10px] font-mono text-zinc-400">ID:{r.id}</span>
+                      <button onClick={() => { setEditingRank(r); setRankName(r.name); setRankDesc(r.description || ''); setRankColor(r.color || '#6366f1'); }} className="btn-icon-indigo"><Pencil className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => deleteRank(r)} className="btn-icon-red"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

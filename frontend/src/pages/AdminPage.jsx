@@ -114,7 +114,7 @@ export default function AdminPage() {
     <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
       <div className="mb-8">
         {!config.showTopBar && <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">Panel Redaktora</h1>}
-        <p className="text-zinc-500 dark:text-zinc-400">Zarządzaj filmami i tagami platformy.</p>
+        <p className="text-zinc-500 dark:text-zinc-400">Zarządzaj filmami i tagami.</p>
       </div>
 
       {/* Summary */}
