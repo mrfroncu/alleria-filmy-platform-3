@@ -396,7 +396,12 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
     const bw = parseInt(q.bitrate) * 1000;
     const w = q.width || Math.round(q.height * 16 / 9);
     const keepHighFps = is60fps && q.height >= 720;
-    const fps = keepHighFps ? sourceFps : 30;
+    // Mirrors the fpsArgs logic above: fps is only ever forced down to 30 when the source is
+    // ≥50fps AND this variant is below 720p (keepHighFps=false); every other variant — including
+    // ALL variants of a normal 24/25/30fps source — keeps the untouched source fps, since fpsArgs
+    // is [] for them (no -r flag passed to ffmpeg at all). Previously this hardcoded 30 for any
+    // non-keepHighFps variant, mislabeling e.g. a 24fps film's segments as FRAME-RATE=30.
+    const fps = (is60fps && !keepHighFps) ? 30 : sourceFps;
     const label = q.isSource ? `source (${q.height}p${keepHighFps ? ` ${sourceFps}fps` : ''})` : `${q.name}${keepHighFps ? ` ${sourceFps}fps` : ''}`;
     master += `#EXT-X-STREAM-INF:BANDWIDTH=${bw},RESOLUTION=${w}x${q.height},FRAME-RATE=${fps},NAME="${label}"\n`;
     master += `${q.name}/index.m3u8\n`;

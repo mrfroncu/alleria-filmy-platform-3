@@ -92,12 +92,18 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
 
       hls.on(window.Hls.Events.MANIFEST_PARSED, (e, data) => {
         setLoading(false);
-        setQualities(data.levels.map((l, i) => ({
-          index: i,
-          height: l.height,
-          bitrate: l.bitrate,
-          label: `${l.height}p`
-        })));
+        setQualities(data.levels.map((l, i) => {
+          // Only call out the frame rate for genuinely high-fps content (≥50, matching the
+          // transcoding pipeline's own 60fps threshold) — standard 24/25/30fps stays plain
+          // "720p" etc., same convention as YouTube ("1080p60" vs just "1080p").
+          const fps = l.frameRate >= 50 ? Math.round(l.frameRate) : null;
+          return {
+            index: i,
+            height: l.height,
+            bitrate: l.bitrate,
+            label: `${l.height}p${fps ? fps : ''}`
+          };
+        }));
       });
 
       hls.on(window.Hls.Events.ERROR, (e, data) => {
