@@ -722,6 +722,10 @@ export default function DebugPage() {
             if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
             return (bytes / 1024).toFixed(0) + ' KB';
           };
+          const fmtBitrate = (bps) => {
+            if (!bps) return '—';
+            return bps >= 1000000 ? `${(bps / 1000000).toFixed(1)} Mbps` : `${Math.round(bps / 1000)} kbps`;
+          };
 
           return (
             <>
@@ -812,11 +816,22 @@ export default function DebugPage() {
                           <span className="text-[10px] text-zinc-400 font-mono">{f.video_id}</span>
                         </div>
 
-                        {/* Qualities */}
-                        <div className="hidden sm:flex gap-1 shrink-0">
-                          {(f.qualities || []).map(q => (
-                            <span key={q} className="text-[10px] px-1.5 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded font-mono">{q}</span>
-                          ))}
+                        {/* Qualities — bitrate/fps shown when available (videos transcoded before
+                            this was added only have plain quality names, no per-quality detail) */}
+                        <div className="hidden sm:flex flex-wrap gap-1 shrink-0 max-w-[320px] justify-end">
+                          {f.qualityDetails?.length > 0 ? (
+                            f.qualityDetails.map(q => (
+                              <span key={q.name}
+                                className="text-[10px] px-1.5 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded font-mono whitespace-nowrap"
+                                title={`${q.width}×${q.height} @ ${q.fps} kl/s`}>
+                                {q.name}{q.fps >= 50 ? Math.round(q.fps) : ''} · {fmtBitrate(q.bitrate)}
+                              </span>
+                            ))
+                          ) : (
+                            (f.qualities || []).map(q => (
+                              <span key={q} className="text-[10px] px-1.5 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded font-mono">{q}</span>
+                            ))
+                          )}
                         </div>
 
                         {/* Size */}

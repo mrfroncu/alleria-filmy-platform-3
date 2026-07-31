@@ -390,8 +390,11 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
     console.log(`[STREAM] ✅ ${qualityLabel} done for ${videoId}${keepHighFps ? ' (60fps)' : ''}`);
   }
 
-  // Generate master playlist with fps info
+  // Generate master playlist with fps info — also collect the same per-quality bandwidth/fps
+  // numbers into qualityDetails so Dev Tools can show them too (this is the only place these are
+  // computed; the ffmpeg -b:v/-maxrate target is never re-measured against the actual output).
   let master = '#EXTM3U\n#EXT-X-VERSION:3\n';
+  const qualityDetails = [];
   for (const q of applicableQualities) {
     const bw = parseInt(q.bitrate) * 1000;
     const w = q.width || Math.round(q.height * 16 / 9);
@@ -405,6 +408,7 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
     const label = q.isSource ? `source (${q.height}p${keepHighFps ? ` ${sourceFps}fps` : ''})` : `${q.name}${keepHighFps ? ` ${sourceFps}fps` : ''}`;
     master += `#EXT-X-STREAM-INF:BANDWIDTH=${bw},RESOLUTION=${w}x${q.height},FRAME-RATE=${fps},NAME="${label}"\n`;
     master += `${q.name}/index.m3u8\n`;
+    qualityDetails.push({ name: q.name, height: q.height, width: w, bitrate: bw, fps });
   }
   fs.writeFileSync(path.join(outputDir, 'master.m3u8'), master);
 
@@ -429,6 +433,7 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
     status: 'ready',
     progress: 100,
     qualities: applicableQualities.map(q => q.name),
+    qualityDetails,
     encrypted: true,
     enhanced_drm: !!enhancedDrm,
     duration: Math.round(duration),

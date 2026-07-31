@@ -2884,6 +2884,7 @@ app.get('/api/stream/files', requireDev, async (req, res) => {
       video_id: sv.video_id,
       status: sv.status,
       qualities: sv.qualities || [],
+      qualityDetails: sv.qualityDetails || [],
       sizeBytes: sv.sizeBytes || 0,
       db_video: dbMap.get(sv.video_id) || null,
     })));
