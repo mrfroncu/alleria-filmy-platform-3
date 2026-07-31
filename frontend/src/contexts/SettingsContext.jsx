@@ -12,6 +12,7 @@ const DEFAULT_CONFIG = {
   limitBio: 1000,
   limitComment: 3000,
   showTopBar: true,
+  customYoutubePlayer: false,
 };
 
 export function SettingsProvider({ children }) {

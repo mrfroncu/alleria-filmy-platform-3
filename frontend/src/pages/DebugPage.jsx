@@ -382,6 +382,19 @@ export default function DebugPage() {
     setSavingSettings(false);
   };
 
+  const toggleYoutubePlayer = async () => {
+    if (!settings) return;
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ youtube_custom_player: !settings.youtube_custom_player });
+      setSettingsState(s => ({ ...s, youtube_custom_player: r.youtube_custom_player }));
+      setStatus({ type: 'success', msg: `Własny odtwarzacz YouTube: ${r.youtube_custom_player ? 'WŁĄCZONY' : 'WYŁĄCZONY'}` });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
   const toggleTopBar = async () => {
     if (!settings) return;
     setSavingSettings(true);
@@ -1496,6 +1509,27 @@ export default function DebugPage() {
                 onChange={toggleTopBar}
                 disabled={!settings || savingSettings}
                 label={settings == null ? 'Ładowanie...' : (settings.show_top_bar ? 'Górny pasek: WŁĄCZONY' : 'Górny pasek: WYŁĄCZONY')}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Custom YouTube player overlay */}
+        <div className="card p-8 h-full flex flex-col">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-red-50 dark:bg-red-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <Play className="w-6 h-6 text-red-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Odtwarzacz YouTube</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                Gdy włączony: filmy z YouTube odtwarzają się w naszej nakładce sterującej (spójny wygląd z resztą platformy) zamiast domyślnych kontrolek YouTube. Sterowanie jakością nie jest dostępne — YouTube nie pozwala na to embedom od kilku lat, więc ten przycisk celowo nie istnieje w nakładce. Gdy wyłączony: zwykły embed YouTube, tak jak dotychczas.
+              </p>
+              <ToggleSwitch
+                checked={!!settings?.youtube_custom_player}
+                onChange={toggleYoutubePlayer}
+                disabled={!settings || savingSettings}
+                label={settings == null ? 'Ładowanie...' : (settings.youtube_custom_player ? 'Własna nakładka: WŁĄCZONA' : 'Własna nakładka: WYŁĄCZONA')}
               />
             </div>
           </div>
