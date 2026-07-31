@@ -323,12 +323,20 @@ Poniższe ustawienia **nie** są w `.env` — są zapisane w bazie (tabela `app_
 
 ## 🌐 Streaming na osobnym serwerze
 
-Aby przenieść transkodowanie i storage na inny serwer (np. przez Tailscale):
+`streaming-standalone/` jest samowystarczalny — ma własny `server.js`, `package.json`, `versions.js`, `Dockerfile` i `docker-compose.yml`, nic nie trzeba do niego kopiować z `streaming/`.
 
-1. Skopiuj folder `streaming-standalone/` na drugi serwer
-2. Skopiuj `streaming/server.js` i `streaming/package.json` do tego folderu
-3. Skonfiguruj `.env` na serwerze streaming
-4. Na głównym serwerze ustaw: `STREAM_URL=http://<tailscale-ip>:4000`
+**Pierwsze wdrożenie** (np. przez Tailscale):
+
+1. Sklonuj całe repo na drugi serwer (albo skopiuj sam folder `streaming-standalone/`)
+2. `cd streaming-standalone && cp .env.example .env` i uzupełnij `.env` (`STREAM_SECRET` musi być identyczny jak w głównej appce)
+3. `docker compose up -d --build`
+4. Na głównym serwerze ustaw `STREAM_URL=http://<tailscale-ip>:4000` i zrestartuj główną appkę
+
+**Aktualizacja** (gdy repo dostanie nowe commity dotyczące `streaming/`):
+
+1. Na serwerze ze streamerem, w katalogu z wcześniej sklonowanym repo: `git pull` (nie `git clone` ponownie — jeśli katalog już istnieje i nie jest pusty, `git pull` jest właściwą komendą)
+2. `cd streaming-standalone && docker compose up -d --build`
+3. Sprawdź wersję: sidebar w appce („Player: vX.X.X") albo bezpośrednio `curl http://localhost:4000/version` na serwerze streamera
 
 Szczegóły: [streaming-standalone/README.md](streaming-standalone/README.md)
 
