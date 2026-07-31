@@ -205,6 +205,7 @@ app.get('/api/config', requireAuth, (req, res) => {
     limitBio: s.limit_bio,
     limitComment: s.limit_comment,
     showTopBar: s.show_top_bar,
+    customYoutubePlayer: s.youtube_custom_player,
   });
 });
 
@@ -2285,6 +2286,7 @@ function settingsPayload() {
     iframe_embed_enabled: getSetting('iframe_embed_enabled', '0') === '1',
     iframe_allowed_origins: getSetting('iframe_allowed_origins', '').split(',').map(o => o.trim()).filter(Boolean),
     show_top_bar: getSetting('show_top_bar', '1') === '1',
+    youtube_custom_player: getSetting('youtube_custom_player', '0') === '1',
 
     // Login config — source flags are .env-only (boot-time, no panel override; see tsConfigSource/
     // discordRolesConfigSource). The fields below always report the *effective* value, whichever
@@ -2387,6 +2389,12 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
     setSetting('show_top_bar', req.body.show_top_bar ? '1' : '0');
     audit(req.session.user.id, 'edit', 'settings', null,
       `show_top_bar → ${req.body.show_top_bar ? 'ON' : 'OFF'}`);
+  }
+  // Custom-chrome YouTube player overlay vs. plain YouTube embed
+  if (req.body.youtube_custom_player !== undefined) {
+    setSetting('youtube_custom_player', req.body.youtube_custom_player ? '1' : '0');
+    audit(req.session.user.id, 'edit', 'settings', null,
+      `youtube_custom_player → ${req.body.youtube_custom_player ? 'ON' : 'OFF'}`);
   }
   // TeamSpeak 3/6 connection config — always writable here regardless of TS_CONFIG_SOURCE, so
   // values can be pre-staged in the panel before flipping the .env flag over to 'panel'.
