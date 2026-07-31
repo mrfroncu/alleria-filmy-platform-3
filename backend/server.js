@@ -240,6 +240,19 @@ app.delete('/api/watch-party/:code', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// Compares two "x.y.z" version strings numerically, segment by segment (returns <0, 0, >0).
+// Plain string/">=" comparison is wrong here — e.g. "1.9.4" >= "1.10.1" is TRUE as a string
+// compare (lexicographic: '9' > '1'), even though 1.9.4 is actually the OLDER version.
+function compareVersions(a, b) {
+  const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
 // Proxy streaming version with compatibility check
 app.get('/api/version/streaming', requireAuth, async (req, res) => {
   try {
@@ -249,7 +262,7 @@ app.get('/api/version/streaming', requireAuth, async (req, res) => {
     clearTimeout(timeout);
     const data = await r.json();
     const sv = data.version || '0.0.0';
-    const isCompat = sv >= STREAM_MIN_VERSION;
+    const isCompat = compareVersions(sv, STREAM_MIN_VERSION) >= 0;
     res.json({ ...data, compatible: isCompat, minVersion: STREAM_MIN_VERSION, status: isCompat ? 'compatible' : 'deprecated' });
   } catch (e) { res.json({ version: 'unavailable', component: 'streaming', status: 'offline' }); }
 });
