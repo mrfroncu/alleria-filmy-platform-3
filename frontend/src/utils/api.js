@@ -142,6 +142,7 @@ export const api = {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
   }),
   streamToken: (videoId) => request(`/stream/token/${videoId}`),
+  streamCastToken: (videoId) => request(`/stream/cast-token/${videoId}`),
   deleteStream: (videoId) => request(`/stream/video/${videoId}`, { method: 'DELETE' }),
 
   // Favorites

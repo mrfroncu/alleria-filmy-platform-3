@@ -296,6 +296,41 @@ function requireDev(req, res, next) {
   next();
 }
 
+// === Cast (Chromecast/AirPlay) token ===
+// Chromecast/AirPlay receivers fetch the manifest, keys and segments themselves,
+// device-side — they never see the viewer's session cookie. To let them through
+// requireAuth on /stream/media and /stream/keys without weakening those routes for
+// everyone, we mint a short-lived, video+user-scoped signed token (HMAC over
+// SESSION_SECRET, distinct "cast:" namespace) that a request can present instead of
+// a cookie. It expires quickly and only ever authorizes the one video it was minted for.
+const CAST_TOKEN_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours — long enough for a movie + credits
+
+function signCastToken(videoId, uid, expires) {
+  return crypto.createHmac('sha256', SESSION_SECRET)
+    .update(`cast:${videoId}:${uid}:${expires}`).digest('hex').slice(0, 32);
+}
+
+function verifyCastToken(videoId, uid, ct, cte) {
+  if (!videoId || !uid || !ct || !cte) return false;
+  const expires = parseInt(cte, 10);
+  if (!Number.isFinite(expires) || Date.now() > expires) return false;
+  const expected = signCastToken(videoId, uid, expires);
+  const a = Buffer.from(ct);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+// Same as requireAuth, but also accepts a valid cast token (?ct=&cte=&uid=) in place
+// of a session cookie — used only on the device-facing /stream/media and /stream/keys
+// routes so Chromecast/AirPlay receivers can authenticate without one.
+function requireAuthOrCastToken(req, res, next) {
+  if (req.session.user) return next();
+  const videoId = (req.params[0] || '').split('/')[0];
+  if (verifyCastToken(videoId, req.query.uid, req.query.ct, req.query.cte)) return next();
+  return res.status(401).json({ error: 'Unauthorized' });
+}
+
 function getUserRankIds(userId) {
   return db.prepare('SELECT rank_id FROM user_rank_assignments WHERE user_id = ?').all(userId).map(r => r.rank_id);
 }
@@ -2782,8 +2817,17 @@ app.get('/api/stream/token/:videoId', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Mint a short-lived cast token for Chromecast/AirPlay — lets the receiver device
+// fetch /stream/media and /stream/keys directly without the viewer's session cookie.
+app.get('/api/stream/cast-token/:videoId', requireAuth, (req, res) => {
+  const uid = String(req.session.user.id);
+  const expires = Date.now() + CAST_TOKEN_TTL_MS;
+  const castToken = signCastToken(req.params.videoId, uid, expires);
+  res.json({ castToken, uid, expires });
+});
+
 // Proxy stream media & keys (so streaming container is never exposed publicly)
-app.get('/stream/keys/*', requireAuth, async (req, res) => {
+app.get('/stream/keys/*', requireAuthOrCastToken, async (req, res) => {
   try {
     const url = `${STREAM_URL}/keys/${req.params[0]}?t=${req.query.t || ''}&uid=${req.query.uid || ''}`;
     const r = await fetch(url);
@@ -2794,7 +2838,7 @@ app.get('/stream/keys/*', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).send('Key proxy error'); }
 });
 
-app.get('/stream/media/*', requireAuth, async (req, res) => {
+app.get('/stream/media/*', requireAuthOrCastToken, async (req, res) => {
   try {
     const url = `${STREAM_URL}/media/${req.params[0]}`;
     const r = await fetch(url);
@@ -2815,20 +2859,57 @@ app.get('/stream/media/*', requireAuth, async (req, res) => {
       const host = req.get('host');
       const origin = `${proto}://${host}`;
 
+      // Cast (Chromecast/AirPlay) support: the receiver device fetches every playlist,
+      // key and segment itself, so unlike hls.js's xhrSetup interception (which only
+      // patches key requests in-browser) any auth the request carries must be baked
+      // directly into the manifest text. When the incoming request carries the key
+      // token (t/uid, normally injected client-side) and/or a cast token (ct/cte), we
+      // resolve the EXT-X-KEY placeholders here and propagate the same auth onto every
+      // relative playlist/segment reference so the device can fetch them unauthenticated
+      // otherwise. Regular in-browser playback never sends these params, so this is a
+      // pure no-op for the existing playback path.
+      const carry = new URLSearchParams();
+      for (const p of ['t', 'uid', 'ct', 'cte']) if (req.query[p]) carry.set(p, req.query[p]);
+      const carryQs = carry.toString();
+
       // Replace any key URI — match the EXT-X-KEY line and rewrite the URI to be absolute
       body = body.replace(
         /URI="([^"]*keys\/[^"]*enc\.key\?[^"]*)"/g,
         (match, uri) => {
           // Already absolute with http/https — just pass through
-          if (uri.startsWith('http://') || uri.startsWith('https://')) return match;
-          // Relative or root-relative — make absolute
-          const cleanPath = uri.startsWith('/') ? uri : `/stream/keys/${uri.replace(/^.*?keys\//, '')}`;
-          return `URI="${origin}${cleanPath}"`;
+          let abs = uri;
+          if (!(uri.startsWith('http://') || uri.startsWith('https://'))) {
+            // Relative or root-relative — make absolute
+            const cleanPath = uri.startsWith('/') ? uri : `/stream/keys/${uri.replace(/^.*?keys\//, '')}`;
+            abs = `${origin}${cleanPath}`;
+          }
+          // Resolve the TOKEN_PLACEHOLDER/UID_PLACEHOLDER that ffmpeg baked in, using the
+          // real key token carried on this request (device-side casting only — hls.js's
+          // xhrSetup already handles this for normal in-browser key fetches).
+          if (req.query.t) abs = abs.replace('TOKEN_PLACEHOLDER', req.query.t);
+          if (req.query.uid) abs = abs.replace('UID_PLACEHOLDER', String(req.query.uid));
+          // Append the cast token so the device's key request clears requireAuthOrCastToken.
+          if (carryQs) abs += (abs.includes('?') ? '&' : '?') + carryQs;
+          return `URI="${abs}"`;
         }
       );
 
       // Also handle edge case: URI that has STREAM_HOST placeholder leftover
       body = body.replace(/STREAM_HOST/g, origin);
+
+      // Propagate auth to relative sub-playlist (quality variants) and segment references
+      // so a Chromecast/AirPlay receiver's own fetches for them stay authenticated too.
+      if (carryQs) {
+        const dir = req.params[0].includes('/') ? req.params[0].slice(0, req.params[0].lastIndexOf('/') + 1) : '';
+        body = body.split('\n').map(line => {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) return line;
+          if (!/\.(m3u8|ts)$/i.test(trimmed)) return line;
+          if (/^https?:\/\//i.test(trimmed)) return `${trimmed}${trimmed.includes('?') ? '&' : '?'}${carryQs}`;
+          const cleanRel = trimmed.startsWith('/') ? trimmed.slice(1) : `${dir}${trimmed}`;
+          return `${origin}/stream/media/${cleanRel}?${carryQs}`;
+        }).join('\n');
+      }
 
       res.set({ 'Content-Type': 'application/vnd.apple.mpegurl', 'Cache-Control': 'no-cache' });
       res.send(body);
