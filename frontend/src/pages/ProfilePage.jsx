@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle } from 'lucide-react';
+import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink } from 'lucide-react';
 import { api } from '../utils/api';
-import { formatDate } from '../utils/helpers';
+import { formatDate, parseTsError } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
 import { useSettings } from '../contexts/SettingsContext';
 import TsChallengeModal from '../components/TsChallengeModal';
-import Ts3MultiCandidateFlow from '../components/Ts3MultiCandidateFlow';
 
 export default function ProfilePage() {
   const { config: siteConfig } = useSettings();
@@ -31,7 +30,9 @@ export default function ProfilePage() {
   const [pendingMerge, setPendingMerge] = useState(null); // { mergeId, secondaryLabel, stats, identities }
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeError, setMergeError] = useState(null);
-  const [ts3LinkConsent, setTs3LinkConsent] = useState(null); // { consentToken, count }
+  const [ts3ConnectError, setTs3ConnectError] = useState(null);
+  const [ts6ConnectError, setTs6ConnectError] = useState(null);
+  const [tsInfoOpen, setTsInfoOpen] = useState(false);
 
   useEffect(() => { api.getConfig().then(c => setConfig(prev => ({ ...prev, ...c }))).catch(() => {}); }, []);
 
@@ -111,13 +112,11 @@ export default function ProfilePage() {
 
   const handleLinkTs = async (method) => {
     setLinkingTs(method);
-    setLinkMsg(null);
+    if (method === 'teamspeak3') setTs3ConnectError(null); else setTs6ConnectError(null);
     try {
       const loginFn = method === 'teamspeak3' ? api.loginTeamspeak3 : api.loginTeamspeak;
       const res = await loginFn({ linkMode: true });
-      if (method === 'teamspeak3' && res?.multipleCandidates) {
-        setTs3LinkConsent({ consentToken: res.consentToken, count: res.count });
-      } else if (res?.challenge) {
+      if (res?.challenge) {
         setTsLinkChallenge({
           challengeId: res.challengeId, method,
           nickname: res.nickname, version: method === 'teamspeak3' ? 'TeamSpeak 3' : 'TeamSpeak 6',
@@ -127,21 +126,10 @@ export default function ProfilePage() {
         setTsLinkError(null);
       }
     } catch (err) {
-      setLinkMsg({ type: 'error', text: err.message || 'Nie udało się połączyć konta.' });
+      const friendly = parseTsError(err.message, method === 'teamspeak3' ? 'TeamSpeak 3' : 'TeamSpeak 6');
+      if (method === 'teamspeak3') setTs3ConnectError(friendly); else setTs6ConnectError(friendly);
     }
     setLinkingTs(null);
-  };
-
-  const cancelTs3LinkConsent = () => setTs3LinkConsent(null);
-
-  const handleTs3LinkMultiResolved = (res) => {
-    setTs3LinkConsent(null);
-    if (res?.mergeNeeded) {
-      setPendingMerge({ mergeId: res.mergeId, secondaryLabel: res.secondaryLabel, stats: res.stats });
-    } else {
-      setLinkMsg({ type: 'success', text: 'Połączono konto TeamSpeak.' });
-      load();
-    }
   };
 
   const cancelTsLinkChallenge = () => {
@@ -162,7 +150,8 @@ export default function ProfilePage() {
       if (res?.mergeNeeded) {
         setPendingMerge({ mergeId: res.mergeId, secondaryLabel: res.secondaryLabel, stats: res.stats });
       } else {
-        setLinkMsg({ type: 'success', text: 'Połączono konto TeamSpeak.' });
+        const label = res?.linked === 'teamspeak3' ? 'TeamSpeak 3' : 'TeamSpeak 6';
+        setLinkMsg({ type: 'success', text: `Połączono konto ${label}.` });
         load();
       }
     } catch (err) {
@@ -376,32 +365,98 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* TeamSpeak */}
-          <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0">
-                <Server className="w-4 h-4 text-zinc-500" />
-              </div>
-              <span className="text-sm font-medium text-zinc-900 dark:text-white">
-                TeamSpeak{profile.has_teamspeak ? ` (${profile.auth_method === 'teamspeak3' ? 'TS3' : 'TS6'})` : ''}
-              </span>
-            </div>
-            {profile.has_teamspeak ? (
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Połączone
-              </span>
-            ) : (
+          {/* TeamSpeak 3 — a different server from TS6, with its own independent identity;
+              linking one has no bearing on the other */}
+          <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800">
+            <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <button onClick={() => handleLinkTs('teamspeak3')} disabled={linkingTs !== null} className="btn-link-violet inline-flex items-center gap-1.5 text-xs font-bold disabled:opacity-50">
-                  <Link2 className="w-3.5 h-3.5" /> {linkingTs === 'teamspeak3' ? 'Łączenie…' : 'TS3'}
-                </button>
-                <button onClick={() => handleLinkTs('teamspeak')} disabled={linkingTs !== null} className="btn-link-violet inline-flex items-center gap-1.5 text-xs font-bold disabled:opacity-50">
-                  <Link2 className="w-3.5 h-3.5" /> {linkingTs === 'teamspeak' ? 'Łączenie…' : 'TS6'}
-                </button>
+                <div className="w-9 h-9 rounded-lg bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                  <Server className="w-4 h-4 text-zinc-500" />
+                </div>
+                <span className="text-sm font-medium text-zinc-900 dark:text-white">TeamSpeak 3</span>
+              </div>
+              {profile.has_teamspeak3 ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Połączone
+                </span>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <a
+                    href="ts3server://alleria.pl"
+                    title="Otwórz alleria.pl w kliencie TS3"
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                  <button onClick={() => handleLinkTs('teamspeak3')} disabled={linkingTs !== null} className="btn-link-violet inline-flex items-center gap-1.5 text-xs font-bold disabled:opacity-50">
+                    <Link2 className="w-3.5 h-3.5" /> {linkingTs === 'teamspeak3' ? 'Łączenie…' : 'Połącz'}
+                  </button>
+                </div>
+              )}
+            </div>
+            {ts3ConnectError && (
+              <div className="mt-2.5 p-2.5 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 text-xs flex items-start gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>{ts3ConnectError}</span>
+              </div>
+            )}
+          </div>
+
+          {/* TeamSpeak 6 */}
+          <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                  <Server className="w-4 h-4 text-zinc-500" />
+                </div>
+                <span className="text-sm font-medium text-zinc-900 dark:text-white">TeamSpeak 6</span>
+              </div>
+              {profile.has_teamspeak6 ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Połączone
+                </span>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <a
+                    href="teamspeak://ts6.alleria.pl"
+                    title="Otwórz ts6.alleria.pl w kliencie TS6"
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                  <button onClick={() => handleLinkTs('teamspeak')} disabled={linkingTs !== null} className="btn-link-violet inline-flex items-center gap-1.5 text-xs font-bold disabled:opacity-50">
+                    <Link2 className="w-3.5 h-3.5" /> {linkingTs === 'teamspeak' ? 'Łączenie…' : 'Połącz'}
+                  </button>
+                </div>
+              )}
+            </div>
+            {ts6ConnectError && (
+              <div className="mt-2.5 p-2.5 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 text-xs flex items-start gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>{ts6ConnectError}</span>
               </div>
             )}
           </div>
         </div>
+
+        {/* TS requirements — collapsible, same guidance as the login page */}
+        <button
+          onClick={() => setTsInfoOpen(v => !v)}
+          className="w-full flex items-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors mt-3"
+        >
+          <Info className="w-3 h-3 shrink-0" />
+          <span>Jak działa łączenie przez TeamSpeak?</span>
+          <ChevronDown className={`w-3 h-3 ml-auto shrink-0 transition-transform duration-200 ${tsInfoOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {tsInfoOpen && (
+          <div className="text-[11px] text-zinc-500 dark:text-zinc-400 space-y-1.5 pl-3 border-l-2 border-violet-500/30 pt-2">
+            <p>• Musisz być <span className="font-semibold text-zinc-700 dark:text-zinc-300">aktywnie połączony</span> z serwerem TS w momencie łączenia.</p>
+            <p>• Weryfikacja działa przez <span className="font-semibold text-zinc-700 dark:text-zinc-300">dopasowanie IP</span> — nie używaj VPN.</p>
+            <p>• Wymagana jest <span className="font-semibold text-zinc-700 dark:text-zinc-300">odpowiednia grupa serwerowa</span> na TS.</p>
+            <p>• Bot wyśle Ci na TeamSpeaku <span className="font-semibold text-zinc-700 dark:text-zinc-300">6-znakowy kod</span> — wpisz go, aby dokończyć łączenie.</p>
+            <p>• TS3 i TS6 to osobne serwery z osobnymi kontami — możesz połączyć oba niezależnie.</p>
+          </div>
+        )}
       </div>
 
       {/* Stats Grid */}
@@ -459,14 +514,6 @@ export default function ProfilePage() {
         error={tsLinkError}
         multipleCandidates={tsLinkChallenge?.multipleCandidates}
         count={tsLinkChallenge?.count}
-      />
-
-      {/* TS3 multi-candidate account-linking flow */}
-      <Ts3MultiCandidateFlow
-        consentToken={ts3LinkConsent?.consentToken}
-        count={ts3LinkConsent?.count}
-        onCancel={cancelTs3LinkConsent}
-        onResolved={handleTs3LinkMultiResolved}
       />
 
       {/* Merge confirmation — shown when the identity being linked already belongs to a

@@ -1,31 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, AlertCircle, Info, X, ChevronDown, ExternalLink, Film, Users, ShieldCheck } from 'lucide-react';
 import { api } from '../utils/api';
-import { getCurrentYear } from '../utils/helpers';
+import { getCurrentYear, parseTsError } from '../utils/helpers';
 import { REGULAMIN_LAST_MODIFIED, RegulaminContent } from '../data/regulamin';
 import TsChallengeModal from '../components/TsChallengeModal';
-import Ts3MultiCandidateFlow from '../components/Ts3MultiCandidateFlow';
-
-function parseTsError(msg, version) {
-  if (!msg) return `Logowanie przez ${version} nie powiodło się.`;
-  const m = msg.toLowerCase();
-  if (m.includes('timeout') || m.includes('econnrefused') || m.includes('enotfound') || m.includes('connect')) {
-    return `Wystąpił problem po naszej stronie. Użyj innej metody lub spróbuj później.`;
-  }
-  if (m.includes('ip') || m.includes('nie znaleziono klienta') || m.includes('znaleziono')) {
-    return `Nie znaleziono Twojego IP na serwerze ${version}. Upewnij się, że jesteś aktualnie połączony.`;
-  }
-  if (m.includes('grupy') || m.includes('group') || m.includes('wymaganej')) {
-    return `Nie posiadasz wymaganej grupy serwerowej na ${version}.`;
-  }
-  if (m.includes('invalid_password') || m.includes('520') || m.includes('konfiguracji serwera')) {
-    return `Błąd konfiguracji — nieprawidłowe dane administracyjne ${version}. Skontaktuj się z administratorem.`;
-  }
-  if (m.includes('closed unexpectedly') || m.includes('socket')) {
-    return `Połączenie z serwerem ${version} zostało przerwane. Spróbuj ponownie.`;
-  }
-  return msg;
-}
 
 export default function LoginPage() {
   const [tsLoading, setTsLoading]   = useState(false);
@@ -42,9 +20,6 @@ export default function LoginPage() {
   const [challengeCode, setChallengeCode] = useState('');
   const [challengeError, setChallengeError] = useState(null);
   const [challengeLoading, setChallengeLoading] = useState(false);
-
-  // TS3 multi-candidate (several people sharing one IP) — reply-to-bot flow
-  const [ts3Consent, setTs3Consent] = useState(null); // { consentToken, count }
 
   const returnTo = (() => {
     const params = new URLSearchParams(window.location.search);
@@ -124,20 +99,11 @@ export default function LoginPage() {
     setTs3Loading(true); setTs3Error(null);
     try {
       const res = await api.loginTeamspeak3();
-      if (res?.multipleCandidates) setTs3Consent({ consentToken: res.consentToken, count: res.count });
-      else if (res?.challenge) startChallenge(res, 'teamspeak3', 'TeamSpeak 3');
+      if (res?.challenge) startChallenge(res, 'teamspeak3', 'TeamSpeak 3');
       else window.location.href = '/';
     }
     catch (err) { setTs3Error(parseTsError(err.message, 'TeamSpeak 3')); }
     finally { setTs3Loading(false); }
-  };
-
-  const cancelTs3Consent = () => setTs3Consent(null);
-
-  const handleTs3MultiResolved = () => {
-    setTs3Consent(null);
-    const dest = (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) ? returnTo : '/';
-    window.location.href = dest;
   };
 
   const handleChallengeSubmit = async () => {
@@ -467,16 +433,6 @@ export default function LoginPage() {
         error={challengeError}
         multipleCandidates={challenge?.multipleCandidates}
         count={challenge?.count}
-      />
-
-      {/* ══════════════════════════════════════
-          TS3 MULTI-CANDIDATE FLOW (reply-to-bot)
-          ══════════════════════════════════════ */}
-      <Ts3MultiCandidateFlow
-        consentToken={ts3Consent?.consentToken}
-        count={ts3Consent?.count}
-        onCancel={cancelTs3Consent}
-        onResolved={handleTs3MultiResolved}
       />
     </div>
   );

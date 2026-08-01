@@ -1,6 +1,5 @@
-// TS3 ServerQuery wire protocol helpers — shared by the per-request query client
-// (server.js's connectTS3) and the persistent bot connection (ts3Bot.js), so the
-// escaping/parsing logic exists in exactly one place.
+// TS3 ServerQuery wire protocol helpers used by server.js's connectTS3 (the per-request
+// query client used for both login and challenge-code delivery).
 
 function ts3Unescape(str) {
   return String(str)

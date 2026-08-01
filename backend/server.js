@@ -17,7 +17,6 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { initDB, DB_PATH } = require('./database');
 const { createParty, getParty, deleteParty, listParties, createWsToken, setupWatchPartyWS, reassignUserIdInParties } = require('./watchParty');
-const { initTs3Bot, getTs3Bot } = require('./ts3Bot');
 const rateLimit = require('express-rate-limit');
 
 // Test mode (set by the API test suite in tests/): disables rate limits and the
@@ -655,7 +654,11 @@ function getMergeStats(userId) {
 }
 
 function identityList(u) {
-  return [u.discord_id ? 'discord' : null, u.ts_uid ? 'teamspeak' : null].filter(Boolean);
+  return [
+    u.discord_id ? 'discord' : null,
+    u.ts3_uid ? 'teamspeak3' : null,
+    u.ts6_uid ? 'teamspeak' : null,
+  ].filter(Boolean);
 }
 
 // Destroys every live session belonging to userId (used after a merge deletes that user's
@@ -725,6 +728,13 @@ function mergeUsers(primaryId, secondaryId, { performedBy } = {}) {
       }
     }
 
+    // Secondary must be gone BEFORE we copy its identity columns onto primary below — the
+    // identity columns being copied (discord_id/ts3_uid/ts6_uid) are exactly what's UNIQUE
+    // and still held by secondary's still-existing row would collide with, would violate
+    // the UNIQUE index if primary were updated first (that ordering was the original bug:
+    // "UNIQUE constraint failed: users.ts_uid").
+    db.prepare('DELETE FROM users WHERE id = ?').run(secondaryId);
+
     // Identity columns — copy onto primary only what it doesn't already have. If primary
     // already has an identity of this type, secondary's is intentionally dropped (the user
     // saw this coming via `identities` in the merge confirmation payload).
@@ -737,8 +747,11 @@ function mergeUsers(primaryId, secondaryId, { performedBy } = {}) {
         discord_guild_avatar_hash: secondary.discord_guild_avatar_hash,
       });
     }
-    if (!primary.ts_uid && secondary.ts_uid) {
-      Object.assign(patch, { ts_uid: secondary.ts_uid, ts_ip: secondary.ts_ip });
+    if (!primary.ts3_uid && secondary.ts3_uid) {
+      Object.assign(patch, { ts3_uid: secondary.ts3_uid, ts3_ip: secondary.ts3_ip });
+    }
+    if (!primary.ts6_uid && secondary.ts6_uid) {
+      Object.assign(patch, { ts6_uid: secondary.ts6_uid, ts6_ip: secondary.ts6_ip });
     }
     if (Object.keys(patch).length) {
       const cols = Object.keys(patch);
@@ -746,7 +759,6 @@ function mergeUsers(primaryId, secondaryId, { performedBy } = {}) {
         .run(...cols.map(c => patch[c]), primaryId);
     }
 
-    db.prepare('DELETE FROM users WHERE id = ?').run(secondaryId);
     audit(performedBy ?? primaryId, 'merge_accounts', 'user', primaryId,
       `merged #${secondaryId} (${secondary.username}) into #${primaryId} (${primary.username})`);
   });
@@ -807,21 +819,23 @@ function consumeTsChallenge(challengeId, code, clientIp) {
   return { challenge: { ...rest, ...matched } };
 }
 
-// Build/refresh a TS user record and return the row
+// Build/refresh a TS user record and return the row. TS3 and TS6 are different servers
+// with independent identities, so `method` selects which uid/ip column pair to use.
+// Matches by uid ONLY — no IP fallback. By the time this runs, the caller already proved
+// which specific TS identity is logging in via a per-candidate challenge code, so IP can't
+// tell us anything uid doesn't (an IP-based fallback here is exactly the old bug where a
+// shared IP let one TS identity silently overwrite another's account).
 function upsertTsUser({ method, tsNickname, tsUid, cleanIp, role }) {
-  let existing = db.prepare('SELECT * FROM users WHERE ts_uid = ?').get(tsUid);
-  if (!existing) {
-    existing = method === 'teamspeak3'
-      ? db.prepare("SELECT * FROM users WHERE ts_ip = ? AND auth_method IN ('teamspeak3','teamspeak')").get(cleanIp)
-      : db.prepare("SELECT * FROM users WHERE ts_ip = ? AND auth_method = 'teamspeak'").get(cleanIp);
-  }
+  const uidCol = method === 'teamspeak3' ? 'ts3_uid' : 'ts6_uid';
+  const ipCol = method === 'teamspeak3' ? 'ts3_ip' : 'ts6_ip';
+  const existing = db.prepare(`SELECT * FROM users WHERE ${uidCol} = ?`).get(tsUid);
   let userId;
   if (existing) {
-    db.prepare(`UPDATE users SET username=?, display_name=?, role=?, ts_ip=?, ts_uid=?, last_login=datetime('now') WHERE id=?`)
+    db.prepare(`UPDATE users SET username=?, display_name=?, role=?, ${ipCol}=?, ${uidCol}=?, last_login=datetime('now') WHERE id=?`)
       .run(tsNickname, tsNickname, role, cleanIp, tsUid, existing.id);
     userId = existing.id;
   } else {
-    const result = db.prepare('INSERT INTO users (username, display_name, role, auth_method, ts_ip, ts_uid) VALUES (?, ?, ?, ?, ?, ?)')
+    const result = db.prepare(`INSERT INTO users (username, display_name, role, auth_method, ${ipCol}, ${uidCol}) VALUES (?, ?, ?, ?, ?, ?)`)
       .run(tsNickname, tsNickname, role, method, cleanIp, tsUid);
     userId = result.lastInsertRowid;
   }
@@ -877,29 +891,32 @@ async function sendTs6Code(tsBaseUrl, tsServerId, headers, clid, code) {
   return false;
 }
 
-// Verify handler shared by TS3/TS6 — checks the code and creates the session
-// Completes a TS link-mode challenge — attaches ts_uid to the ALREADY-logged-in primary
-// account instead of upserting/logging in as a separate row. If that ts_uid already
-// belongs to a different account, hands back a pending-merge token instead of linking.
+// Completes a TS link-mode challenge — attaches the matched TS identity to the
+// ALREADY-logged-in primary account instead of upserting/logging in as a separate row.
+// If that identity already belongs to a different account, hands back a pending-merge
+// token instead of linking. `ch.method` selects TS3 vs TS6's independent uid/ip columns.
 function handleTsLinkCompletion(req, res, ch) {
   const primaryId = ch.linkPrimaryUserId;
-  const existing = db.prepare('SELECT * FROM users WHERE ts_uid = ?').get(ch.tsUid);
+  const uidCol = ch.method === 'teamspeak3' ? 'ts3_uid' : 'ts6_uid';
+  const ipCol = ch.method === 'teamspeak3' ? 'ts3_ip' : 'ts6_ip';
+  const tsLabel = ch.method === 'teamspeak3' ? 'TeamSpeak 3' : 'TeamSpeak 6';
+  const existing = db.prepare(`SELECT * FROM users WHERE ${uidCol} = ?`).get(ch.tsUid);
   if (existing && existing.id !== primaryId) {
     const stats = getMergeStats(existing.id);
     const mergeId = createPendingMerge({
-      primaryId, secondaryId: existing.id, secondaryLabel: `TeamSpeak: ${ch.tsNickname}`,
+      primaryId, secondaryId: existing.id, secondaryLabel: `${tsLabel}: ${ch.tsNickname}`,
       stats, identities: identityList(existing),
     });
-    return res.json({ mergeNeeded: true, mergeId, secondaryLabel: `TeamSpeak: ${ch.tsNickname}`, stats });
+    return res.json({ mergeNeeded: true, mergeId, secondaryLabel: `${tsLabel}: ${ch.tsNickname}`, stats });
   }
-  const primary = db.prepare('SELECT ts_uid FROM users WHERE id = ?').get(primaryId);
+  const primary = db.prepare(`SELECT ${uidCol} FROM users WHERE id = ?`).get(primaryId);
   if (!primary) return res.status(404).json({ error: 'Konto nie istnieje.' });
-  if (primary.ts_uid && primary.ts_uid !== ch.tsUid) {
-    return res.status(400).json({ error: 'To konto ma już połączony TeamSpeak.' });
+  if (primary[uidCol] && primary[uidCol] !== ch.tsUid) {
+    return res.status(400).json({ error: `To konto ma już połączony ${tsLabel}.` });
   }
-  db.prepare('UPDATE users SET ts_uid = ?, ts_ip = ? WHERE id = ?').run(ch.tsUid, ch.cleanIp, primaryId);
-  audit(primaryId, 'link_account', 'user', primaryId, `linked TeamSpeak (${ch.tsNickname})`);
-  req.session.save(() => res.json({ success: true, linked: 'teamspeak' }));
+  db.prepare(`UPDATE users SET ${uidCol} = ?, ${ipCol} = ? WHERE id = ?`).run(ch.tsUid, ch.cleanIp, primaryId);
+  audit(primaryId, 'link_account', 'user', primaryId, `linked ${tsLabel} (${ch.tsNickname})`);
+  req.session.save(() => res.json({ success: true, linked: ch.method }));
 }
 
 function handleTsVerify(method) {
@@ -911,7 +928,11 @@ function handleTsVerify(method) {
     if (result.error) {
       const body = { error: result.error };
       if (result.remaining !== undefined) body.remaining = result.remaining;
-      return res.status(401).json(body);
+      // 400, not 401 — this endpoint is also called from ProfilePage while linking, by an
+      // already-authenticated user. A 401 there would trip the frontend's global
+      // "unauthenticated → redirect to /login" handling for what's really just a wrong or
+      // expired code, silently bouncing them off the profile page with no error shown.
+      return res.status(400).json(body);
     }
     const ch = result.challenge;
     if (ch.method !== method) return res.status(400).json({ error: 'Niezgodny typ wyzwania.' });
@@ -1016,7 +1037,9 @@ app.post('/api/auth/teamspeak', authLimiter, async (req, res) => {
 
     if (ipMatches.length === 0) {
       logLogin(null, 'unknown', 'teamspeak', clientIp, 0, `No TS client with IP ${cleanIp}`);
-      return res.status(401).json({ error: 'Nie znaleziono klienta TeamSpeak z Twoim IP. Upewnij się, że jesteś połączony z serwerem TS.' });
+      // 404, not 401 — see the comment on handleTsVerify's error response for why: this
+      // endpoint doubles as the account-linking flow for an already-authenticated user.
+      return res.status(404).json({ error: 'Nie znaleziono klienta TeamSpeak z Twoim IP. Upewnij się, że jesteś połączony z serwerem TS.' });
     }
 
     console.log(`[TS6] Found ${ipMatches.length} client(s) on IP ${cleanIp}`);
@@ -1052,7 +1075,7 @@ app.post('/api/auth/teamspeak', authLimiter, async (req, res) => {
 
     if (authorized.length === 0) {
       logLogin(null, ipMatches[0]?.client_nickname || 'unknown', 'teamspeak', clientIp, 0, 'Missing group (no candidate authorized)');
-      return res.status(401).json({ error: 'Nie posiadasz wymaganej grupy na serwerze TeamSpeak.' });
+      return res.status(403).json({ error: 'Nie posiadasz wymaganej grupy na serwerze TeamSpeak.' });
     }
 
     // Step 4: Send each authorized candidate their own distinct code — whichever code the
@@ -1090,62 +1113,6 @@ app.post('/api/auth/teamspeak', authLimiter, async (req, res) => {
     res.status(500).json({ error: 'TeamSpeak auth failed: ' + err.message });
   }
 });
-
-// ============ TEAMSPEAK 3 MULTI-CANDIDATE (persistent bot) ============
-// TS3's raw ServerQuery protocol can hold a persistent connection open and register for
-// async events (unlike TS6's stateless HTTP query, which can only send, never receive —
-// see the TS6 multi-candidate section above for that side of the story). When more than
-// one TS3 client shares the requester's IP, we can't tell from the HTTP request alone
-// which of them is actually the person logging in — so instead of guessing (the old bug),
-// we ask: the bot sends every candidate the SAME code over TS3 chat, and whichever one
-// replies with it first identifies themselves. Disambiguation comes from *who* replies
-// (their clid/uid), not from matching distinct codes like the TS6 flow does.
-const ts3PendingConsent = new Map(); // consentToken -> { clientIp, cleanIp, candidates, linkPrimaryUserId?, expires }
-const ts3ReplyChallenges = new Map(); // challengeId -> { clientIp, cleanIp, candidates, code, attemptsBySender, resolvedClid, resolvedCandidate, linkPrimaryUserId?, expires }
-const TS3_CONSENT_TTL_MS = 2 * 60 * 1000;
-
-function createTs3Consent(data) {
-  const token = uuidv4();
-  ts3PendingConsent.set(token, { ...data, expires: Date.now() + TS3_CONSENT_TTL_MS });
-  const t = setTimeout(() => ts3PendingConsent.delete(token), TS3_CONSENT_TTL_MS);
-  if (t.unref) t.unref();
-  return token;
-}
-
-function consumeTs3Consent(token, clientIp) {
-  const entry = ts3PendingConsent.get(token);
-  if (!entry) return { error: 'Prośba o logowanie wygasła lub nie istnieje. Spróbuj ponownie.' };
-  if (Date.now() > entry.expires) { ts3PendingConsent.delete(token); return { error: 'Prośba o logowanie wygasła. Spróbuj ponownie.' }; }
-  if (entry.clientIp !== clientIp) return { error: 'Niezgodność adresu IP — spróbuj ponownie.' };
-  ts3PendingConsent.delete(token);
-  return { consent: entry };
-}
-
-const ts3MultiChallengeMessage = (code) =>
-  `⚠️ Alleria Filmy — na Twoim adresie IP wykryto kilku użytkowników TeamSpeak i ktoś właśnie próbuje się zalogować na stronie. Jeśli to Ty, odpisz na tę wiadomość kodem: [b]${code}[/b]\nJeśli to nie Ty — zignoruj tę wiadomość, nikt nie zaloguje się bez Twojej odpowiedzi.`;
-
-// Wired to ts3Bot's 'textmessage' event — runs for EVERY private message the bot
-// receives, so it must cheaply no-op for messages unrelated to any open challenge.
-function handleTs3IncomingReply({ invokerid, invokeruid, msg }) {
-  const normalized = String(msg || '').trim().toUpperCase();
-  const now = Date.now();
-  for (const [challengeId, entry] of ts3ReplyChallenges) {
-    if (now > entry.expires) { ts3ReplyChallenges.delete(challengeId); continue; }
-    if (entry.resolvedClid !== null) continue; // already resolved — ignore further replies
-    const candidate = entry.candidates.find(c => c.clid === invokerid || (invokeruid && c.tsUid === invokeruid));
-    if (!candidate) continue; // sender isn't one of the candidates on this challenge
-
-    const attempts = (entry.attemptsBySender.get(invokerid) || 0) + 1;
-    entry.attemptsBySender.set(invokerid, attempts);
-    if (attempts > TS_CHALLENGE_MAX_ATTEMPTS) continue; // this sender is locked out — doesn't affect other candidates
-
-    if (normalized === entry.code) {
-      entry.resolvedClid = invokerid;
-      entry.resolvedCandidate = candidate;
-      console.log(`[TS3Bot] Multi-candidate challenge ${challengeId} resolved by clid ${invokerid} ("${candidate.tsNickname}")`);
-    }
-  }
-}
 
 // ============ TEAMSPEAK 3 AUTH ============
 // Uses TS3 ServerQuery raw TCP protocol (default port 10011)
@@ -1294,6 +1261,14 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
 
     console.log(`[TS3] Got ${clients.length} clients, looking for IP ${cleanIp}`);
 
+    // Collect ALL clients connected from this IP — a shared IP (NAT, dorm/office network)
+    // can have more than one legitimate TS3 client; disambiguate via a distinct challenge
+    // code per candidate below, exactly like the TS6 flow above. (An earlier version of
+    // this tried to have the user reply to a bot over TS3 chat instead, using a single
+    // shared code and a persistent ServerQuery connection registered for textprivate
+    // events — TS3 servers reject that unless the specific connection sending the code is
+    // ALSO the one registered, which broke in practice with two connections in play. The
+    // per-candidate-code approach below needs no persistent connection at all.)
     const matches = clients.filter(c =>
       c.client_type !== '1' &&
       (c.connection_client_ip === cleanIp || c.connection_client_ip === clientIp)
@@ -1302,195 +1277,91 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
     if (matches.length === 0) {
       ts3.close(); ts3 = null;
       logLogin(null, 'unknown', 'teamspeak3', clientIp, 0, `No TS3 client with IP ${cleanIp}`);
-      return res.status(401).json({ error: 'Nie znaleziono klienta TeamSpeak 3 z Twoim IP. Upewnij się, że jesteś połączony z serwerem TS3.' });
+      // 404, not 401 — see the comment on handleTsVerify's error response for why: this
+      // endpoint doubles as the account-linking flow for an already-authenticated user.
+      return res.status(404).json({ error: 'Nie znaleziono klienta TeamSpeak 3 z Twoim IP. Upewnij się, że jesteś połączony z serwerem TS3.' });
     }
 
     console.log(`[TS3] Found ${matches.length} client(s) on IP ${cleanIp}`);
 
-    if (matches.length > 1) {
-      // Several TS3 identities share this IP — the HTTP request alone can't tell us which
-      // one is really logging in. Defer the group/role check until we know who actually
-      // replied (handled in /multi/confirm + the persistent ts3Bot listener above) instead
-      // of querying every candidate's groups up front.
-      ts3.close(); ts3 = null;
-      const consentToken = createTs3Consent({
-        clientIp, cleanIp,
-        candidates: matches.map(c => ({
-          clid: c.clid, tsNickname: c.client_nickname, tsUid: c.client_unique_identifier, tsDbId: c.client_database_id,
-        })),
-        linkPrimaryUserId: linkMode ? req.session.user.id : undefined,
-      });
-      return res.json({ multipleCandidates: true, count: matches.length, consentToken });
-    }
-
-    const matched = matches[0];
-    const tsNickname = matched.client_nickname;
-    const tsUid = matched.client_unique_identifier;
-    const tsDbId = matched.client_database_id;
-    console.log(`[TS3] Matched client: "${tsNickname}" (uid: ${tsUid}, dbid: ${tsDbId})`);
-
-    let groups = [];
-    try {
-      const sgLines = await ts3.send(`servergroupsbyclientid cldbid=${tsDbId}`);
-      if (sgLines.length > 0) groups = ts3ParseLine(sgLines[0]).map(g => String(g.sgid)).filter(Boolean);
-    } catch (e) {
-      console.log(`[TS3] Error getting groups: ${e.message}`);
-    }
-
-    console.log(`[TS3] User "${tsNickname}" groups: [${groups.join(', ')}]`);
-
+    // For each match, check server groups and compute its OWN role — different candidates
+    // can belong to different groups, so anyone without access is dropped here, before
+    // they'd ever be offered a code. All done over the same already-open connection.
     const memberGroupId = getTsSetting('ts3_member_group_id', process.env.TS3_MEMBER_GROUP_ID || '');
     const adminGroupId = getTsSetting('ts3_admin_group_id', process.env.TS3_ADMIN_GROUP_ID || '');
 
-    const hasMemberGroup = memberGroupId ? groups.includes(String(memberGroupId)) : true;
-    const hasAdminGroup = adminGroupId ? groups.includes(String(adminGroupId)) : false;
+    const authorized = [];
+    for (const m of matches) {
+      const tsNickname = m.client_nickname;
+      const tsUid = m.client_unique_identifier;
+      const tsDbId = m.client_database_id;
+      let groups = [];
+      try {
+        const sgLines = await ts3.send(`servergroupsbyclientid cldbid=${tsDbId}`);
+        if (sgLines.length > 0) groups = ts3ParseLine(sgLines[0]).map(g => String(g.sgid)).filter(Boolean);
+      } catch (e) {
+        console.log(`[TS3] Error getting groups for "${tsNickname}": ${e.message}`);
+      }
+      console.log(`[TS3] User "${tsNickname}" groups: [${groups.join(', ')}]`);
+      const hasMemberGroup = memberGroupId ? groups.includes(String(memberGroupId)) : true;
+      const hasAdminGroup = adminGroupId ? groups.includes(String(adminGroupId)) : false;
+      if (!hasMemberGroup && !hasAdminGroup) continue;
+      authorized.push({ clid: m.clid, tsNickname, tsUid, tsDbId, role: hasAdminGroup ? 'admin' : 'member' });
+    }
 
-    if (!hasMemberGroup && !hasAdminGroup) {
+    if (authorized.length === 0) {
       ts3.close(); ts3 = null;
-      logLogin(null, tsNickname, 'teamspeak3', clientIp, 0, `Missing group (has: ${groups.join(',')})`);
-      return res.status(401).json({ error: 'Nie posiadasz wymaganej grupy na serwerze TeamSpeak 3.' });
+      logLogin(null, matches[0]?.client_nickname || 'unknown', 'teamspeak3', clientIp, 0, 'Missing group (no candidate authorized)');
+      return res.status(403).json({ error: 'Nie posiadasz wymaganej grupy na serwerze TeamSpeak 3.' });
     }
 
-    const role = hasAdminGroup ? 'admin' : 'member';
-
-    // Matched + authorized — send a login challenge code over the still-open connection
-    const code = genChallengeCode();
-    const { id: challengeId } = createTsChallenge({
-      method: 'teamspeak3', clientIp, cleanIp,
-      candidates: [{ tsNickname, tsUid, clid: matched.clid, tsDbId, role, code }],
-      linkPrimaryUserId: linkMode ? req.session.user.id : undefined,
-    });
+    // Send each authorized candidate their own distinct code over the still-open
+    // connection — whichever code the user types back on the site identifies exactly
+    // which of them is really logging in. Anyone the message fails to reach is dropped.
     const delivery = getSetting('ts3_code_delivery', 'pm'); // 'pm' | 'poke' | 'both'
-    let codeSent = false;
-    if (delivery === 'pm' || delivery === 'both') {
-      try {
-        await ts3.send(`sendtextmessage targetmode=1 target=${matched.clid} msg=${ts3Escape(challengeMessage(code))}`);
-        codeSent = true;
-      } catch (e) { console.log(`[TS3] sendtextmessage failed: ${e.message}`); }
-    }
-    if (delivery === 'poke' || delivery === 'both') {
-      try {
-        await ts3.send(`clientpoke clid=${matched.clid} msg=${ts3Escape('Kod logowania: [b]' + code + '[/b]')}`);
-        codeSent = true;
-      } catch (e) { console.log(`[TS3] clientpoke failed: ${e.message}`); }
+    const candidates = [];
+    for (const cand of authorized) {
+      const code = genChallengeCode();
+      let sent = false;
+      if (delivery === 'pm' || delivery === 'both') {
+        try {
+          await ts3.send(`sendtextmessage targetmode=1 target=${cand.clid} msg=${ts3Escape(challengeMessage(code))}`);
+          sent = true;
+        } catch (e) { console.log(`[TS3] sendtextmessage to "${cand.tsNickname}" failed: ${e.message}`); }
+      }
+      if (delivery === 'poke' || delivery === 'both') {
+        try {
+          await ts3.send(`clientpoke clid=${cand.clid} msg=${ts3Escape('Kod logowania: [b]' + code + '[/b]')}`);
+          sent = true;
+        } catch (e) { console.log(`[TS3] clientpoke to "${cand.tsNickname}" failed: ${e.message}`); }
+      }
+      if (sent) candidates.push({ ...cand, code });
     }
     ts3.close(); ts3 = null;
 
-    if (!codeSent) {
-      tsChallenges.delete(challengeId);
-      logLogin(null, tsNickname, 'teamspeak3', clientIp, 0, 'Nie udało się wysłać kodu');
+    if (candidates.length === 0) {
+      logLogin(null, authorized[0].tsNickname, 'teamspeak3', clientIp, 0, 'Nie udało się wysłać kodu');
       return res.status(502).json({ error: 'Nie udało się wysłać kodu na TeamSpeak 3. Spróbuj ponownie.' });
     }
-    console.log(`[TS3] 🔐 Challenge sent to "${tsNickname}" (clid ${matched.clid})`);
-    res.json({ challenge: true, challengeId, method: 'teamspeak3', nickname: tsNickname, expiresIn: TS_CHALLENGE_TTL_MS / 1000 });
+
+    const { id: challengeId } = createTsChallenge({
+      method: 'teamspeak3', clientIp, cleanIp, candidates,
+      linkPrimaryUserId: linkMode ? req.session.user.id : undefined,
+    });
+
+    if (candidates.length === 1) {
+      console.log(`[TS3] 🔐 Challenge sent to "${candidates[0].tsNickname}" (clid ${candidates[0].clid})`);
+      res.json({ challenge: true, challengeId, method: 'teamspeak3', nickname: candidates[0].tsNickname, expiresIn: TS_CHALLENGE_TTL_MS / 1000 });
+    } else {
+      console.log(`[TS3] 🔐 Challenge sent to ${candidates.length} candidates on IP ${cleanIp}`);
+      res.json({ challenge: true, challengeId, method: 'teamspeak3', multipleCandidates: true, count: candidates.length, expiresIn: TS_CHALLENGE_TTL_MS / 1000 });
+    }
 
   } catch (err) {
     if (ts3) { try { ts3.close(); } catch (_) {} }
     console.error('[TS3 AUTH] Error:', err);
     logLogin(null, 'unknown', 'teamspeak3', clientIp, 0, err.message);
     res.status(500).json({ error: 'TeamSpeak 3 auth failed: ' + err.message });
-  }
-});
-
-// User confirmed they want to try logging in despite several TS3 identities sharing their
-// IP — send everyone on that IP the same code over TS3 chat via the persistent bot.
-app.post('/api/auth/teamspeak3/multi/confirm', authLimiter, async (req, res) => {
-  const clientIp = req.ip || req.socket.remoteAddress;
-  const { consentToken } = req.body || {};
-  if (!consentToken) return res.status(400).json({ error: 'Brak tokenu potwierdzenia.' });
-
-  const result = consumeTs3Consent(consentToken, clientIp);
-  if (result.error) return res.status(401).json({ error: result.error });
-  const consent = result.consent;
-
-  const bot = getTs3Bot();
-  if (!bot || !bot.isReady()) {
-    return res.status(503).json({ error: 'Bot TeamSpeak 3 nie jest obecnie połączony. Spróbuj ponownie za chwilę.' });
-  }
-
-  const code = genChallengeCode();
-  let sentCount = 0;
-  for (const cand of consent.candidates) {
-    try {
-      await bot.sendPrivateMessage(cand.clid, ts3MultiChallengeMessage(code));
-      sentCount++;
-    } catch (e) {
-      console.log(`[TS3Bot] Failed to message clid ${cand.clid}: ${e.message}`);
-    }
-  }
-
-  if (sentCount === 0) {
-    return res.status(502).json({ error: 'Nie udało się wysłać kodu do żadnego z użytkowników. Spróbuj ponownie.' });
-  }
-
-  const challengeId = uuidv4();
-  ts3ReplyChallenges.set(challengeId, {
-    clientIp: consent.clientIp, cleanIp: consent.cleanIp, candidates: consent.candidates,
-    code, attemptsBySender: new Map(), resolvedClid: null, resolvedCandidate: null,
-    linkPrimaryUserId: consent.linkPrimaryUserId, expires: Date.now() + TS_CHALLENGE_TTL_MS,
-  });
-  const t = setTimeout(() => ts3ReplyChallenges.delete(challengeId), TS_CHALLENGE_TTL_MS);
-  if (t.unref) t.unref();
-
-  console.log(`[TS3Bot] 🔐 Multi-candidate challenge ${challengeId} sent to ${sentCount}/${consent.candidates.length} candidates`);
-  res.json({ challengeId, code, expiresIn: TS_CHALLENGE_TTL_MS / 1000 });
-});
-
-// Polled by the frontend while waiting for one of the candidates to reply on TS3 chat.
-app.get('/api/auth/teamspeak3/multi/status/:challengeId', async (req, res) => {
-  const clientIp = req.ip || req.socket.remoteAddress;
-  const entry = ts3ReplyChallenges.get(req.params.challengeId);
-  if (!entry) return res.status(404).json({ error: 'Wyzwanie wygasło lub nie istnieje.' });
-  if (entry.clientIp !== clientIp) return res.status(403).json({ error: 'Forbidden' });
-  if (Date.now() > entry.expires) {
-    ts3ReplyChallenges.delete(req.params.challengeId);
-    return res.status(404).json({ error: 'Wyzwanie wygasło.' });
-  }
-  if (entry.resolvedClid === null) return res.json({ resolved: false });
-
-  // Resolved — one-shot consume, then check the winning candidate's groups (deferred from
-  // /multi/confirm since we only need to check the one person who actually replied) and
-  // finish the login/link.
-  ts3ReplyChallenges.delete(req.params.challengeId);
-  const candidate = entry.resolvedCandidate;
-
-  try {
-    const bot = getTs3Bot();
-    let groups = [];
-    if (bot && bot.isReady()) {
-      try {
-        const sgLines = await bot.send(`servergroupsbyclientid cldbid=${candidate.tsDbId}`);
-        if (sgLines.length > 0) groups = ts3ParseLine(sgLines[0]).map(g => String(g.sgid)).filter(Boolean);
-      } catch (e) { console.log(`[TS3Bot] Error getting groups: ${e.message}`); }
-    }
-    const memberGroupId = getTsSetting('ts3_member_group_id', process.env.TS3_MEMBER_GROUP_ID || '');
-    const adminGroupId = getTsSetting('ts3_admin_group_id', process.env.TS3_ADMIN_GROUP_ID || '');
-    const hasMemberGroup = memberGroupId ? groups.includes(String(memberGroupId)) : true;
-    const hasAdminGroup = adminGroupId ? groups.includes(String(adminGroupId)) : false;
-
-    if (!hasMemberGroup && !hasAdminGroup) {
-      logLogin(null, candidate.tsNickname, 'teamspeak3', clientIp, 0, `Missing group (has: ${groups.join(',')})`);
-      // 403, not 401 — this endpoint is also polled from ProfilePage during account-linking
-      // by an already-authenticated user; a 401 there would trip the frontend's global
-      // "unauthenticated → redirect to /login" handling for what is really just "this
-      // particular TS3 identity lacks the required group," not a session problem.
-      return res.status(403).json({ error: 'Nie posiadasz wymaganej grupy na serwerze TeamSpeak 3.' });
-    }
-    const role = hasAdminGroup ? 'admin' : 'member';
-
-    if (entry.linkPrimaryUserId) {
-      return handleTsLinkCompletion(req, res, {
-        tsUid: candidate.tsUid, tsNickname: candidate.tsNickname, cleanIp: entry.cleanIp,
-        linkPrimaryUserId: entry.linkPrimaryUserId,
-      });
-    }
-    const user = upsertTsUser({ method: 'teamspeak3', tsNickname: candidate.tsNickname, tsUid: candidate.tsUid, cleanIp: entry.cleanIp, role });
-    logLogin(user.id, candidate.tsNickname, 'teamspeak3', clientIp, 1, 'multi-candidate challenge OK');
-    console.log(`[TS3] ✅ Login (multi-candidate OK): "${candidate.tsNickname}" (role: ${role})`);
-    completeTsSession(req, res, user, 'teamspeak3');
-  } catch (err) {
-    console.error('[TS3 multi status] Error:', err);
-    res.status(500).json({ error: 'Błąd logowania: ' + err.message });
   }
 });
 
@@ -2421,17 +2292,18 @@ app.get('/api/stats', requireAuth, (req, res) => {
 
 // ============ PROFILE API ============
 app.get('/api/profile', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, username, display_name, avatar, role, bio, auth_method, avatar_source, discord_id, ts_uid, discord_guild_avatar_hash, created_at, last_login FROM users WHERE id = ?').get(req.session.user.id);
+  const user = db.prepare('SELECT id, username, display_name, avatar, role, bio, auth_method, avatar_source, discord_id, ts3_uid, ts6_uid, discord_guild_avatar_hash, created_at, last_login FROM users WHERE id = ?').get(req.session.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   const videoCount = db.prepare('SELECT COUNT(*) AS c FROM videos WHERE author_id = ?').get(user.id).c;
   const viewCount = db.prepare('SELECT COUNT(*) AS c FROM watch_logs WHERE user_id = ?').get(user.id).c;
   const favCount = db.prepare('SELECT COUNT(*) AS c FROM favorites WHERE user_id = ?').get(user.id).c;
-  const { discord_guild_avatar_hash, discord_id, ts_uid, ...userFields } = user;
+  const { discord_guild_avatar_hash, discord_id, ts3_uid, ts6_uid, ...userFields } = user;
   res.json({
     ...userFields,
     has_guild_avatar: !!discord_guild_avatar_hash,
     has_discord: !!discord_id,
-    has_teamspeak: !!ts_uid,
+    has_teamspeak3: !!ts3_uid,
+    has_teamspeak6: !!ts6_uid,
     videoCount, viewCount, favCount,
   });
 });
@@ -3770,26 +3642,6 @@ app.get('*', (req, res) => {
 
 const httpServer = http.createServer(app);
 setupWatchPartyWS(httpServer, db);
-
-// TS3 persistent bot — powers the multi-candidate reply-to-bot login/link flow. Only
-// started for the real process (never under the test suite) and only when TS3 is
-// actually configured, so environments without TS3 pay no cost. Config is read once at
-// startup — a panel-managed ts3_* setting change needs a process restart to reach the bot,
-// unlike the per-request connectTS3 route which re-reads settings on every login attempt.
-if (require.main === module && !IS_TEST) {
-  const ts3BotHost = getTsSetting('ts3_host', process.env.TS3_HOST || '');
-  if (ts3BotHost) {
-    const bot = initTs3Bot({
-      host: ts3BotHost,
-      port: getTsSetting('ts3_port', process.env.TS3_PORT || '10011'),
-      username: getTsSetting('ts3_username', process.env.TS3_USERNAME || 'serveradmin'),
-      password: getTsSetting('ts3_password', process.env.TS3_PASSWORD || ''),
-      serverId: getTsSetting('ts3_server_id', process.env.TS3_SERVER_ID || '1'),
-      nickname: getTsBotNickname(),
-    });
-    bot.on('textmessage', handleTs3IncomingReply);
-  }
-}
 
 // Export for the API test suite (tests/) — supertest drives `app` directly.
 // The server only starts listening when this file is run directly (node server.js).

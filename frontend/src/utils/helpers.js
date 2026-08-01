@@ -68,6 +68,30 @@ export function getCurrentYear() {
   return new Date().getFullYear();
 }
 
+// Turns a raw TS3/TS6 backend error message into a friendly, actionable one. Shared by
+// LoginPage (plain login) and ProfilePage (account linking) so both surfaces explain TS
+// failures the same way instead of showing raw fetch/ServerQuery error text.
+export function parseTsError(msg, version) {
+  if (!msg) return `Logowanie przez ${version} nie powiodło się.`;
+  const m = msg.toLowerCase();
+  if (m.includes('timeout') || m.includes('econnrefused') || m.includes('enotfound') || m.includes('connect')) {
+    return `Wystąpił problem po naszej stronie. Użyj innej metody lub spróbuj później.`;
+  }
+  if (m.includes('ip') || m.includes('nie znaleziono klienta') || m.includes('znaleziono')) {
+    return `Nie znaleziono Twojego IP na serwerze ${version}. Upewnij się, że jesteś aktualnie połączony.`;
+  }
+  if (m.includes('grupy') || m.includes('group') || m.includes('wymaganej')) {
+    return `Nie posiadasz wymaganej grupy serwerowej na ${version}.`;
+  }
+  if (m.includes('invalid_password') || m.includes('520') || m.includes('konfiguracji serwera')) {
+    return `Błąd konfiguracji — nieprawidłowe dane administracyjne ${version}. Skontaktuj się z administratorem.`;
+  }
+  if (m.includes('closed unexpectedly') || m.includes('socket')) {
+    return `Połączenie z serwerem ${version} zostało przerwane. Spróbuj ponownie.`;
+  }
+  return msg;
+}
+
 // Build a properly sorted, indented tree of categories for <select> dropdowns
 // Returns: [{ id, name, label, depth, parent_id }, ...]
 export function buildCategoryTreeOptions(cats, excludeId = null) {

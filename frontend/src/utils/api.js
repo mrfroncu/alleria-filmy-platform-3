@@ -37,13 +37,6 @@ export const api = {
   verifyTeamspeak: (challengeId, code) => request('/auth/teamspeak/verify', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challengeId, code }),
   }),
-
-  // TS3 multi-candidate (several people sharing one IP) — user confirms, bot messages
-  // everyone on TS3 chat with the same code, frontend polls for who replied.
-  confirmTeamspeak3Multi: (consentToken) => request('/auth/teamspeak3/multi/confirm', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consentToken }),
-  }),
-  pollTeamspeak3Multi: (challengeId) => request(`/auth/teamspeak3/multi/status/${challengeId}`),
   verifyTeamspeak3: (challengeId, code) => request('/auth/teamspeak3/verify', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challengeId, code }),
   }),

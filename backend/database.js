@@ -273,10 +273,24 @@ function initDB() {
     UNIQUE(category_id, rank_id, access_type)
   )`);
 
-  // Prevent two accounts from ever sharing a TeamSpeak identity (guards the account-linking
-  // merge flow — a duplicate here would mean upsertTsUser's legacy ts_ip fallback already
-  // let two rows collide before this index existed).
-  try { db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ts_uid ON users(ts_uid) WHERE ts_uid IS NOT NULL`); } catch (e) {}
+  // TS3 and TS6 are different servers with independent identities — a user can have BOTH
+  // a TS3 account and a completely separate TS6 account linked at once, so each needs its
+  // own uid/ip pair instead of sharing the single generic ts_uid/ts_ip columns.
+  try { db.exec(`ALTER TABLE users ADD COLUMN ts3_uid TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN ts3_ip TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN ts6_uid TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN ts6_ip TEXT`); } catch (e) {}
+  try {
+    db.exec(`UPDATE users SET ts3_uid = ts_uid, ts3_ip = ts_ip WHERE auth_method = 'teamspeak3' AND ts_uid IS NOT NULL AND ts3_uid IS NULL`);
+  } catch (e) {}
+  try {
+    db.exec(`UPDATE users SET ts6_uid = ts_uid, ts6_ip = ts_ip WHERE auth_method = 'teamspeak' AND ts_uid IS NOT NULL AND ts6_uid IS NULL`);
+  } catch (e) {}
+  try { db.exec(`DROP INDEX IF EXISTS idx_users_ts_uid`); } catch (e) {}
+  try { db.exec(`ALTER TABLE users DROP COLUMN ts_uid`); } catch (e) {}
+  try { db.exec(`ALTER TABLE users DROP COLUMN ts_ip`); } catch (e) {}
+  try { db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ts3_uid ON users(ts3_uid) WHERE ts3_uid IS NOT NULL`); } catch (e) {}
+  try { db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ts6_uid ON users(ts6_uid) WHERE ts6_uid IS NOT NULL`); } catch (e) {}
 
   return db;
 }
