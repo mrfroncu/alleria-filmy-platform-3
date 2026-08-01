@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
-import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Settings, Cast, Airplay, PictureInPicture2 } from 'lucide-react';
+import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Settings, Cast, Airplay, PictureInPicture2, RotateCcw, RotateCw } from 'lucide-react';
 
 /*
  * SecurePlayer — encrypted HLS player with DRM protections
@@ -17,6 +17,8 @@ import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Setting
 
 const HLS_CDN = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';
 const CAST_SDK_URL = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
+const DOUBLE_TAP_MS = 300;
+const EDGE_ZONE = 0.35;
 
 export default function SecurePlayer({ streamVideoId, drmEnhanced, title, controlRef, onTimeUpdate, onPlay, onPause, onSeek }) {
   const { user } = useAuth();
@@ -39,6 +41,12 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
   const [buffered, setBuffered] = useState(0);
   const [pipActive, setPipActive] = useState(false);
   const controlsTimer = useRef(null);
+
+  // Mobile double-tap-to-seek (edges of the video, YouTube-style)
+  const [skipFlash, setSkipFlash] = useState(null); // 'left' | 'right' | null
+  const lastTapRef = useRef({ time: 0, side: null });
+  const tapTimerRef = useRef(null);
+  const skipFlashTimerRef = useRef(null);
 
   // AirPlay (Safari/WebKit) state
   const [airplayAvailable, setAirplayAvailable] = useState(false);
@@ -408,6 +416,14 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
     };
   }, []);
 
+  // Clear pending double-tap timers on unmount
+  useEffect(() => {
+    return () => {
+      clearTimeout(tapTimerRef.current);
+      clearTimeout(skipFlashTimerRef.current);
+    };
+  }, []);
+
   // Expose external control methods for Watch Party sync — routed to the cast
   // receiver while casting so party sync keeps working on the TV too.
   useEffect(() => {
@@ -490,6 +506,179 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
     if (!v) return;
     v.currentTime = newTime;
     if (onSeek) onSeek(newTime);
+  };
+
+  const skip = (seconds) => {
+    if (casting && castControllerRef.current) {
+      const cur = castPlayerRef.current.currentTime || 0;
+      const newTime = Math.min(Math.max(cur + seconds, 0), duration || Infinity);
+      castPlayerRef.current.currentTime = newTime;
+      castControllerRef.current.seek();
+      setCurrentTime(newTime);
+      if (onSeek) onSeek(newTime);
+      return;
+    }
+    const v = videoRef.current;
+    if (!v) return;
+    const newTime = Math.min(Math.max(v.currentTime + seconds, 0), v.duration || Infinity);
+    v.currentTime = newTime;
+    if (onSeek) onSeek(newTime);
+  };
+
+  const adjustVolume = (delta) => {
+    if (casting && castControllerRef.current) {
+      const newVol = Math.min(Math.max((castPlayerRef.current.volumeLevel || 0) + delta, 0), 1);
+      castPlayerRef.current.volumeLevel = newVol;
+      castControllerRef.current.setVolumeLevel();
+      castPlayerRef.current.isMuted = newVol === 0;
+      castControllerRef.current.muteOrUnmute();
+      setVolume(newVol);
+      setMuted(newVol === 0);
+      return;
+    }
+    const v = videoRef.current;
+    if (!v) return;
+    const newVol = Math.min(Math.max(v.volume + delta, 0), 1);
+    v.volume = newVol;
+    v.muted = newVol === 0;
+    setVolume(newVol);
+    setMuted(newVol === 0);
+  };
+
+  const toggleMute = () => {
+    if (casting && castControllerRef.current) {
+      castPlayerRef.current.isMuted = !muted;
+      castControllerRef.current.muteOrUnmute();
+      setMuted(!muted);
+      return;
+    }
+    const v = videoRef.current;
+    if (!v) return;
+    if (muted) {
+      const restoredVolume = volume === 0 ? 1 : volume;
+      v.muted = false;
+      v.volume = restoredVolume;
+      setMuted(false);
+      setVolume(restoredVolume);
+    } else {
+      v.muted = true;
+      setMuted(true);
+    }
+  };
+
+  const seekToPercent = (pct) => {
+    if (casting && castControllerRef.current) {
+      if (!duration) return;
+      const newTime = (pct / 100) * duration;
+      castPlayerRef.current.currentTime = newTime;
+      castControllerRef.current.seek();
+      setCurrentTime(newTime);
+      if (onSeek) onSeek(newTime);
+      return;
+    }
+    const v = videoRef.current;
+    if (!v || !v.duration) return;
+    const newTime = (pct / 100) * v.duration;
+    v.currentTime = newTime;
+    if (onSeek) onSeek(newTime);
+  };
+
+  const frameStep = (dir) => {
+    if (casting) return; // no frame-accurate seeking on a cast receiver
+    const v = videoRef.current;
+    if (!v) return;
+    if (!v.paused) v.pause();
+    v.currentTime = Math.min(Math.max(v.currentTime + dir * (1 / 30), 0), v.duration || Infinity);
+  };
+
+  // Mobile double-tap on the left/right edge of the video → skip ±10s (YouTube-style).
+  // A single tap is deferred briefly so it can be upgraded to a double-tap; taps in the
+  // middle third pass through untouched and toggle play/pause immediately.
+  const handleVideoTouchEnd = (e) => {
+    if (e.changedTouches.length !== 1) return;
+    const touch = e.changedTouches[0];
+    const rect = e.currentTarget.getBoundingClientRect();
+    const xPct = (touch.clientX - rect.left) / rect.width;
+
+    let side = null;
+    if (xPct < EDGE_ZONE) side = 'left';
+    else if (xPct > 1 - EDGE_ZONE) side = 'right';
+    if (!side) return;
+
+    const now = Date.now();
+    const last = lastTapRef.current;
+
+    if (last.side === side && now - last.time < DOUBLE_TAP_MS) {
+      e.preventDefault();
+      clearTimeout(tapTimerRef.current);
+      lastTapRef.current = { time: 0, side: null };
+      skip(side === 'left' ? -10 : 10);
+      setSkipFlash(side);
+      clearTimeout(skipFlashTimerRef.current);
+      skipFlashTimerRef.current = setTimeout(() => setSkipFlash(null), 500);
+    } else {
+      e.preventDefault();
+      lastTapRef.current = { time: now, side };
+      clearTimeout(tapTimerRef.current);
+      tapTimerRef.current = setTimeout(() => {
+        togglePlay();
+        containerRef.current?.focus();
+        lastTapRef.current = { time: 0, side: null };
+      }, DOUBLE_TAP_MS);
+    }
+  };
+
+  const handlePlayerKeyDown = (e) => {
+    if (/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+      seekToPercent(parseInt(e.key, 10) * 10);
+      return;
+    }
+    switch (e.key) {
+      case ' ':
+      case 'Spacebar':
+      case 'k':
+      case 'K':
+        e.preventDefault();
+        togglePlay();
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        skip(-5);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        skip(5);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        adjustVolume(0.1);
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        adjustVolume(-0.1);
+        break;
+      case 'f':
+      case 'F':
+        e.preventDefault();
+        toggleFullscreen();
+        break;
+      case 'm':
+      case 'M':
+        e.preventDefault();
+        toggleMute();
+        break;
+      case ',':
+        e.preventDefault();
+        frameStep(-1);
+        break;
+      case '.':
+        e.preventDefault();
+        frameStep(1);
+        break;
+      default:
+        break;
+    }
   };
 
   const toggleCast = () => {
@@ -583,10 +772,12 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
   return (
     <div
       ref={containerRef}
-      className="relative aspect-video bg-black rounded-[32px] overflow-hidden group select-none"
+      tabIndex={0}
+      className="relative aspect-video bg-black rounded-[32px] overflow-hidden group select-none outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60"
       onMouseMove={handleMouseMove}
       onMouseLeave={() => playing && setShowControls(false)}
       onContextMenu={e => e.preventDefault()}
+      onKeyDown={handlePlayerKeyDown}
       style={{
         // Anti-capture CSS: prevents screenshots in some contexts
         WebkitUserSelect: 'none',
@@ -596,15 +787,27 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
       {/* Video element */}
       <video
         ref={videoRef}
-        className="absolute inset-0 w-full h-full"
+        className="absolute inset-0 w-full h-full outline-none"
         playsInline
         webkit-playsinline=""
         x5-playsinline=""
-        onClick={togglePlay}
+        tabIndex={-1}
+        onClick={() => { togglePlay(); containerRef.current?.focus(); }}
+        onTouchEnd={handleVideoTouchEnd}
         controlsList="nodownload noremoteplayback"
         disablePictureInPicture={drmEnhanced}
         style={{ objectFit: 'contain' }}
       />
+
+      {/* Mobile double-tap skip feedback */}
+      {skipFlash && (
+        <div className={`absolute inset-y-0 ${skipFlash === 'left' ? 'left-0' : 'right-0'} w-1/3 z-20 flex items-center justify-center pointer-events-none bg-white/5`}>
+          <div className="flex flex-col items-center gap-1 text-white animate-pulse">
+            {skipFlash === 'left' ? <RotateCcw className="w-8 h-8" /> : <RotateCw className="w-8 h-8" />}
+            <span className="text-xs font-bold">10s</span>
+          </div>
+        </div>
+      )}
 
       {/* DRM Watermark overlay */}
       {drmEnhanced && user && (
@@ -690,33 +893,19 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
 
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
+              <button onClick={() => skip(-10)} className="relative p-1.5 text-white hover:text-violet-400 transition-colors" title="Cofnij 10 sekund">
+                <RotateCcw className="w-5 h-5" />
+                <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold">10</span>
+              </button>
               <button onClick={togglePlay} className="p-1.5 text-white hover:text-violet-400 transition-colors">
                 {playing ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" fill="white" />}
               </button>
+              <button onClick={() => skip(10)} className="relative p-1.5 text-white hover:text-violet-400 transition-colors" title="Przewiń 10 sekund">
+                <RotateCw className="w-5 h-5" />
+                <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold">10</span>
+              </button>
               <div className="flex items-center gap-1 group/vol">
-                <button
-                  onClick={() => {
-                    if (casting && castControllerRef.current) {
-                      castPlayerRef.current.isMuted = !muted;
-                      castControllerRef.current.muteOrUnmute();
-                      setMuted(!muted);
-                      return;
-                    }
-                    const v = videoRef.current;
-                    if (!v) return;
-                    if (muted) {
-                      const restoredVolume = volume === 0 ? 1 : volume;
-                      v.muted = false;
-                      v.volume = restoredVolume;
-                      setMuted(false);
-                      setVolume(restoredVolume);
-                    } else {
-                      v.muted = true;
-                      setMuted(true);
-                    }
-                  }}
-                  className="p-1.5 text-white hover:text-violet-400 transition-colors"
-                >
+                <button onClick={toggleMute} className="p-1.5 text-white hover:text-violet-400 transition-colors">
                   {muted || volume === 0 ? <VolumeX className="w-5 h-5" /> : volume < 0.5 ? <Volume1 className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
                 </button>
                 <div className="w-0 overflow-hidden transition-all duration-200 group-hover/vol:w-20">
