@@ -288,7 +288,7 @@ export default function Layout({ children }) {
 
       <main ref={mainRef} className="flex-1 overflow-y-auto relative flex flex-col">
         {/* Mobile top bar — always present (hamburger is the only way to reach the sidebar on mobile) */}
-        <div className="lg:hidden shrink-0 flex items-center justify-between gap-3 p-4 bg-gradient-to-r from-violet-50/70 via-white to-fuchsia-50/50 dark:from-violet-500/[0.08] dark:via-zinc-950 dark:to-fuchsia-500/[0.06] border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
+        <div className="lg:hidden shrink-0 flex items-center justify-between gap-3 p-4 bg-gradient-to-r from-violet-100/50 via-white/60 to-fuchsia-100/40 dark:from-violet-500/10 dark:via-zinc-950/50 dark:to-fuchsia-500/10 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 dark:border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sticky top-0 z-30">
           <div className="flex items-center gap-2.5 min-w-0">
             <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain shrink-0" />
             {showTopBar
@@ -306,7 +306,7 @@ export default function Layout({ children }) {
 
         {/* Desktop top bar — page title, global search, profile menu (optional, Dev Tools > Ustawienia) */}
         {showTopBar && (
-          <div className="hidden lg:flex shrink-0 items-center gap-6 px-8 py-3 bg-gradient-to-r from-violet-50/70 via-white to-fuchsia-50/50 dark:from-violet-500/[0.08] dark:via-zinc-950 dark:to-fuchsia-500/[0.06] border-b border-zinc-200 dark:border-white/5 sticky top-0 z-30">
+          <div className="hidden lg:flex shrink-0 items-center gap-6 px-8 py-3 bg-gradient-to-r from-violet-100/50 via-white/60 to-fuchsia-100/40 dark:from-violet-500/10 dark:via-zinc-950/50 dark:to-fuchsia-500/10 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 dark:border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sticky top-0 z-30">
             <h1 className="text-zinc-900 dark:text-white font-bold text-lg font-display shrink-0 truncate max-w-[240px]">{pageTitle}</h1>
             <div className="flex-1 flex justify-center">
               <GlobalSearch />
