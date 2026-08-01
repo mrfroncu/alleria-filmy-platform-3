@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
-import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Settings, Cast, Airplay } from 'lucide-react';
+import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Settings, Cast, Airplay, PictureInPicture2 } from 'lucide-react';
 
 /*
  * SecurePlayer — encrypted HLS player with DRM protections
@@ -37,6 +37,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
   const [showQuality, setShowQuality] = useState(false);
   const [captureDetected, setCaptureDetected] = useState(false);
   const [buffered, setBuffered] = useState(0);
+  const [pipActive, setPipActive] = useState(false);
   const controlsTimer = useRef(null);
 
   // AirPlay (Safari/WebKit) state
@@ -385,12 +386,16 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
         setBuffered((end / video.duration) * 100);
       }
     };
+    const onEnterPiP = () => setPipActive(true);
+    const onLeavePiP = () => setPipActive(false);
 
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
     video.addEventListener('timeupdate', onTime);
     video.addEventListener('loadedmetadata', onDur);
     video.addEventListener('progress', onProgress);
+    video.addEventListener('enterpictureinpicture', onEnterPiP);
+    video.addEventListener('leavepictureinpicture', onLeavePiP);
 
     return () => {
       video.removeEventListener('play', onPlay);
@@ -398,6 +403,8 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
       video.removeEventListener('timeupdate', onTime);
       video.removeEventListener('loadedmetadata', onDur);
       video.removeEventListener('progress', onProgress);
+      video.removeEventListener('enterpictureinpicture', onEnterPiP);
+      video.removeEventListener('leavepictureinpicture', onLeavePiP);
     };
   }, []);
 
@@ -533,6 +540,20 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
     }
   };
 
+  const togglePiP = async () => {
+    const v = videoRef.current;
+    if (!v) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else if (v.requestPictureInPicture) {
+        await v.requestPictureInPicture();
+      }
+    } catch (e) {
+      // PiP request rejected/unsupported — ignore
+    }
+  };
+
   const formatTime = (s) => {
     if (!s || isNaN(s)) return '0:00';
     const m = Math.floor(s / 60);
@@ -581,7 +602,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
         x5-playsinline=""
         onClick={togglePlay}
         controlsList="nodownload noremoteplayback"
-        disablePictureInPicture
+        disablePictureInPicture={drmEnhanced}
         style={{ objectFit: 'contain' }}
       />
 
@@ -752,6 +773,13 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* Picture-in-Picture — blocked for DRM-enhanced content as part of anti-capture protections */}
+              {!drmEnhanced && !casting && document.pictureInPictureEnabled && (
+                <button onClick={togglePiP} className={`p-1.5 transition-colors ${pipActive ? 'text-violet-400' : 'text-white hover:text-violet-400'}`} title="Obraz w obrazie">
+                  <PictureInPicture2 className="w-5 h-5" />
+                </button>
               )}
 
               <button onClick={toggleFullscreen} className="p-1.5 text-white hover:text-violet-400 transition-colors">
