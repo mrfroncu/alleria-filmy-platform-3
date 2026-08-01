@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
-import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Settings } from 'lucide-react';
+import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Settings, Cast, Airplay } from 'lucide-react';
 
 /*
  * SecurePlayer — encrypted HLS player with DRM protections
@@ -16,6 +16,7 @@ import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Setting
  */
 
 const HLS_CDN = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';
+const CAST_SDK_URL = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
 
 export default function SecurePlayer({ streamVideoId, drmEnhanced, title, controlRef, onTimeUpdate, onPlay, onPause, onSeek }) {
   const { user } = useAuth();
@@ -38,6 +39,24 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
   const [buffered, setBuffered] = useState(0);
   const controlsTimer = useRef(null);
 
+  // AirPlay (Safari/WebKit) state
+  const [airplayAvailable, setAirplayAvailable] = useState(false);
+  const [airplayActive, setAirplayActive] = useState(false);
+
+  // Chromecast state
+  const [castAvailable, setCastAvailable] = useState(false);
+  const [casting, setCasting] = useState(false);
+  const [castDeviceName, setCastDeviceName] = useState('');
+  const [castBusy, setCastBusy] = useState(false);
+  const castContextRef = useRef(null);
+  const castPlayerRef = useRef(null);
+  const castControllerRef = useRef(null);
+  const wasPlayingBeforeCastRef = useRef(false);
+  const castCleanupRef = useRef(null);
+  // Always-fresh loader for the cast session — avoids stale closures inside the
+  // SDK's event listeners, which are registered once when the SDK finishes loading.
+  const loadCastMediaRef = useRef(() => {});
+
   // Load hls.js dynamically
   useEffect(() => {
     if (window.Hls) return;
@@ -47,6 +66,152 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
     document.head.appendChild(script);
     return () => {};
   }, []);
+
+  // AirPlay availability — Safari/WebKit only. The target picker itself
+  // (webkitShowPlaybackTargetPicker) needs no setup; we just track whether a
+  // receiver is reachable so the button only shows up when it can do something.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !window.WebKitPlaybackTargetAvailabilityEvent) return;
+    const onAvailability = (e) => setAirplayAvailable(e.availability === 'available');
+    const onTargetChange = () => setAirplayActive(!!video.webkitCurrentPlaybackTargetIsWireless);
+    video.addEventListener('webkitplaybacktargetavailabilitychanged', onAvailability);
+    video.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', onTargetChange);
+    return () => {
+      video.removeEventListener('webkitplaybacktargetavailabilitychanged', onAvailability);
+      video.removeEventListener('webkitcurrentplaybacktargetiswirelesschanged', onTargetChange);
+    };
+  }, []);
+
+  // Chromecast — load the Cast Sender SDK once and wire a RemotePlayer that mirrors
+  // the receiver's state back into this component's own play/pause/seek/volume UI.
+  useEffect(() => {
+    let cancelled = false;
+
+    const setupCast = () => {
+      if (cancelled || !window.cast?.framework || !window.chrome?.cast) return;
+
+      const ctx = window.cast.framework.CastContext.getInstance();
+      ctx.setOptions({
+        receiverApplicationId: window.chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+        autoJoinPolicy: window.chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+      });
+      castContextRef.current = ctx;
+
+      const remotePlayer = new window.cast.framework.RemotePlayer();
+      const remoteController = new window.cast.framework.RemotePlayerController(remotePlayer);
+      castPlayerRef.current = remotePlayer;
+      castControllerRef.current = remoteController;
+
+      const Evt = window.cast.framework.RemotePlayerEventType;
+
+      const updateCastState = () => {
+        setCastAvailable(ctx.getCastState() !== window.cast.framework.CastState.NO_DEVICES_AVAILABLE);
+      };
+      updateCastState();
+      ctx.addEventListener(window.cast.framework.CastContextEventType.CAST_STATE_CHANGED, updateCastState);
+
+      const onConnectedChanged = () => {
+        const connected = remotePlayer.isConnected;
+        setCasting(connected);
+        if (connected) {
+          const v = videoRef.current;
+          wasPlayingBeforeCastRef.current = !!(v && !v.paused);
+          if (v) v.pause();
+          const session = ctx.getCurrentSession();
+          setCastDeviceName(session?.getCastDevice()?.friendlyName || '');
+          loadCastMediaRef.current();
+        } else {
+          setCastDeviceName('');
+          const v = videoRef.current;
+          if (v) {
+            if (remotePlayer.currentTime) v.currentTime = remotePlayer.currentTime;
+            if (wasPlayingBeforeCastRef.current) v.play().catch(() => {});
+          }
+        }
+      };
+      const onPausedChanged = () => { if (remotePlayer.isConnected) setPlaying(!remotePlayer.isPaused); };
+      const onTimeChanged = () => { if (remotePlayer.isConnected) setCurrentTime(remotePlayer.currentTime || 0); };
+      const onDurationChanged = () => { if (remotePlayer.isConnected) setDuration(remotePlayer.duration || 0); };
+      const onVolumeChanged = () => { if (remotePlayer.isConnected) setVolume(remotePlayer.volumeLevel ?? 1); };
+      const onMutedChanged = () => { if (remotePlayer.isConnected) setMuted(!!remotePlayer.isMuted); };
+      const onPlayerStateChanged = () => { if (remotePlayer.isConnected) setCastBusy(remotePlayer.playerState === 'BUFFERING'); };
+
+      remoteController.addEventListener(Evt.IS_CONNECTED_CHANGED, onConnectedChanged);
+      remoteController.addEventListener(Evt.IS_PAUSED_CHANGED, onPausedChanged);
+      remoteController.addEventListener(Evt.CURRENT_TIME_CHANGED, onTimeChanged);
+      remoteController.addEventListener(Evt.DURATION_CHANGED, onDurationChanged);
+      remoteController.addEventListener(Evt.VOLUME_LEVEL_CHANGED, onVolumeChanged);
+      remoteController.addEventListener(Evt.IS_MUTED_CHANGED, onMutedChanged);
+      remoteController.addEventListener(Evt.PLAYER_STATE_CHANGED, onPlayerStateChanged);
+
+      // A session from a previous video/page might already be connected — IS_CONNECTED_CHANGED
+      // only fires on transitions, so sync explicitly to pick up an in-progress cast session
+      // (e.g. navigating to the next episode while still casting) and load this video onto it.
+      if (remotePlayer.isConnected) onConnectedChanged();
+
+      castCleanupRef.current = () => {
+        ctx.removeEventListener(window.cast.framework.CastContextEventType.CAST_STATE_CHANGED, updateCastState);
+        remoteController.removeEventListener(Evt.IS_CONNECTED_CHANGED, onConnectedChanged);
+        remoteController.removeEventListener(Evt.IS_PAUSED_CHANGED, onPausedChanged);
+        remoteController.removeEventListener(Evt.CURRENT_TIME_CHANGED, onTimeChanged);
+        remoteController.removeEventListener(Evt.DURATION_CHANGED, onDurationChanged);
+        remoteController.removeEventListener(Evt.VOLUME_LEVEL_CHANGED, onVolumeChanged);
+        remoteController.removeEventListener(Evt.IS_MUTED_CHANGED, onMutedChanged);
+        remoteController.removeEventListener(Evt.PLAYER_STATE_CHANGED, onPlayerStateChanged);
+      };
+    };
+
+    if (window.cast?.framework) {
+      setupCast();
+    } else {
+      window['__onGCastApiAvailable'] = (isAvailable) => { if (isAvailable) setupCast(); };
+      if (!document.querySelector('script[data-cast-sdk]')) {
+        const script = document.createElement('script');
+        script.src = CAST_SDK_URL;
+        script.async = true;
+        script.setAttribute('data-cast-sdk', '1');
+        document.head.appendChild(script);
+      }
+    }
+
+    return () => {
+      cancelled = true;
+      if (castCleanupRef.current) { castCleanupRef.current(); castCleanupRef.current = null; }
+    };
+  }, []);
+
+  // Keep the cast media loader current — it needs the latest token/user/title, but
+  // the SDK event listeners above are registered once, so they call through this ref.
+  useEffect(() => {
+    loadCastMediaRef.current = async () => {
+      const session = castContextRef.current?.getCurrentSession();
+      if (!session || !streamVideoId || !token) return;
+      setCastBusy(true);
+      try {
+        const uid = String(user?.id || '');
+        const { castToken, expires } = await api.streamCastToken(streamVideoId);
+        const manifestUrl = `${window.location.origin}/stream/media/${streamVideoId}/master.m3u8`
+          + `?t=${encodeURIComponent(token)}&uid=${encodeURIComponent(uid)}`
+          + `&ct=${encodeURIComponent(castToken)}&cte=${expires}`;
+
+        const mediaInfo = new window.chrome.cast.media.MediaInfo(manifestUrl, 'application/x-mpegURL');
+        mediaInfo.streamType = window.chrome.cast.media.StreamType.BUFFERED;
+        mediaInfo.metadata = new window.chrome.cast.media.GenericMediaMetadata();
+        mediaInfo.metadata.title = title || 'Alleria';
+
+        const request = new window.chrome.cast.media.LoadRequest(mediaInfo);
+        request.currentTime = videoRef.current?.currentTime || 0;
+        request.autoplay = true;
+
+        await session.loadMedia(request);
+      } catch (err) {
+        console.error('[SecurePlayer] Nie udało się przesłać strumienia na urządzenie:', err);
+      } finally {
+        setCastBusy(false);
+      }
+    };
+  }, [streamVideoId, token, user, title]);
 
   // Get playback token
   useEffect(() => {
@@ -236,18 +401,42 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
     };
   }, []);
 
-  // Expose external control methods for Watch Party sync
+  // Expose external control methods for Watch Party sync — routed to the cast
+  // receiver while casting so party sync keeps working on the TV too.
   useEffect(() => {
     if (!controlRef) return;
     controlRef.current = {
-      seek: (pos) => { if (videoRef.current) videoRef.current.currentTime = pos; },
-      play: () => { if (videoRef.current) videoRef.current.play().catch(() => {}); },
-      pause: () => { if (videoRef.current) videoRef.current.pause(); },
-      getCurrentTime: () => videoRef.current?.currentTime ?? 0,
+      seek: (pos) => {
+        if (casting && castControllerRef.current) {
+          castPlayerRef.current.currentTime = pos;
+          castControllerRef.current.seek();
+          return;
+        }
+        if (videoRef.current) videoRef.current.currentTime = pos;
+      },
+      play: () => {
+        if (casting && castControllerRef.current) {
+          if (castPlayerRef.current.isPaused) castControllerRef.current.playOrPause();
+          return;
+        }
+        if (videoRef.current) videoRef.current.play().catch(() => {});
+      },
+      pause: () => {
+        if (casting && castControllerRef.current) {
+          if (!castPlayerRef.current.isPaused) castControllerRef.current.playOrPause();
+          return;
+        }
+        if (videoRef.current) videoRef.current.pause();
+      },
+      getCurrentTime: () => (casting && castPlayerRef.current ? castPlayerRef.current.currentTime : (videoRef.current?.currentTime ?? 0)),
     };
   });
 
   const togglePlay = () => {
+    if (casting && castControllerRef.current) {
+      castControllerRef.current.playOrPause();
+      return;
+    }
     const v = videoRef.current;
     if (!v) return;
     if (v.paused) {
@@ -260,8 +449,17 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
   };
 
   const changeVolume = (e) => {
-    const v = videoRef.current;
     const val = parseFloat(e.target.value);
+    if (casting && castControllerRef.current) {
+      castPlayerRef.current.volumeLevel = val;
+      castControllerRef.current.setVolumeLevel();
+      castPlayerRef.current.isMuted = val === 0;
+      castControllerRef.current.muteOrUnmute();
+      setVolume(val);
+      setMuted(val === 0);
+      return;
+    }
+    const v = videoRef.current;
     if (!v) return;
     v.volume = val;
     v.muted = val === 0;
@@ -270,13 +468,38 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
   };
 
   const seek = (e) => {
-    const v = videoRef.current;
-    if (!v || !duration) return;
+    if (!duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
     const newTime = pct * duration;
+    if (casting && castControllerRef.current) {
+      castPlayerRef.current.currentTime = newTime;
+      castControllerRef.current.seek();
+      setCurrentTime(newTime);
+      if (onSeek) onSeek(newTime);
+      return;
+    }
+    const v = videoRef.current;
+    if (!v) return;
     v.currentTime = newTime;
     if (onSeek) onSeek(newTime);
+  };
+
+  const toggleCast = () => {
+    const ctx = castContextRef.current;
+    if (!ctx) return;
+    if (casting) {
+      ctx.endCurrentSession(true);
+    } else {
+      ctx.requestSession().catch((err) => {
+        if (err !== 'cancel') console.error('[SecurePlayer] Nie udało się otworzyć okna Chromecast:', err);
+      });
+    }
+  };
+
+  const startAirPlay = () => {
+    const v = videoRef.current;
+    if (v && v.webkitShowPlaybackTargetPicker) v.webkitShowPlaybackTargetPicker();
   };
 
   const changeQuality = (idx) => {
@@ -399,6 +622,22 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
         </div>
       )}
 
+      {/* Casting overlay — playback continues on the receiver device, controls below stay live */}
+      {casting && (
+        <div className="absolute inset-0 bg-black z-20 flex items-center justify-center">
+          <div className="text-center p-8">
+            <Cast className="w-14 h-14 text-violet-400 mx-auto mb-4" />
+            <p className="text-white text-lg font-bold mb-1">
+              {castBusy ? 'Łączenie z odbiornikiem...' : 'Przesyłanie na TV'}
+            </p>
+            {castDeviceName && <p className="text-zinc-400 text-sm mb-6">{castDeviceName}</p>}
+            <button onClick={toggleCast} className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-sm transition-colors">
+              Rozłącz
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* DRM badge */}
       {drmEnhanced && (
         <div className="absolute top-4 left-4 z-20 flex items-center gap-1.5 px-3 py-1.5 bg-black/60 backdrop-blur rounded-xl">
@@ -436,6 +675,12 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
               <div className="flex items-center gap-1 group/vol">
                 <button
                   onClick={() => {
+                    if (casting && castControllerRef.current) {
+                      castPlayerRef.current.isMuted = !muted;
+                      castControllerRef.current.muteOrUnmute();
+                      setMuted(!muted);
+                      return;
+                    }
                     const v = videoRef.current;
                     if (!v) return;
                     if (muted) {
@@ -471,8 +716,22 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Quality selector */}
-              {qualities.length > 1 && (
+              {/* AirPlay */}
+              {airplayAvailable && (
+                <button onClick={startAirPlay} className={`p-1.5 transition-colors ${airplayActive ? 'text-violet-400' : 'text-white hover:text-violet-400'}`} title="AirPlay">
+                  <Airplay className="w-5 h-5" />
+                </button>
+              )}
+
+              {/* Chromecast */}
+              {castAvailable && (
+                <button onClick={toggleCast} className={`p-1.5 transition-colors ${casting ? 'text-violet-400' : 'text-white hover:text-violet-400'}`} title="Chromecast">
+                  <Cast className="w-5 h-5" />
+                </button>
+              )}
+
+              {/* Quality selector — not applicable while casting, the receiver picks its own ABR level */}
+              {qualities.length > 1 && !casting && (
                 <div className="relative">
                   <button onClick={() => setShowQuality(!showQuality)} className="p-1.5 text-white hover:text-violet-400 transition-colors flex items-center gap-1">
                     <Settings className="w-4 h-4" />
