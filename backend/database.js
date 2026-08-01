@@ -273,6 +273,11 @@ function initDB() {
     UNIQUE(category_id, rank_id, access_type)
   )`);
 
+  // Prevent two accounts from ever sharing a TeamSpeak identity (guards the account-linking
+  // merge flow — a duplicate here would mean upsertTsUser's legacy ts_ip fallback already
+  // let two rows collide before this index existed).
+  try { db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ts_uid ON users(ts_uid) WHERE ts_uid IS NOT NULL`); } catch (e) {}
+
   return db;
 }
 

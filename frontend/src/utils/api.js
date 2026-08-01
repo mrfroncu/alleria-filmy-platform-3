@@ -26,11 +26,24 @@ export const api = {
   // Auth
   getMe: () => request('/auth/me'),
   logout: () => request('/auth/logout', { method: 'POST' }),
-  loginTeamspeak: () => request('/auth/teamspeak', { method: 'POST' }),
-  loginTeamspeak3: () => request('/auth/teamspeak3', { method: 'POST' }),
+  // opts: { linkMode: true } — attach the matched TS identity to the logged-in account
+  // instead of logging in as a (possibly different) TS-origin account.
+  loginTeamspeak: (opts) => request('/auth/teamspeak', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(opts || {}),
+  }),
+  loginTeamspeak3: (opts) => request('/auth/teamspeak3', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(opts || {}),
+  }),
   verifyTeamspeak: (challengeId, code) => request('/auth/teamspeak/verify', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challengeId, code }),
   }),
+
+  // TS3 multi-candidate (several people sharing one IP) — user confirms, bot messages
+  // everyone on TS3 chat with the same code, frontend polls for who replied.
+  confirmTeamspeak3Multi: (consentToken) => request('/auth/teamspeak3/multi/confirm', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consentToken }),
+  }),
+  pollTeamspeak3Multi: (challengeId) => request(`/auth/teamspeak3/multi/status/${challengeId}`),
   verifyTeamspeak3: (challengeId, code) => request('/auth/teamspeak3/verify', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challengeId, code }),
   }),
@@ -165,6 +178,11 @@ export const api = {
     body: JSON.stringify(data),
   }),
   refreshDiscordAvatar: () => request('/profile/refresh-discord', { method: 'POST' }),
+
+  // Account linking / merge
+  getPendingMerge: (mergeId) => request(`/profile/merge/${mergeId}`),
+  confirmMerge: (mergeId) => request(`/profile/merge/${mergeId}/confirm`, { method: 'POST' }),
+  cancelMerge: (mergeId) => request(`/profile/merge/${mergeId}`, { method: 'DELETE' }),
 
   // Watch Party management (admin)
   getActiveWatchParties: () => request('/admin/watch-parties'),

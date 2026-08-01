@@ -135,6 +135,25 @@ function getParty(code) {
   return parties.get(code) || null;
 }
 
+// Called after an account merge (see server.js mergeUsers) so any live watch-party
+// membership/host status under the merged-away id keeps working under the surviving id.
+// Only patches server-side state — connected clients reconcile naturally on their next
+// sync_request/state broadcast, which is acceptable since merges are rare/administrative.
+function reassignUserIdInParties(oldId, newId) {
+  for (const party of parties.values()) {
+    if (party.hostId === oldId) party.hostId = newId;
+    const member = party.members.get(oldId);
+    if (!member) continue;
+    party.members.delete(oldId);
+    if (!party.members.has(newId)) {
+      party.members.set(newId, { ...member, user: { ...member.user, id: newId } });
+    } else {
+      // newId is already live in this party under its own connection — don't clobber it
+      try { member.ws.close(); } catch (_) {}
+    }
+  }
+}
+
 function deleteParty(code, byUserId, byUserName) {
   const party = parties.get(code);
   if (!party) return;
@@ -400,4 +419,4 @@ function setupWatchPartyWS(server, db) {
   return wss;
 }
 
-module.exports = { createParty, getParty, deleteParty, listParties, createWsToken, setupWatchPartyWS };
+module.exports = { createParty, getParty, deleteParty, listParties, createWsToken, setupWatchPartyWS, reassignUserIdInParties };

@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw } from 'lucide-react';
+import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
 import { useSettings } from '../contexts/SettingsContext';
+import TsChallengeModal from '../components/TsChallengeModal';
+import Ts3MultiCandidateFlow from '../components/Ts3MultiCandidateFlow';
 
 export default function ProfilePage() {
   const { config: siteConfig } = useSettings();
@@ -19,7 +21,38 @@ export default function ProfilePage() {
   const [refreshMsg, setRefreshMsg] = useState(null);
   const [config, setConfig] = useState({ limitDisplayName: 50, limitBio: 1000 });
 
+  // Account linking
+  const [linkMsg, setLinkMsg] = useState(null); // { type: 'success'|'error', text }
+  const [linkingTs, setLinkingTs] = useState(null); // 'teamspeak' | 'teamspeak3' | null
+  const [tsLinkChallenge, setTsLinkChallenge] = useState(null); // { challengeId, method, nickname, version }
+  const [tsLinkCode, setTsLinkCode] = useState('');
+  const [tsLinkError, setTsLinkError] = useState(null);
+  const [tsLinkLoading, setTsLinkLoading] = useState(false);
+  const [pendingMerge, setPendingMerge] = useState(null); // { mergeId, secondaryLabel, stats, identities }
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeError, setMergeError] = useState(null);
+  const [ts3LinkConsent, setTs3LinkConsent] = useState(null); // { consentToken, count }
+
   useEffect(() => { api.getConfig().then(c => setConfig(prev => ({ ...prev, ...c }))).catch(() => {}); }, []);
+
+  // Discord link redirect lands back here with ?linked=discord / ?error=... / ?mergeId=...
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const linked = params.get('linked');
+    const err = params.get('error');
+    const mergeId = params.get('mergeId');
+    if (linked === 'discord') setLinkMsg({ type: 'success', text: 'Połączono konto Discord.' });
+    else if (err === 'already_linked_discord') setLinkMsg({ type: 'error', text: 'To konto ma już połączony inny Discord.' });
+    else if (err === 'link_failed') setLinkMsg({ type: 'error', text: 'Nie udało się połączyć konta. Spróbuj ponownie.' });
+    if (mergeId) {
+      api.getPendingMerge(mergeId).then(data => setPendingMerge({ mergeId, ...data })).catch(() => {
+        setLinkMsg({ type: 'error', text: 'Prośba o połączenie kont wygasła. Spróbuj ponownie.' });
+      });
+    }
+    if (linked || err || mergeId) {
+      window.history.replaceState({}, '', '/profile');
+    }
+  }, []);
 
   const load = () => {
     setLoading(true);
@@ -72,6 +105,95 @@ export default function ProfilePage() {
     setTimeout(() => setRefreshMsg(null), 4000);
   };
 
+  const handleLinkDiscord = () => {
+    window.location.href = '/auth/discord?mode=link&returnTo=/profile';
+  };
+
+  const handleLinkTs = async (method) => {
+    setLinkingTs(method);
+    setLinkMsg(null);
+    try {
+      const loginFn = method === 'teamspeak3' ? api.loginTeamspeak3 : api.loginTeamspeak;
+      const res = await loginFn({ linkMode: true });
+      if (method === 'teamspeak3' && res?.multipleCandidates) {
+        setTs3LinkConsent({ consentToken: res.consentToken, count: res.count });
+      } else if (res?.challenge) {
+        setTsLinkChallenge({
+          challengeId: res.challengeId, method,
+          nickname: res.nickname, version: method === 'teamspeak3' ? 'TeamSpeak 3' : 'TeamSpeak 6',
+          multipleCandidates: res.multipleCandidates, count: res.count,
+        });
+        setTsLinkCode('');
+        setTsLinkError(null);
+      }
+    } catch (err) {
+      setLinkMsg({ type: 'error', text: err.message || 'Nie udało się połączyć konta.' });
+    }
+    setLinkingTs(null);
+  };
+
+  const cancelTs3LinkConsent = () => setTs3LinkConsent(null);
+
+  const handleTs3LinkMultiResolved = (res) => {
+    setTs3LinkConsent(null);
+    if (res?.mergeNeeded) {
+      setPendingMerge({ mergeId: res.mergeId, secondaryLabel: res.secondaryLabel, stats: res.stats });
+    } else {
+      setLinkMsg({ type: 'success', text: 'Połączono konto TeamSpeak.' });
+      load();
+    }
+  };
+
+  const cancelTsLinkChallenge = () => {
+    setTsLinkChallenge(null);
+    setTsLinkCode('');
+    setTsLinkError(null);
+  };
+
+  const handleTsLinkSubmit = async () => {
+    if (!tsLinkChallenge || tsLinkCode.trim().length < 6 || tsLinkLoading) return;
+    setTsLinkLoading(true);
+    setTsLinkError(null);
+    try {
+      const verifyFn = tsLinkChallenge.method === 'teamspeak3' ? api.verifyTeamspeak3 : api.verifyTeamspeak;
+      const res = await verifyFn(tsLinkChallenge.challengeId, tsLinkCode.trim());
+      setTsLinkChallenge(null);
+      setTsLinkCode('');
+      if (res?.mergeNeeded) {
+        setPendingMerge({ mergeId: res.mergeId, secondaryLabel: res.secondaryLabel, stats: res.stats });
+      } else {
+        setLinkMsg({ type: 'success', text: 'Połączono konto TeamSpeak.' });
+        load();
+      }
+    } catch (err) {
+      setTsLinkError(err.message || 'Nieprawidłowy kod.');
+    }
+    setTsLinkLoading(false);
+  };
+
+  const handleConfirmMerge = async () => {
+    if (!pendingMerge || mergeBusy) return;
+    setMergeBusy(true);
+    setMergeError(null);
+    try {
+      await api.confirmMerge(pendingMerge.mergeId);
+      setPendingMerge(null);
+      setLinkMsg({ type: 'success', text: 'Konta zostały połączone.' });
+      load();
+    } catch (err) {
+      setMergeError(err.message || 'Nie udało się połączyć kont.');
+    }
+    setMergeBusy(false);
+  };
+
+  const handleCancelMerge = async () => {
+    if (!pendingMerge) return;
+    const mergeId = pendingMerge.mergeId;
+    setPendingMerge(null);
+    setMergeError(null);
+    try { await api.cancelMerge(mergeId); } catch (_) {}
+  };
+
   if (loading) {
     return (
       <div className="p-6 sm:p-10 max-w-3xl mx-auto page-enter">
@@ -98,6 +220,17 @@ export default function ProfilePage() {
       {saved && (
         <div className="mb-6 p-4 rounded-2xl border bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-sm font-medium animate-slide-up flex items-center gap-2">
           <Check className="w-4 h-4" /> Profil zaktualizowany pomyślnie.
+        </div>
+      )}
+
+      {linkMsg && (
+        <div className={`mb-6 p-4 rounded-2xl border text-sm font-medium animate-slide-up flex items-center gap-2 ${
+          linkMsg.type === 'success'
+            ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+            : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-300'
+        }`}>
+          {linkMsg.type === 'success' ? <Check className="w-4 h-4 shrink-0" /> : <X className="w-4 h-4 shrink-0" />}
+          {linkMsg.text}
         </div>
       )}
 
@@ -152,8 +285,8 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Avatar source (Discord accounts only) */}
-      {profile.auth_method === 'discord' && (
+      {/* Avatar source (accounts with a linked Discord identity only) */}
+      {profile.has_discord && (
         <div className="card p-6 mb-6">
           <div className="flex items-start gap-4">
             <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl flex items-center justify-center shrink-0">
@@ -215,6 +348,62 @@ export default function ProfilePage() {
         </div>
       )}
 
+      {/* Connected accounts */}
+      <div className="card p-6 mb-6">
+        <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-1">Połączone konta</h3>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+          Połącz dodatkowe metody logowania, aby móc zalogować się na to samo konto na kilka sposobów.
+        </p>
+        <div className="space-y-2.5">
+          {/* Discord */}
+          <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-[#5865F2]/10 flex items-center justify-center shrink-0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#5865F2">
+                  <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.947 2.418-2.157 2.418z"/>
+                </svg>
+              </div>
+              <span className="text-sm font-medium text-zinc-900 dark:text-white">Discord</span>
+            </div>
+            {profile.has_discord ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Połączone
+              </span>
+            ) : (
+              <button onClick={handleLinkDiscord} className="btn-link-violet inline-flex items-center gap-1.5 text-xs font-bold">
+                <Link2 className="w-3.5 h-3.5" /> Połącz
+              </button>
+            )}
+          </div>
+
+          {/* TeamSpeak */}
+          <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                <Server className="w-4 h-4 text-zinc-500" />
+              </div>
+              <span className="text-sm font-medium text-zinc-900 dark:text-white">
+                TeamSpeak{profile.has_teamspeak ? ` (${profile.auth_method === 'teamspeak3' ? 'TS3' : 'TS6'})` : ''}
+              </span>
+            </div>
+            {profile.has_teamspeak ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Połączone
+              </span>
+            ) : (
+              <div className="flex items-center gap-3">
+                <button onClick={() => handleLinkTs('teamspeak3')} disabled={linkingTs !== null} className="btn-link-violet inline-flex items-center gap-1.5 text-xs font-bold disabled:opacity-50">
+                  <Link2 className="w-3.5 h-3.5" /> {linkingTs === 'teamspeak3' ? 'Łączenie…' : 'TS3'}
+                </button>
+                <button onClick={() => handleLinkTs('teamspeak')} disabled={linkingTs !== null} className="btn-link-violet inline-flex items-center gap-1.5 text-xs font-bold disabled:opacity-50">
+                  <Link2 className="w-3.5 h-3.5" /> {linkingTs === 'teamspeak' ? 'Łączenie…' : 'TS6'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Stats Grid */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="card p-5 text-center">
@@ -258,6 +447,64 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* TS account-linking challenge modal */}
+      <TsChallengeModal
+        challenge={tsLinkChallenge}
+        code={tsLinkCode}
+        onCodeChange={setTsLinkCode}
+        onSubmit={handleTsLinkSubmit}
+        onCancel={cancelTsLinkChallenge}
+        loading={tsLinkLoading}
+        error={tsLinkError}
+        multipleCandidates={tsLinkChallenge?.multipleCandidates}
+        count={tsLinkChallenge?.count}
+      />
+
+      {/* TS3 multi-candidate account-linking flow */}
+      <Ts3MultiCandidateFlow
+        consentToken={ts3LinkConsent?.consentToken}
+        count={ts3LinkConsent?.count}
+        onCancel={cancelTs3LinkConsent}
+        onResolved={handleTs3LinkMultiResolved}
+      />
+
+      {/* Merge confirmation — shown when the identity being linked already belongs to a
+          different, existing account with its own history */}
+      {pendingMerge && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+          <div className="relative w-full max-w-sm bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl border border-zinc-200 dark:border-white/10 p-7 animate-slide-up">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-2xl bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6 text-amber-500" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-zinc-900 dark:text-white">Połączyć konta?</h2>
+                <p className="text-xs text-zinc-500">{pendingMerge.secondaryLabel}</p>
+              </div>
+            </div>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+              To konto ma już historię: {pendingMerge.stats?.videoCount ?? 0} obejrzanych filmów, {pendingMerge.stats?.commentCount ?? 0} komentarzy,{' '}
+              {pendingMerge.stats?.favCount ?? 0} ulubionych. Cała ta historia zostanie przeniesiona na Twoje obecne konto, a drugie konto zostanie usunięte.
+            </p>
+            <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mb-4">Tej operacji nie można cofnąć.</p>
+            {mergeError && (
+              <div className="mb-3 p-2.5 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 text-xs flex items-start gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>{mergeError}</span>
+              </div>
+            )}
+            <div className="flex gap-2.5">
+              <button onClick={handleCancelMerge} disabled={mergeBusy} className="btn-sm-secondary flex-1">
+                Anuluj
+              </button>
+              <button onClick={handleConfirmMerge} disabled={mergeBusy} className="btn-sm-primary flex-1">
+                {mergeBusy ? 'Łączenie…' : 'Połącz konta'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
