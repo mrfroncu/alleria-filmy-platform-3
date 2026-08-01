@@ -10,7 +10,7 @@
 
 ---
 
-Uwierzytelnianie Discord/TeamSpeak 3/6, zarządzanie filmami, self-hosted streaming HLS z szyfrowaniem AES-128, kategorie z podkategoriami i własnym systemem rang, kontrola dostępu oparta na rolach, komentarze, planowane publikacje z powiadomieniami na Discordzie oraz Watch Party — synchroniczne wspólne oglądanie w czasie rzeczywistym.
+Uwierzytelnianie Discord/TeamSpeak 3/6, zarządzanie filmami, self-hosted streaming HLS, kategorie, subkategorie (3 poziomy) i system rang, kontrola dostępu oparta na rolach, komentarze, planowane publikacjem,powiadomienia, Watch Party.
 
 ## 📑 Spis treści
 
@@ -34,9 +34,9 @@ Uwierzytelnianie Discord/TeamSpeak 3/6, zarządzanie filmami, self-hosted stream
 
 ### 🔐 Uwierzytelnianie
 - **Discord OAuth2** — logowanie przez Discord, sprawdzanie ról, automatyczne przypisywanie uprawnień (member/admin/dev)
-- **TeamSpeak 6** — logowanie przez ServerQuery HTTP API (domyślny port 10080), dopasowanie po IP klienta, sprawdzanie grup serwera
-- **TeamSpeak 3** — logowanie przez ServerQuery po TCP (domyślny port 10011), ta sama logika dopasowania po IP i grupach co TS6, ale osobna implementacja protokołu
-- **Własny nick bota ServerQuery** — kod logowania wysyłany na TS3/TS6 przychodzi od skonfigurowanej nazwy (`TS_BOT_NICKNAME`, domyślnie „ALLERIA VIDEOS PLATFORM”), a nie od „serveradmin”
+- **TeamSpeak 6** — logowanie przez ServerQuery HTTP API, dopasowanie po IP klienta, sprawdzanie grup serwera
+- **TeamSpeak 3** — logowanie przez ServerQuery po TCP, ta sama logika dopasowania po IP i grupach co TS6
+- **Bot do uwierzytelniania ServerQuery** — kod logowania wysyłany na TS3/TS6 przychodzi od `TS_BOT_NICKNAME`
 - **Redirect po logowaniu** — niezalogowany użytkownik wchodzący na `/video/24` zostaje przekierowany na login, a po zalogowaniu wraca na `/video/24`
 
 ### 🔍 Smart wyszukiwanie
