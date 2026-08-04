@@ -542,8 +542,11 @@ async function discordCallbackHandler(req, res) {
 
     let userId;
     if (existing) {
+      // Never let this login downgrade a role earned via a different linked identity
+      // (e.g. admin/dev via a linked TS3/TS6 account) — see maxRole's comment.
+      const finalRole = maxRole(existing.role, role);
       db.prepare(`UPDATE users SET username = ?, display_name = ?, avatar = ?, role = ?, discord_roles = ?, discord_avatar_hash = ?, discord_guild_avatar_hash = ?, last_login = datetime('now') WHERE discord_id = ?`)
-        .run(discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, role, rolesJson, discordAvatarHash, discordGuildAvatarHash, discordUser.id);
+        .run(discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, finalRole, rolesJson, discordAvatarHash, discordGuildAvatarHash, discordUser.id);
       userId = existing.id;
     } else {
       const result = db.prepare('INSERT INTO users (discord_id, username, display_name, avatar, role, auth_method, discord_roles, discord_avatar_hash, discord_guild_avatar_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
@@ -659,6 +662,22 @@ function identityList(u) {
     u.ts3_uid ? 'teamspeak3' : null,
     u.ts6_uid ? 'teamspeak' : null,
   ].filter(Boolean);
+}
+
+// A linked account can log in via multiple identities (Discord + TS3/TS6), each of which
+// independently computes a role from its own source (Discord guild roles, TS server
+// groups) every time it logs in. Without this, whichever method logs in LAST wins and
+// blindly overwrites the account's role — so an admin-via-Discord account looks like a
+// plain member the moment they log in via TS3, and vice versa. Higher privilege should
+// carry over regardless of which linked method is used: the stored role only ever moves
+// up to what the current login computes, never down. TS3/TS6 can only ever compute
+// 'member'/'admin' (no dev group concept exists there), so 'dev' — once granted by an
+// actual live Discord role check — is naturally preserved and can never be granted by a
+// TS login; a later Discord login without the dev role also won't strip it here (role
+// demotion is an explicit admin action elsewhere, not a side effect of logging in).
+const ROLE_RANK = { member: 0, admin: 1, dev: 2 };
+function maxRole(a, b) {
+  return (ROLE_RANK[a] ?? 0) >= (ROLE_RANK[b] ?? 0) ? a : b;
 }
 
 // Destroys every live session belonging to userId (used after a merge deletes that user's
@@ -831,8 +850,12 @@ function upsertTsUser({ method, tsNickname, tsUid, cleanIp, role }) {
   const existing = db.prepare(`SELECT * FROM users WHERE ${uidCol} = ?`).get(tsUid);
   let userId;
   if (existing) {
+    // Never let this login downgrade a role earned via a different linked identity
+    // (e.g. admin/dev via a linked Discord account, or admin via the OTHER TS server) —
+    // see maxRole's comment.
+    const finalRole = maxRole(existing.role, role);
     db.prepare(`UPDATE users SET username=?, display_name=?, role=?, ${ipCol}=?, ${uidCol}=?, last_login=datetime('now') WHERE id=?`)
-      .run(tsNickname, tsNickname, role, cleanIp, tsUid, existing.id);
+      .run(tsNickname, tsNickname, finalRole, cleanIp, tsUid, existing.id);
     userId = existing.id;
   } else {
     const result = db.prepare(`INSERT INTO users (username, display_name, role, auth_method, ${ipCol}, ${uidCol}) VALUES (?, ?, ?, ?, ?, ?)`)
