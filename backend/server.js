@@ -1256,10 +1256,10 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
       await ts3.send(`clientupdate client_nickname=${ts3Escape(getTsBotNickname())}`);
     } catch (e) { console.log(`[TS3] clientupdate nickname failed: ${e.message}`); }
 
-    const clLines = await ts3.send('clientlist -uid -ip');
+    const clLines = await ts3.send('clientlist');
     const clients = clLines.length > 0 ? ts3ParseLine(clLines[0]) : [];
 
-    console.log(`[TS3] Got ${clients.length} clients, looking for IP ${cleanIp}`);
+    console.log(`[TS3] Got ${clients.length} clients, checking IP individually for each (like TS6) — looking for ${cleanIp}`);
 
     // Collect ALL clients connected from this IP — a shared IP (NAT, dorm/office network)
     // can have more than one legitimate TS3 client; disambiguate via a distinct challenge
@@ -1269,10 +1269,28 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
     // events — TS3 servers reject that unless the specific connection sending the code is
     // ALSO the one registered, which broke in practice with two connections in play. The
     // per-candidate-code approach below needs no persistent connection at all.)
-    const matches = clients.filter(c =>
-      c.client_type !== '1' &&
-      (c.connection_client_ip === cleanIp || c.connection_client_ip === clientIp)
-    );
+    //
+    // IP is checked via a per-client `clientinfo` call rather than trusting `clientlist`'s
+    // bulk `-ip` field — that field can be stale/empty for a client whose connection info
+    // the server hasn't refreshed yet, which silently dropped them from `matches` here and
+    // made multi-candidate detection miss real candidates (looked "random" which of two
+    // people on the same IP got messaged). `clientinfo` forces a fresh per-client read,
+    // exactly like the TS6 HTTP-query path already does for the same reason.
+    const matches = [];
+    for (const c of clients) {
+      if (c.client_type === '1') continue; // skip ServerQuery clients
+      try {
+        const ciLines = await ts3.send(`clientinfo clid=${c.clid}`);
+        if (ciLines.length === 0) continue;
+        const info = ts3ParseLine(ciLines[0])[0] || {};
+        const cIp = info.connection_client_ip || '';
+        if (cIp === cleanIp || cIp === clientIp) {
+          matches.push({ ...c, ...info });
+        }
+      } catch (e) {
+        console.log(`[TS3] Error getting clientinfo for clid ${c.clid}: ${e.message}`);
+      }
+    }
 
     if (matches.length === 0) {
       ts3.close(); ts3 = null;
