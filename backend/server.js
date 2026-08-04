@@ -942,8 +942,73 @@ function handleTsLinkCompletion(req, res, ch) {
   req.session.save(() => res.json({ success: true, linked: ch.method }));
 }
 
+// Checks a TS3 client's server groups by database id (persists across sessions — the
+// client doesn't need to be online right now) and returns 'admin'/'member', or null if
+// they hold neither required group. Opens its own short-lived connection.
+async function computeTs3Role(tsDbId) {
+  const tsHost = getTsSetting('ts3_host', process.env.TS3_HOST || '');
+  const tsPort = getTsSetting('ts3_port', process.env.TS3_PORT || '10011');
+  const tsUsername = getTsSetting('ts3_username', process.env.TS3_USERNAME || 'serveradmin');
+  const tsPassword = getTsSetting('ts3_password', process.env.TS3_PASSWORD || '');
+  const tsServerId = getTsSetting('ts3_server_id', process.env.TS3_SERVER_ID || '1');
+  let ts3 = null;
+  try {
+    ts3 = await connectTS3(tsHost, tsPort);
+    await ts3.send(`login ${tsUsername} ${tsPassword}`);
+    await ts3.send(`use sid=${tsServerId}`);
+    const sgLines = await ts3.send(`servergroupsbyclientid cldbid=${tsDbId}`);
+    const groups = sgLines.length > 0 ? ts3ParseLine(sgLines[0]).map(g => String(g.sgid)).filter(Boolean) : [];
+    const memberGroupId = getTsSetting('ts3_member_group_id', process.env.TS3_MEMBER_GROUP_ID || '');
+    const adminGroupId = getTsSetting('ts3_admin_group_id', process.env.TS3_ADMIN_GROUP_ID || '');
+    const hasMemberGroup = memberGroupId ? groups.includes(String(memberGroupId)) : true;
+    const hasAdminGroup = adminGroupId ? groups.includes(String(adminGroupId)) : false;
+    if (!hasMemberGroup && !hasAdminGroup) return null;
+    return hasAdminGroup ? 'admin' : 'member';
+  } finally {
+    if (ts3) { try { ts3.close(); } catch (_) {} }
+  }
+}
+
+// Same as computeTs3Role but over the TS6 HTTP ServerQuery API.
+async function computeTs6Role(tsDbId) {
+  const tsHost = getTsSetting('ts6_host', process.env.TS6_HOST || process.env.TS_SERVER_HOST || '');
+  const tsQueryPort = getTsSetting('ts6_port', process.env.TS6_QUERY_PORT || process.env.TS_API_PORT || '10080');
+  const tsUsername = getTsSetting('ts6_username', process.env.TS6_USERNAME || process.env.TS_USERNAME || 'serveradmin');
+  const tsPassword = getTsSetting('ts6_password', process.env.TS6_PASSWORD || process.env.TS_PASSWORD || '');
+  const tsApiKey = getTsSetting('ts6_api_key', process.env.TS6_API_KEY || process.env.TS_API_KEY || '');
+  const tsServerId = getTsSetting('ts6_server_id', process.env.TS6_SERVER_ID || process.env.TS_SERVER_ID || '1');
+  const tsBaseUrl = `http://${tsHost}:${tsQueryPort}`;
+  const headers = { 'Content-Type': 'application/json' };
+  if (tsUsername && tsPassword) headers['Authorization'] = 'Basic ' + Buffer.from(`${tsUsername}:${tsPassword}`).toString('base64');
+  if (tsApiKey) headers['x-api-key'] = tsApiKey;
+
+  let groups = [];
+  try {
+    const sgRes = await fetch(`${tsBaseUrl}/${tsServerId}/servergroupsbyclientid?cldbid=${tsDbId}`, { headers });
+    if (sgRes.ok) {
+      const sgData = await sgRes.json();
+      const sgList = sgData.body || sgData || [];
+      groups = (Array.isArray(sgList) ? sgList : [sgList]).map(g => String(g.sgid));
+    }
+  } catch (e) { console.log(`[TS6] Error getting groups: ${e.message}`); }
+
+  const memberGroupId = getTsSetting('ts6_member_group_id', process.env.TS6_MEMBER_GROUP_ID || process.env.TS_MEMBER_GROUP_ID || '');
+  const adminGroupId = getTsSetting('ts6_admin_group_id', process.env.TS6_ADMIN_GROUP_ID || process.env.TS_ADMIN_GROUP_ID || '');
+  const hasMemberGroup = memberGroupId ? groups.includes(String(memberGroupId)) : true;
+  const hasAdminGroup = adminGroupId ? groups.includes(String(adminGroupId)) : false;
+  if (!hasMemberGroup && !hasAdminGroup) return null;
+  return hasAdminGroup ? 'admin' : 'member';
+}
+
+// Verify handler shared by TS3/TS6 — checks the code, THEN checks the matched candidate's
+// server group. Group membership is deliberately checked here (post-code) rather than
+// before the code is sent: every candidate on a shared IP gets messaged regardless of
+// their group, so someone without the required rank still gets a code and a clear "you
+// don't have the required group" error once they try it — instead of being silently
+// skipped while a sibling on the same IP gets the only message (which looked like the
+// multi-candidate detection wasn't working at all).
 function handleTsVerify(method) {
-  return (req, res) => {
+  return async (req, res) => {
     const clientIp = req.ip || req.socket.remoteAddress;
     const { challengeId, code } = req.body || {};
     if (!challengeId || !code) return res.status(400).json({ error: 'Brak identyfikatora wyzwania lub kodu.' });
@@ -959,11 +1024,17 @@ function handleTsVerify(method) {
     }
     const ch = result.challenge;
     if (ch.method !== method) return res.status(400).json({ error: 'Niezgodny typ wyzwania.' });
-    if (ch.linkPrimaryUserId) return handleTsLinkCompletion(req, res, ch);
+
     try {
-      const user = upsertTsUser({ method, tsNickname: ch.tsNickname, tsUid: ch.tsUid, cleanIp: ch.cleanIp, role: ch.role });
+      const role = method === 'teamspeak3' ? await computeTs3Role(ch.tsDbId) : await computeTs6Role(ch.tsDbId);
+      if (!role) {
+        logLogin(null, ch.tsNickname, method, clientIp, 0, 'Missing group (checked after code verified)');
+        return res.status(403).json({ error: `Nie posiadasz wymaganej grupy na serwerze ${method === 'teamspeak3' ? 'TeamSpeak 3' : 'TeamSpeak'}.` });
+      }
+      if (ch.linkPrimaryUserId) return handleTsLinkCompletion(req, res, { ...ch, role });
+      const user = upsertTsUser({ method, tsNickname: ch.tsNickname, tsUid: ch.tsUid, cleanIp: ch.cleanIp, role });
       logLogin(user.id, ch.tsNickname, method, clientIp, 1, 'challenge OK');
-      console.log(`[${method === 'teamspeak3' ? 'TS3' : 'TS6'}] ✅ Login (challenge OK): "${ch.tsNickname}" (role: ${ch.role})`);
+      console.log(`[${method === 'teamspeak3' ? 'TS3' : 'TS6'}] ✅ Login (challenge OK): "${ch.tsNickname}" (role: ${role})`);
       completeTsSession(req, res, user, method);
     } catch (err) {
       console.error(`[${method}] verify error:`, err);
@@ -1067,53 +1138,27 @@ app.post('/api/auth/teamspeak', authLimiter, async (req, res) => {
 
     console.log(`[TS6] Found ${ipMatches.length} client(s) on IP ${cleanIp}`);
 
-    // Step 3: For each IP match, get server groups and compute its OWN role — different
-    // candidates can belong to different groups, so anyone without access is dropped here,
-    // before they'd ever be offered a code.
-    const memberGroupId = getTsSetting('ts6_member_group_id', process.env.TS6_MEMBER_GROUP_ID || process.env.TS_MEMBER_GROUP_ID || '');
-    const adminGroupId = getTsSetting('ts6_admin_group_id', process.env.TS6_ADMIN_GROUP_ID || process.env.TS_ADMIN_GROUP_ID || '');
-
-    const authorized = [];
-    for (const m of ipMatches) {
-      const tsNickname = m.client_nickname;
-      const tsUid = m.client_unique_identifier;
-      const tsDbId = m.client_database_id;
-      let groups = [];
-      try {
-        const sgRes = await fetch(`${tsBaseUrl}/${tsServerId}/servergroupsbyclientid?cldbid=${tsDbId}`, { headers });
-        if (sgRes.ok) {
-          const sgData = await sgRes.json();
-          const sgList = sgData.body || sgData || [];
-          groups = (Array.isArray(sgList) ? sgList : [sgList]).map(g => String(g.sgid));
-        }
-      } catch (e) {
-        console.log(`[TS6] Error getting groups for "${tsNickname}": ${e.message}`);
-      }
-      console.log(`[TS6] User "${tsNickname}" groups: [${groups.join(', ')}]`);
-      const hasMemberGroup = memberGroupId ? groups.includes(String(memberGroupId)) : true;
-      const hasAdminGroup = adminGroupId ? groups.includes(String(adminGroupId)) : false;
-      if (!hasMemberGroup && !hasAdminGroup) continue;
-      authorized.push({ clid: m.clid, tsNickname, tsUid, tsDbId, role: hasAdminGroup ? 'admin' : 'member' });
-    }
-
-    if (authorized.length === 0) {
-      logLogin(null, ipMatches[0]?.client_nickname || 'unknown', 'teamspeak', clientIp, 0, 'Missing group (no candidate authorized)');
-      return res.status(403).json({ error: 'Nie posiadasz wymaganej grupy na serwerze TeamSpeak.' });
-    }
-
-    // Step 4: Send each authorized candidate their own distinct code — whichever code the
-    // user types back on the site identifies exactly which of them is really logging in.
-    // Anyone the message fails to reach is dropped; they couldn't complete a code they
-    // never got.
+    // Step 3: Send EVERY IP match their own distinct code — group membership is
+    // deliberately NOT checked here. It's checked after the code is verified (see
+    // computeTs6Role/handleTsVerify), once we know exactly which specific person is
+    // logging in. Filtering by group before sending would silently skip messaging anyone
+    // without the required group, even though they're a real candidate on this IP — which
+    // looked like multi-candidate detection wasn't working when it was really just an
+    // unauthorized sibling never getting a message at all.
     const candidates = [];
-    for (const cand of authorized) {
+    for (const m of ipMatches) {
       const code = genChallengeCode();
-      const sent = await sendTs6Code(tsBaseUrl, tsServerId, headers, cand.clid, code);
-      if (sent) candidates.push({ ...cand, code });
+      const sent = await sendTs6Code(tsBaseUrl, tsServerId, headers, m.clid, code);
+      if (sent) {
+        candidates.push({
+          clid: m.clid, tsNickname: m.client_nickname, tsUid: m.client_unique_identifier,
+          tsDbId: m.client_database_id, code,
+        });
+      }
     }
 
     if (candidates.length === 0) {
-      logLogin(null, authorized[0].tsNickname, 'teamspeak', clientIp, 0, 'Nie udało się wysłać kodu');
+      logLogin(null, ipMatches[0]?.client_nickname || 'unknown', 'teamspeak', clientIp, 0, 'Nie udało się wysłać kodu');
       return res.status(502).json({ error: 'Nie udało się wysłać kodu na TeamSpeak. Spróbuj ponownie.' });
     }
 
@@ -1325,63 +1370,41 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
 
     console.log(`[TS3] Found ${matches.length} client(s) on IP ${cleanIp}`);
 
-    // For each match, check server groups and compute its OWN role — different candidates
-    // can belong to different groups, so anyone without access is dropped here, before
-    // they'd ever be offered a code. All done over the same already-open connection.
-    const memberGroupId = getTsSetting('ts3_member_group_id', process.env.TS3_MEMBER_GROUP_ID || '');
-    const adminGroupId = getTsSetting('ts3_admin_group_id', process.env.TS3_ADMIN_GROUP_ID || '');
-
-    const authorized = [];
-    for (const m of matches) {
-      const tsNickname = m.client_nickname;
-      const tsUid = m.client_unique_identifier;
-      const tsDbId = m.client_database_id;
-      let groups = [];
-      try {
-        const sgLines = await ts3.send(`servergroupsbyclientid cldbid=${tsDbId}`);
-        if (sgLines.length > 0) groups = ts3ParseLine(sgLines[0]).map(g => String(g.sgid)).filter(Boolean);
-      } catch (e) {
-        console.log(`[TS3] Error getting groups for "${tsNickname}": ${e.message}`);
-      }
-      console.log(`[TS3] User "${tsNickname}" groups: [${groups.join(', ')}]`);
-      const hasMemberGroup = memberGroupId ? groups.includes(String(memberGroupId)) : true;
-      const hasAdminGroup = adminGroupId ? groups.includes(String(adminGroupId)) : false;
-      if (!hasMemberGroup && !hasAdminGroup) continue;
-      authorized.push({ clid: m.clid, tsNickname, tsUid, tsDbId, role: hasAdminGroup ? 'admin' : 'member' });
-    }
-
-    if (authorized.length === 0) {
-      ts3.close(); ts3 = null;
-      logLogin(null, matches[0]?.client_nickname || 'unknown', 'teamspeak3', clientIp, 0, 'Missing group (no candidate authorized)');
-      return res.status(403).json({ error: 'Nie posiadasz wymaganej grupy na serwerze TeamSpeak 3.' });
-    }
-
-    // Send each authorized candidate their own distinct code over the still-open
-    // connection — whichever code the user types back on the site identifies exactly
-    // which of them is really logging in. Anyone the message fails to reach is dropped.
+    // Send EVERY match their own distinct code over the still-open connection — group
+    // membership is deliberately NOT checked here (see the equivalent comment in the TS6
+    // route above). It's checked after the code is verified (computeTs3Role/handleTsVerify),
+    // once we know exactly which specific person is logging in. Whichever code the user
+    // types back on the site identifies exactly which of them that is; anyone the message
+    // fails to reach is dropped, since they couldn't complete a code they never got.
     const delivery = getSetting('ts3_code_delivery', 'pm'); // 'pm' | 'poke' | 'both'
     const candidates = [];
-    for (const cand of authorized) {
+    for (const m of matches) {
+      const tsNickname = m.client_nickname;
       const code = genChallengeCode();
       let sent = false;
       if (delivery === 'pm' || delivery === 'both') {
         try {
-          await ts3.send(`sendtextmessage targetmode=1 target=${cand.clid} msg=${ts3Escape(challengeMessage(code))}`);
+          await ts3.send(`sendtextmessage targetmode=1 target=${m.clid} msg=${ts3Escape(challengeMessage(code))}`);
           sent = true;
-        } catch (e) { console.log(`[TS3] sendtextmessage to "${cand.tsNickname}" failed: ${e.message}`); }
+        } catch (e) { console.log(`[TS3] sendtextmessage to "${tsNickname}" failed: ${e.message}`); }
       }
       if (delivery === 'poke' || delivery === 'both') {
         try {
-          await ts3.send(`clientpoke clid=${cand.clid} msg=${ts3Escape('Kod logowania: [b]' + code + '[/b]')}`);
+          await ts3.send(`clientpoke clid=${m.clid} msg=${ts3Escape('Kod logowania: [b]' + code + '[/b]')}`);
           sent = true;
-        } catch (e) { console.log(`[TS3] clientpoke to "${cand.tsNickname}" failed: ${e.message}`); }
+        } catch (e) { console.log(`[TS3] clientpoke to "${tsNickname}" failed: ${e.message}`); }
       }
-      if (sent) candidates.push({ ...cand, code });
+      if (sent) {
+        candidates.push({
+          clid: m.clid, tsNickname, tsUid: m.client_unique_identifier,
+          tsDbId: m.client_database_id, code,
+        });
+      }
     }
     ts3.close(); ts3 = null;
 
     if (candidates.length === 0) {
-      logLogin(null, authorized[0].tsNickname, 'teamspeak3', clientIp, 0, 'Nie udało się wysłać kodu');
+      logLogin(null, matches[0]?.client_nickname || 'unknown', 'teamspeak3', clientIp, 0, 'Nie udało się wysłać kodu');
       return res.status(502).json({ error: 'Nie udało się wysłać kodu na TeamSpeak 3. Spróbuj ponownie.' });
     }
 
