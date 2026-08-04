@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
@@ -43,6 +43,9 @@ function loadYtApi() {
     }, 50);
   });
 }
+
+const DOUBLE_TAP_MS = 300;
+const EDGE_ZONE = 0.35;
 
 // YouTube player with progress tracking — React owns wrapper div only, YT owns inner element
 function YouTubeTrackingPlayer({ videoId, onTimeUpdate, controlRef }) {
@@ -119,6 +122,13 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, controlRef }) {
   const [buffered, setBuffered] = useState(0);
   const [showControls, setShowControls] = useState(true);
   const controlsTimer = useRef(null);
+
+  // Mobile double-tap-to-seek (edges of the video, YouTube-app-style)
+  const [skipFlash, setSkipFlash] = useState(null); // 'left' | 'right' | null
+  const lastTapRef = useRef({ time: 0, side: null });
+  const tapTimerRef = useRef(null);
+  const skipFlashTimerRef = useRef(null);
+  useEffect(() => () => { clearTimeout(tapTimerRef.current); clearTimeout(skipFlashTimerRef.current); }, []);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -226,6 +236,131 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, controlRef }) {
     else if (c.webkitRequestFullscreen) c.webkitRequestFullscreen();
   };
 
+  const skip = (seconds) => {
+    const p = playerRef.current;
+    if (!p) return;
+    const newTime = Math.min(Math.max(currentTime + seconds, 0), duration || Infinity);
+    p.seekTo(newTime, true);
+    setCurrentTime(newTime);
+  };
+
+  const adjustVolume = (delta) => {
+    const p = playerRef.current;
+    if (!p) return;
+    const newVol = Math.min(Math.max(volume + delta, 0), 1);
+    p.setVolume(newVol * 100);
+    if (newVol === 0) p.mute(); else p.unMute();
+    setVolume(newVol);
+    setMuted(newVol === 0);
+  };
+
+  const seekToPercent = (pct) => {
+    const p = playerRef.current;
+    if (!p || !duration) return;
+    const newTime = (pct / 100) * duration;
+    p.seekTo(newTime, true);
+    setCurrentTime(newTime);
+  };
+
+  const frameStep = (dir) => {
+    const p = playerRef.current;
+    if (!p) return;
+    if (playing) p.pauseVideo();
+    const newTime = Math.min(Math.max(currentTime + dir * (1 / 30), 0), duration || Infinity);
+    p.seekTo(newTime, true);
+    setCurrentTime(newTime);
+  };
+
+  const handlePlayerKeyDown = (e) => {
+    if (/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+      seekToPercent(parseInt(e.key, 10) * 10);
+      return;
+    }
+    switch (e.key) {
+      case ' ':
+      case 'Spacebar':
+      case 'k':
+      case 'K':
+        e.preventDefault();
+        togglePlay();
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        skip(-5);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        skip(5);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        adjustVolume(0.1);
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        adjustVolume(-0.1);
+        break;
+      case 'f':
+      case 'F':
+        e.preventDefault();
+        toggleFullscreen();
+        break;
+      case 'm':
+      case 'M':
+        e.preventDefault();
+        toggleMute();
+        break;
+      case ',':
+        e.preventDefault();
+        frameStep(-1);
+        break;
+      case '.':
+        e.preventDefault();
+        frameStep(1);
+        break;
+      default:
+        break;
+    }
+  };
+
+  // Mobile double-tap on the left/right edge of the video → skip ±10s (YouTube-app-style).
+  // A single tap is deferred briefly so it can be upgraded to a double-tap; taps in the
+  // middle third pass through untouched and toggle play/pause immediately.
+  const handleVideoTouchEnd = (e) => {
+    if (e.changedTouches.length !== 1) return;
+    const touch = e.changedTouches[0];
+    const rect = e.currentTarget.getBoundingClientRect();
+    const xPct = (touch.clientX - rect.left) / rect.width;
+
+    let side = null;
+    if (xPct < EDGE_ZONE) side = 'left';
+    else if (xPct > 1 - EDGE_ZONE) side = 'right';
+    if (!side) return;
+
+    const now = Date.now();
+    const last = lastTapRef.current;
+
+    if (last.side === side && now - last.time < DOUBLE_TAP_MS) {
+      e.preventDefault();
+      clearTimeout(tapTimerRef.current);
+      lastTapRef.current = { time: 0, side: null };
+      skip(side === 'left' ? -10 : 10);
+      setSkipFlash(side);
+      clearTimeout(skipFlashTimerRef.current);
+      skipFlashTimerRef.current = setTimeout(() => setSkipFlash(null), 500);
+    } else {
+      e.preventDefault();
+      lastTapRef.current = { time: now, side };
+      clearTimeout(tapTimerRef.current);
+      tapTimerRef.current = setTimeout(() => {
+        togglePlay();
+        containerRef.current?.focus();
+        lastTapRef.current = { time: 0, side: null };
+      }, DOUBLE_TAP_MS);
+    }
+  };
+
   const formatTime = (s) => {
     if (!s || isNaN(s)) return '0:00';
     const m = Math.floor(s / 60);
@@ -244,16 +379,32 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, controlRef }) {
   return (
     <div
       ref={containerRef}
-      className="relative aspect-video bg-black rounded-[32px] overflow-hidden group select-none"
+      tabIndex={0}
+      className="relative aspect-video bg-black rounded-[32px] overflow-hidden group select-none outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60"
       onMouseMove={handleMouseMove}
       onMouseLeave={() => playing && setShowControls(false)}
+      onKeyDown={handlePlayerKeyDown}
     >
       {/* YT iframe — pointer-events disabled so clicks/mousemove fall through to our own layers
           instead of being swallowed by the cross-origin iframe */}
       <div ref={wrapperRef} className="absolute inset-0 w-full h-full pointer-events-none" />
 
       {/* Click-to-toggle-play layer, below the control bar */}
-      <div className="absolute inset-0 z-10 cursor-pointer" onClick={togglePlay} />
+      <div
+        className="absolute inset-0 z-10 cursor-pointer"
+        onClick={() => { togglePlay(); containerRef.current?.focus(); }}
+        onTouchEnd={handleVideoTouchEnd}
+      />
+
+      {/* Mobile double-tap skip feedback */}
+      {skipFlash && (
+        <div className={`absolute inset-y-0 ${skipFlash === 'left' ? 'left-0' : 'right-0'} w-1/3 z-20 flex items-center justify-center pointer-events-none bg-white/5`}>
+          <div className="flex flex-col items-center gap-1 text-white animate-pulse">
+            {skipFlash === 'left' ? <RotateCcw className="w-8 h-8" /> : <RotateCw className="w-8 h-8" />}
+            <span className="text-xs font-bold">10s</span>
+          </div>
+        </div>
+      )}
 
       {!ready && (
         <div className="absolute inset-0 bg-black flex items-center justify-center z-30">
@@ -276,8 +427,16 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, controlRef }) {
 
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
+              <button onClick={() => skip(-10)} className="relative p-1.5 text-white hover:text-violet-400 transition-colors" title="Cofnij 10 sekund">
+                <RotateCcw className="w-5 h-5" />
+                <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold">10</span>
+              </button>
               <button onClick={togglePlay} className="p-1.5 text-white hover:text-violet-400 transition-colors">
                 {playing ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" fill="white" />}
+              </button>
+              <button onClick={() => skip(10)} className="relative p-1.5 text-white hover:text-violet-400 transition-colors" title="Przewiń 10 sekund">
+                <RotateCw className="w-5 h-5" />
+                <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold">10</span>
               </button>
               <div className="flex items-center gap-1 group/vol">
                 <button onClick={toggleMute} className="p-1.5 text-white hover:text-violet-400 transition-colors">
