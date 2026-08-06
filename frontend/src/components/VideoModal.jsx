@@ -254,6 +254,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
         xhr.timeout = 5 * 60 * 1000;
         xhr.open('POST', '/api/stream/upload/chunk');
         xhr.withCredentials = true;
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
         xhr.send(chunkForm);
       });
 
@@ -334,6 +335,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
             xhr.timeout = 5 * 60 * 1000; // 5 min per chunk
             xhr.open('POST', '/api/stream/upload/chunk');
             xhr.withCredentials = true;
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
             xhr.send(chunkForm);
           });
 
