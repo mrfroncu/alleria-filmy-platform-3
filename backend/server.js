@@ -1478,9 +1478,12 @@ app.post('/api/tos/accept', requireAuth, (req, res) => {
 app.post('/api/debug/tos', requireDev, (req, res) => {
   const content = String(req.body.content || '').trim();
   if (!content) return res.status(400).json({ error: 'Treść regulaminu nie może być pusta.' });
-  setSetting('tos_content', content);
-  setSetting('tos_updated_at', new Date().toISOString());
-  audit(req.session.user.id, 'edit', 'settings', null, 'tos_content updated');
+  const current = getSetting('tos_content', DEFAULT_TOS_MD);
+  if (content !== current) {
+    setSetting('tos_content', content);
+    setSetting('tos_updated_at', new Date().toISOString());
+    audit(req.session.user.id, 'edit', 'settings', null, 'tos_content updated');
+  }
   res.json({ content, updatedAt: getSetting('tos_updated_at', DEFAULT_TOS_UPDATED_AT) });
 });
 

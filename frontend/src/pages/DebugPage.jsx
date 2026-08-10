@@ -262,9 +262,15 @@ export default function DebugPage() {
   const saveTos = async () => {
     setTosSaving(true);
     try {
+      const previousUpdatedAt = tosUpdatedAt;
       const t = await api.updateTos(tosContent);
       setTosUpdatedAt(t.updatedAt);
-      setStatus({ type: 'success', msg: 'Regulamin zapisany. Użytkownicy, którzy zaakceptowali go wcześniej, zobaczą prośbę o ponowną akceptację.' });
+      setStatus({
+        type: 'success',
+        msg: t.updatedAt !== previousUpdatedAt
+          ? 'Regulamin zapisany. Użytkownicy, którzy zaakceptowali go wcześniej, zobaczą prośbę o ponowną akceptację.'
+          : 'Treść bez zmian — nic nie zaktualizowano, akceptacje pozostają ważne.',
+      });
     } catch (e) {
       setStatus({ type: 'error', msg: e.message });
     }
