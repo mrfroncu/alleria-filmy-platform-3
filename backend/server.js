@@ -1458,7 +1458,11 @@ app.get('/api/auth/me', (req, res) => {
   // Live DB lookup (not baked into the session at login) — so an admin editing the Regulamin
   // immediately re-gates everyone on their next page load, no fresh login required.
   const row = db.prepare('SELECT tos_accepted_at FROM users WHERE id = ?').get(req.session.user.id);
-  res.json({ ...req.session.user, tosAccepted: !tosNeedsAcceptance(row?.tos_accepted_at) });
+  res.json({
+    ...req.session.user,
+    tosAccepted: !tosNeedsAcceptance(row?.tos_accepted_at),
+    tosPreviouslyAccepted: !!row?.tos_accepted_at,
+  });
 });
 
 // Public — the Regulamin is a legal document meant to be readable pre-login too.
@@ -1470,7 +1474,11 @@ app.get('/api/tos', (req, res) => {
 });
 
 app.post('/api/tos/accept', requireAuth, (req, res) => {
-  db.prepare("UPDATE users SET tos_accepted_at = datetime('now') WHERE id = ?").run(req.session.user.id);
+  // Must be the same ISO string format JS produces (see tos_updated_at below) — SQLite's own
+  // datetime('now') uses a space separator ("2026-08-11 14:23:07"), which sorts BEFORE any
+  // ISO string at the same instant (' ' < 'T' in ASCII) and made tosNeedsAcceptance() always
+  // return true, regardless of actual order — an infinite re-accept loop.
+  db.prepare('UPDATE users SET tos_accepted_at = ? WHERE id = ?').run(new Date().toISOString(), req.session.user.id);
   audit(req.session.user.id, 'tos_accept', 'user', req.session.user.id, null);
   res.json({ success: true });
 });

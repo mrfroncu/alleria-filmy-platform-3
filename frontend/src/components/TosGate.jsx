@@ -38,7 +38,9 @@ export default function TosGate() {
         style={{ animation: 'slideUp 0.3s ease-out' }}
       >
         <div className="p-7 pb-4 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
-          <h2 className="text-xl font-bold text-zinc-900 dark:text-white font-display">Regulamin platformy</h2>
+          <h2 className="text-xl font-bold text-zinc-900 dark:text-white font-display">
+            {user.tosPreviouslyAccepted ? 'Aktualizacja regulaminu' : 'Regulamin platformy'}
+          </h2>
           <p className="text-xs text-zinc-400 mt-1">Ostatnia aktualizacja: {new Date(tos.updatedAt).toLocaleDateString('pl-PL')}</p>
         </div>
         <div className="flex-1 overflow-y-auto p-7 text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
@@ -46,7 +48,9 @@ export default function TosGate() {
         </div>
         <div className="p-7 pt-4 border-t border-zinc-100 dark:border-zinc-800 shrink-0">
           <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mb-4">
-            Musisz zaakceptować regulamin, aby korzystać z platformy.
+            {user.tosPreviouslyAccepted
+              ? 'Regulamin został zaktualizowany — musisz zaakceptować go ponownie, aby korzystać z platformy.'
+              : 'Musisz zaakceptować regulamin, aby korzystać z platformy.'}
           </p>
           <div className="flex gap-3">
             <button onClick={logout} disabled={busy} className="flex-1 btn-secondary disabled:opacity-50">Wyloguj</button>
