@@ -3,8 +3,11 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { WatchPartyProvider } from './contexts/WatchPartyContext';
+import { ConfirmProvider } from './contexts/ConfirmContext';
+import { ToastProvider } from './contexts/ToastContext';
 import LoginPage from './pages/LoginPage';
 import Layout from './components/Layout';
+import TosGate from './components/TosGate';
 import VideosPage from './pages/VideosPage';
 import VideoPage from './pages/VideoPage';
 import AdminPage from './pages/AdminPage';
@@ -52,8 +55,11 @@ const P = ({ children, ...props }) => <ProtectedRoute {...props}><Layout>{childr
 export default function App() {
   return (
     <SettingsProvider>
+    <ToastProvider>
+    <ConfirmProvider>
     <AuthProvider>
       <WatchPartyProvider>
+        <TosGate />
         <Routes>
           <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
           <Route path="/" element={<P><VideosPage /></P>} />
@@ -74,6 +80,8 @@ export default function App() {
         </Routes>
       </WatchPartyProvider>
     </AuthProvider>
+    </ConfirmProvider>
+    </ToastProvider>
     </SettingsProvider>
   );
 }

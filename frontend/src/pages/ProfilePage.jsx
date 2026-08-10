@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink, Download, Trash2, Clock, ShieldCheck } from 'lucide-react';
+import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink, Download, Trash2, Clock, ShieldCheck, Mail } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, parseTsError } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
 import { useSettings } from '../contexts/SettingsContext';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { useToast } from '../contexts/ToastContext';
 import TsChallengeModal from '../components/TsChallengeModal';
 
 export default function ProfilePage() {
   const { config: siteConfig } = useSettings();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -19,6 +23,9 @@ export default function ProfilePage() {
   const [refreshingDiscord, setRefreshingDiscord] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState(null);
   const [config, setConfig] = useState({ limitDisplayName: 50, limitBio: 1000 });
+  const [editEmail, setEditEmail] = useState('');
+  const [editEmailNotifications, setEditEmailNotifications] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
 
   // Account linking
   const [linkMsg, setLinkMsg] = useState(null); // { type: 'success'|'error', text }
@@ -67,6 +74,8 @@ export default function ProfilePage() {
       setProfile(p);
       setEditName(p.display_name || '');
       setEditBio(p.bio || '');
+      setEditEmail(p.email || p.discordEmail || '');
+      setEditEmailNotifications(!!p.emailNotifications);
     }).catch(console.error).finally(() => setLoading(false));
   };
 
@@ -81,7 +90,7 @@ export default function ProfilePage() {
 
   const handleGdprExport = async () => {
     if (gdprBusy) return;
-    if (!confirm('Zażądać kopii swoich danych?\n\nPlik zostanie przygotowany i po weryfikacji przez administratora (maksymalnie do 30 dni) pojawi się tu do pobrania.')) return;
+    if (!(await confirm('Zażądać kopii swoich danych?\n\nPlik zostanie przygotowany i po weryfikacji przez administratora (maksymalnie do 30 dni) pojawi się tu do pobrania.'))) return;
     setGdprBusy(true);
     setGdprMsg(null);
     try {
@@ -96,7 +105,7 @@ export default function ProfilePage() {
 
   const handleGdprDeletion = async () => {
     if (gdprBusy) return;
-    if (!confirm('Zażądać usunięcia konta?\n\nPo zatwierdzeniu przez administratora (maksymalnie do 30 dni) Twoje dane osobowe zostaną zanonimizowane, a konto wylogowane wszędzie. Komentarze i dodane filmy zostaną — bez powiązania z Twoją tożsamością. Tej operacji po zatwierdzeniu nie można cofnąć.')) return;
+    if (!(await confirm('Zażądać usunięcia konta?\n\nPo zatwierdzeniu przez administratora (maksymalnie do 30 dni) Twoje dane osobowe zostaną zanonimizowane, a konto wylogowane wszędzie. Komentarze i dodane filmy zostaną — bez powiązania z Twoją tożsamością. Tej operacji po zatwierdzeniu nie można cofnąć.', { danger: true, confirmLabel: 'Usuń konto' }))) return;
     setGdprBusy(true);
     setGdprMsg(null);
     try {
@@ -151,7 +160,7 @@ export default function ProfilePage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
-      alert('Błąd: ' + err.message);
+      toast.error('Błąd: ' + err.message);
     }
     setSaving(false);
   };
@@ -163,9 +172,21 @@ export default function ProfilePage() {
       await api.updateProfile({ avatar_source: source });
       load();
     } catch (err) {
-      alert('Błąd: ' + err.message);
+      toast.error('Błąd: ' + err.message);
     }
     setSavingAvatarSource(false);
+  };
+
+  const handleSaveEmail = async () => {
+    setSavingEmail(true);
+    try {
+      await api.updateProfile({ email: editEmail, email_notifications: editEmailNotifications });
+      toast.success('Zapisano ustawienia e-mail.');
+      load();
+    } catch (err) {
+      toast.error('Błąd: ' + err.message);
+    }
+    setSavingEmail(false);
   };
 
   const handleRefreshDiscord = async () => {
@@ -261,7 +282,7 @@ export default function ProfilePage() {
 
   const handleUnlink = async (method, label) => {
     if (unlinking) return;
-    if (!confirm(`Rozłączyć konto ${label}?\n\nBędziesz mógł zalogować się tą metodą ponownie — powstanie nowe, osobne konto, albo połączysz ją z innym kontem od nowa. Historia na TYM koncie (komentarze, obejrzane filmy, dodane przez Ciebie filmy jako redaktor) zostaje bez zmian.`)) return;
+    if (!(await confirm(`Rozłączyć konto ${label}?\n\nBędziesz mógł zalogować się tą metodą ponownie — powstanie nowe, osobne konto, albo połączysz ją z innym kontem od nowa. Historia na TYM koncie (komentarze, obejrzane filmy, dodane przez Ciebie filmy jako redaktor) zostaje bez zmian.`))) return;
     setUnlinking(method);
     try {
       await api.unlinkAccount(method);
@@ -616,6 +637,40 @@ export default function ProfilePage() {
             <span className="text-sm font-mono text-zinc-900 dark:text-white">{formatDate(profile.last_login)}</span>
           </div>
         </div>
+      </div>
+
+      {/* Email i powiadomienia */}
+      <div className="card p-6 mt-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Mail className="w-4 h-4 text-violet-500" />
+          <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Adres e-mail i powiadomienia</h3>
+        </div>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+          {profile.discordEmail
+            ? 'Adres podpowiedziany z Twojego konta Discord — możesz go zmienić.'
+            : 'Twoje konto nie ma adresu e-mail z Discorda — podaj go ręcznie, jeśli chcesz otrzymywać powiadomienia lub odpowiedź na zgłoszenie RODO.'}
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <input
+            type="email"
+            value={editEmail}
+            onChange={e => setEditEmail(e.target.value)}
+            placeholder="twoj@email.pl"
+            className="input-field !py-3 text-sm flex-1"
+          />
+          <button onClick={handleSaveEmail} disabled={savingEmail} className="btn-secondary text-sm shrink-0 disabled:opacity-50">
+            {savingEmail ? 'Zapisywanie...' : 'Zapisz'}
+          </button>
+        </div>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={editEmailNotifications}
+            onChange={e => setEditEmailNotifications(e.target.checked)}
+            className="w-4 h-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
+          />
+          <span className="text-sm text-zinc-700 dark:text-zinc-300">Zezwalam na powiadomienia email (np. o nowych filmach)</span>
+        </label>
       </div>
 
       {/* GDPR / RODO */}

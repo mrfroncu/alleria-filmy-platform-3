@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AlertTriangle, AlertCircle, Info, X, ChevronDown, ExternalLink, Film, Users, ShieldCheck } from 'lucide-react';
 import { api } from '../utils/api';
 import { getCurrentYear, parseTsError } from '../utils/helpers';
-import { REGULAMIN_LAST_MODIFIED, RegulaminContent } from '../data/regulamin';
+import { renderMarkdown } from '../utils/markdown';
 import TsChallengeModal from '../components/TsChallengeModal';
 
 export default function LoginPage() {
@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [ts3Loading, setTs3Loading] = useState(false);
   const [configOk, setConfigOk]     = useState(true);
   const [regulaminOpen, setRegulaminOpen] = useState(false);
+  const [tos, setTos] = useState(null);
   const [tsInfoOpen, setTsInfoOpen] = useState(false);
   const [discordError, setDiscordError] = useState(null);
   const [ts3Error, setTs3Error] = useState(null);
@@ -48,6 +49,8 @@ export default function LoginPage() {
       .then(data => { if (!data.discord_configured) setConfigOk(false); })
       .catch(() => setConfigOk(false));
   }, []);
+
+  useEffect(() => { api.getTos().then(setTos).catch(() => {}); }, []);
 
   useEffect(() => {
     const handleMessage = (event) => {
@@ -404,7 +407,9 @@ export default function LoginPage() {
             <div className="flex items-start justify-between px-7 py-6 border-b border-zinc-100 dark:border-white/10 shrink-0">
               <div>
                 <h2 className="text-base font-bold text-zinc-900 dark:text-white">Regulamin platformy Alleria Filmy</h2>
-                <p className="text-xs text-zinc-400 mt-0.5">Ostatnia aktualizacja: {REGULAMIN_LAST_MODIFIED}</p>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  {tos ? `Ostatnia aktualizacja: ${new Date(tos.updatedAt).toLocaleDateString('pl-PL')}` : 'Wczytywanie…'}
+                </p>
               </div>
               <button
                 onClick={() => setRegulaminOpen(false)}
@@ -413,8 +418,8 @@ export default function LoginPage() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="overflow-y-auto px-7 py-6 space-y-6 text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
-              <RegulaminContent />
+            <div className="overflow-y-auto px-7 py-6 text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+              {tos && renderMarkdown(tos.content)}
             </div>
           </div>
         </div>

@@ -5,11 +5,15 @@ import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import VideoModal from '../components/VideoModal';
 import { useSettings } from '../contexts/SettingsContext';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { useToast } from '../contexts/ToastContext';
 
 const ADMIN_TAB_IDS = ['videos', 'tags'];
 
 export default function AdminPage() {
   const { config } = useSettings();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [searchParams] = useSearchParams();
   const [videos, setVideos] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
@@ -73,26 +77,26 @@ export default function AdminPage() {
       await api.deleteVideo(id);
       setDeleteConfirm(null);
       loadData();
-    } catch (err) { alert('Błąd: ' + err.message); }
+    } catch (err) { toast.error('Błąd: ' + err.message); }
   };
 
   const handleDeleteTag = async (id) => {
-    if (!confirm('Usunąć ten tag?')) return;
+    if (!(await confirm('Usunąć ten tag?', { danger: true, confirmLabel: 'Usuń' }))) return;
     try {
       await api.deleteTag(id);
       setTags(prev => prev.filter(t => t.id !== id));
-    } catch (err) { alert('Błąd: ' + err.message); }
+    } catch (err) { toast.error('Błąd: ' + err.message); }
   };
 
   const handleBulkAction = async () => {
     if (!bulkAction || selectedIds.length === 0) return;
     const label = bulkAction === 'delete' ? `USUNĄĆ ${selectedIds.length} filmów` : `zmienić ${selectedIds.length} filmów`;
-    if (!confirm(`Czy na pewno chcesz ${label}?`)) return;
+    if (!(await confirm(`Czy na pewno chcesz ${label}?`, { danger: bulkAction === 'delete', confirmLabel: bulkAction === 'delete' ? 'Usuń' : 'Zmień' }))) return;
     try {
       await api.bulkVideos({ action: bulkAction, video_ids: selectedIds, value: bulkValue || null });
       setSelectedIds([]); setBulkAction(''); setBulkValue('');
       loadData();
-    } catch (err) { alert('Błąd: ' + err.message); }
+    } catch (err) { toast.error('Błąd: ' + err.message); }
   };
 
   const toggleSelect = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);

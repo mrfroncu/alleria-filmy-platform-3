@@ -5,11 +5,15 @@ import { api } from '../utils/api';
 import { buildCategoryTreeOptions, formatDate } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
 import { useSettings } from '../contexts/SettingsContext';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { useToast } from '../contexts/ToastContext';
 
 const MANAGE_TAB_IDS = ['categories', 'users'];
 
 export default function ManagePage() {
   const { config } = useSettings();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState(MANAGE_TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'categories');
 
@@ -34,6 +38,9 @@ export default function ManagePage() {
   const [catEditorUserIds, setCatEditorUserIds] = useState([]);
   const [catWebhookUrl, setCatWebhookUrl] = useState('');
   const [catWebhookTemplate, setCatWebhookTemplate] = useState('');
+  const [catWebhookEnabled, setCatWebhookEnabled] = useState(false);
+  const [catEmailEnabled, setCatEmailEnabled] = useState(false);
+  const [catEmailTemplate, setCatEmailTemplate] = useState('');
 
   // Rank form state
   const [rankName, setRankName] = useState('');
@@ -72,7 +79,8 @@ export default function ManagePage() {
     setCatViewerRoles(''); setCatEditorRoles('');
     setCatViewerRankIds([]); setCatEditorRankIds([]);
     setCatViewerUserIds([]); setCatEditorUserIds([]);
-    setCatWebhookUrl(''); setCatWebhookTemplate('');
+    setCatWebhookUrl(''); setCatWebhookTemplate(''); setCatWebhookEnabled(false);
+    setCatEmailEnabled(false); setCatEmailTemplate('');
     setEditingCat(null);
   };
 
@@ -83,7 +91,11 @@ export default function ManagePage() {
   const saveCategory = async () => {
     if (!catName.trim()) return;
     try {
-      const data = { name: catName, description: catDesc, sort_order: parseInt(catOrder) || 0, parent_id: catParentId ? parseInt(catParentId) : null, webhook_url: catWebhookUrl, webhook_template: catWebhookTemplate };
+      const data = {
+        name: catName, description: catDesc, sort_order: parseInt(catOrder) || 0, parent_id: catParentId ? parseInt(catParentId) : null,
+        webhook_url: catWebhookUrl, webhook_template: catWebhookTemplate, webhook_enabled: catWebhookEnabled,
+        email_enabled: catEmailEnabled, email_template: catEmailTemplate,
+      };
       const accessPayload = {
         viewer_mode: catViewerMode,
         editor_mode: catEditorMode,
@@ -118,6 +130,9 @@ export default function ManagePage() {
     setCatParentId(String(cat.parent_id || ''));
     setCatWebhookUrl(cat.webhook_url || '');
     setCatWebhookTemplate(cat.webhook_template || '');
+    setCatWebhookEnabled(!!cat.webhook_enabled);
+    setCatEmailEnabled(!!cat.email_enabled);
+    setCatEmailTemplate(cat.email_template || '');
     const rawMode = cat.access_mode || 'public:none';
     const [vm, em] = rawMode.includes(':') ? rawMode.split(':')
       : rawMode === 'custom' ? ['custom', 'none']
@@ -142,7 +157,7 @@ export default function ManagePage() {
   };
 
   const deleteCategory = async (cat) => {
-    if (!confirm(`Usunąć kategorię "${cat.name}"?`)) return;
+    if (!(await confirm(`Usunąć kategorię "${cat.name}"?`, { danger: true, confirmLabel: 'Usuń' }))) return;
     try {
       await api.deleteCategory(cat.id);
       setCats(prev => prev.filter(c => c.id !== cat.id));
@@ -168,7 +183,7 @@ export default function ManagePage() {
   };
 
   const deleteRank = async (rank) => {
-    if (!confirm(`Usunąć rangę "${rank.name}"? Spowoduje to usunięcie wszystkich przypisań tej rangi.`)) return;
+    if (!(await confirm(`Usunąć rangę "${rank.name}"? Spowoduje to usunięcie wszystkich przypisań tej rangi.`, { danger: true, confirmLabel: 'Usuń' }))) return;
     try {
       await api.deleteRank(rank.id);
       setRanks(prev => prev.filter(r => r.id !== rank.id));
@@ -349,12 +364,30 @@ export default function ManagePage() {
                 </div>
               </div>
 
-              <div><label className="label-field">Discord Webhook URL (opcjonalnie)</label><input type="text" value={catWebhookUrl} onChange={e => setCatWebhookUrl(e.target.value)} className="input-field font-mono" placeholder="https://discord.com/api/webhooks/..." /></div>
+              <div>
+                <label className="label-field">Discord Webhook URL (opcjonalnie)</label>
+                <input type="text" value={catWebhookUrl} onChange={e => setCatWebhookUrl(e.target.value)} className="input-field font-mono" placeholder="https://discord.com/api/webhooks/..." />
+              </div>
               <div>
                 <label className="label-field">Szablon wiadomości webhook</label>
                 <textarea value={catWebhookTemplate} onChange={e => setCatWebhookTemplate(e.target.value)} className="input-field font-mono resize-y h-36 min-h-[6rem]" placeholder={'🎬 **Nowy film:** {title}\n👤 Autor: {author}\n📁 Kategoria: {category}\n🔗 {url}'} />
                 <p className="text-[9px] text-zinc-400 mt-1">Placeholdery: {'{title}'} {'{author}'} {'{category}'} {'{description}'} {'{date}'} {'{id}'} {'{url}'} {'{thumbnail}'}</p>
               </div>
+              <label className="flex items-center gap-3 cursor-pointer p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                <input type="checkbox" checked={catWebhookEnabled} onChange={e => setCatWebhookEnabled(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500" />
+                <span className="text-sm text-zinc-900 dark:text-white font-bold">Wysyłaj webhook Discord dla tej kategorii</span>
+              </label>
+
+              <div>
+                <label className="label-field">Szablon wiadomości email (opcjonalnie)</label>
+                <textarea value={catEmailTemplate} onChange={e => setCatEmailTemplate(e.target.value)} className="input-field font-mono resize-y h-36 min-h-[6rem]" placeholder={'Nowy film: {title}\nAutor: {author}\nKategoria: {category}\n{url}'} />
+                <p className="text-[9px] text-zinc-400 mt-1">Placeholdery: {'{title}'} {'{author}'} {'{category}'} {'{description}'} {'{date}'} {'{id}'} {'{url}'} {'{thumbnail}'}</p>
+              </div>
+              <label className="flex items-center gap-3 cursor-pointer p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                <input type="checkbox" checked={catEmailEnabled} onChange={e => setCatEmailEnabled(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500" />
+                <span className="text-sm text-zinc-900 dark:text-white font-bold">Wysyłaj powiadomienia email dla tej kategorii</span>
+              </label>
+
               <button onClick={saveCategory} className="btn-primary text-sm">{editingCat ? 'Zapisz zmiany' : 'Dodaj kategorię'}</button>
             </div>
           </div>
@@ -380,7 +413,8 @@ export default function ManagePage() {
                           <span className="text-sm font-bold text-zinc-900 dark:text-white">{opt.depth > 0 ? '↳ ' : ''}{cat.name}</span>
                           <span className="text-xs text-zinc-400">({cat.videoCount || 0} filmów)</span>
                           {(cat.access_mode || '').includes('custom') && <span className="text-[9px] bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5"><Users className="w-2.5 h-2.5" /> NIESTANDARDOWE</span>}
-                          {cat.webhook_url && <span className="text-[9px] bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 rounded font-bold">WEBHOOK</span>}
+                          {cat.webhook_enabled && cat.webhook_url && <span className="text-[9px] bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 rounded font-bold">WEBHOOK</span>}
+                          {cat.email_enabled && <span className="text-[9px] bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 px-1.5 py-0.5 rounded font-bold">EMAIL</span>}
                         </div>
                         {cat.description && <p className="text-xs text-zinc-400 mt-0.5">{cat.description}</p>}
                         {((cat.access && cat.access.length > 0) || (cat.rank_access && cat.rank_access.length > 0)) && (
@@ -480,7 +514,7 @@ export default function ManagePage() {
                       await api.setUserRanks(editingUserRanks.userId, editingUserRanks.rankIds);
                       setUserRanks(prev => ({ ...prev, [editingUserRanks.userId]: editingUserRanks.rankIds }));
                       setEditingUserRanks(null);
-                    } catch (err) { alert('Błąd: ' + err.message); }
+                    } catch (err) { toast.error('Błąd: ' + err.message); }
                   }} className="btn-ghost-primary">Zapisz</button>
                   <button onClick={() => setEditingUserRanks(null)} className="btn-ghost">Anuluj</button>
                 </div>
@@ -497,6 +531,7 @@ export default function ManagePage() {
                   <th className="text-left px-4 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Redaktor kategorii</th>
                   {ranks.length > 0 && <th className="text-left px-4 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Rangi</th>}
                   <th className="text-left px-4 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Metoda</th>
+                  <th className="text-left px-4 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Email</th>
                   <th className="text-left px-4 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Ostatnio</th>
                   <th className="text-right px-4 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Akcje</th>
                 </tr>
@@ -581,16 +616,17 @@ export default function ManagePage() {
                         </td>
                       )}
                       <td className="px-4 py-3 text-xs text-zinc-500">{u.auth_method}</td>
+                      <td className="px-4 py-3 text-xs text-zinc-500 font-mono truncate max-w-[160px]">{u.email || u.discord_email || '—'}</td>
                       <td className="px-4 py-3 text-xs text-zinc-500 font-mono">{formatDate(u.last_login)}</td>
                       <td className="px-4 py-3 text-right">
                         <button
                           onClick={async () => {
-                            if (!confirm(`Usunąć konto "${u.display_name || u.username}"?\n\nTo nie jest ban — użytkownik może zalogować się ponownie.`)) return;
+                            if (!(await confirm(`Usunąć konto "${u.display_name || u.username}"?\n\nTo nie jest ban — użytkownik może zalogować się ponownie.`, { danger: true, confirmLabel: 'Usuń' }))) return;
                             try {
                               await api.deleteUser(u.id);
                               setUsers(prev => prev.filter(x => x.id !== u.id));
                               setAllUsers(prev => prev.filter(x => x.id !== u.id));
-                            } catch (err) { alert('Błąd: ' + err.message); }
+                            } catch (err) { toast.error('Błąd: ' + err.message); }
                           }}
                           className="btn-icon-red"
                           title="Usuń konto"

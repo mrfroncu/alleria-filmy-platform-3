@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug, Lock, LayoutGrid, FileText, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info } from 'lucide-react';
+import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Settings, Bug, Lock, LayoutGrid, FileText, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail } from 'lucide-react';
 import { api } from '../utils/api';
 import { useSettings } from '../contexts/SettingsContext';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { renderMarkdown } from '../utils/markdown';
 
 // Dev Tools tabs — selected at the top of the page
 const TABS = [
@@ -10,6 +12,7 @@ const TABS = [
   { id: 'admin', label: 'Administracyjne', icon: Users },
   { id: 'categories', label: 'Kategorie', icon: ShieldCheck },
   { id: 'gdpr', label: 'RODO', icon: Lock },
+  { id: 'tos', label: 'Regulamin', icon: FileText },
   { id: 'settings', label: 'Ustawienia', icon: Settings },
   { id: 'debug', label: 'Debug', icon: Bug },
 ];
@@ -45,6 +48,7 @@ const TAB_IDS = TABS.map(t => t.id);
 
 export default function DebugPage() {
   const { config } = useSettings();
+  const confirm = useConfirm();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -118,7 +122,7 @@ export default function DebugPage() {
 
   const deleteSelectedFiles = async (ids) => {
     if (!ids.length) return;
-    if (!confirm(`Usunąć ${ids.length} plik(ów) ze streamera? Operacja nieodwracalna!`)) return;
+    if (!(await confirm(`Usunąć ${ids.length} plik(ów) ze streamera? Operacja nieodwracalna!`, { danger: true, confirmLabel: 'Usuń' }))) return;
     setDeletingFiles(true);
     let deleted = 0;
     for (const id of ids) {
@@ -240,6 +244,32 @@ export default function DebugPage() {
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const gdprFileRef = useRef(null);
+  useEffect(() => {
+    if (activeTab === 'gdpr' && settings && settings.gdpr_region === 'off') setActiveTab('streaming');
+  }, [activeTab, settings]);
+
+  // Regulamin (ToS) editor
+  const [tosContent, setTosContent] = useState('');
+  const [tosUpdatedAt, setTosUpdatedAt] = useState(null);
+  const [tosLoading, setTosLoading] = useState(false);
+  const [tosSaving, setTosSaving] = useState(false);
+  useEffect(() => {
+    if (activeTab === 'tos') {
+      setTosLoading(true);
+      api.getTos().then(t => { setTosContent(t.content); setTosUpdatedAt(t.updatedAt); }).catch(() => {}).finally(() => setTosLoading(false));
+    }
+  }, [activeTab]);
+  const saveTos = async () => {
+    setTosSaving(true);
+    try {
+      const t = await api.updateTos(tosContent);
+      setTosUpdatedAt(t.updatedAt);
+      setStatus({ type: 'success', msg: 'Regulamin zapisany. Użytkownicy, którzy zaakceptowali go wcześniej, zobaczą prośbę o ponowną akceptację.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setTosSaving(false);
+  };
   const [limitForm, setLimitForm] = useState({ limit_display_name: '', limit_bio: '', limit_comment: '' });
   const [displayForm, setDisplayForm] = useState({ videos_per_page: '', grid_columns: '', grid_card_min_width: '' });
   const [logsForm, setLogsForm] = useState({ logs_per_page: '' });
@@ -251,6 +281,9 @@ export default function DebugPage() {
   const [botNickname, setBotNickname] = useState('');
   const [discordRolesForm, setDiscordRolesForm] = useState({ member_role_id: '', admin_role_id: '' });
   const [categoryRoleOverview, setCategoryRoleOverview] = useState([]);
+  const [smtpForm, setSmtpForm] = useState({ host: '', port: '', secure: false, user: '', password: '', from: '' });
+  const [testEmailTo, setTestEmailTo] = useState('');
+  const [testingEmail, setTestingEmail] = useState(false);
 
   useEffect(() => {
     api.getSettings().then(s => {
@@ -273,6 +306,10 @@ export default function DebugPage() {
       });
       setBotNickname(s.ts_bot_nickname || '');
       setDiscordRolesForm({ member_role_id: s.discord_member_role_id || '', admin_role_id: s.discord_admin_role_id || '' });
+      setSmtpForm({
+        host: s.smtp_host || '', port: String(s.smtp_port || '587'), secure: !!s.smtp_secure,
+        user: s.smtp_user || '', password: s.smtp_password || '', from: s.smtp_from || '',
+      });
     }).catch(() => {});
     api.envCheck().then(setEnvCheck).catch(() => {});
     api.categoryRoleOverview().then(setCategoryRoleOverview).catch(() => {});
@@ -380,7 +417,7 @@ export default function DebugPage() {
   };
 
   const handleGdprApprove = async (id) => {
-    if (!confirm('Zatwierdzić to zgłoszenie? Dla usunięcia konta oznacza to natychmiastową anonimizację i wylogowanie użytkownika.')) return;
+    if (!(await confirm('Zatwierdzić to zgłoszenie? Dla usunięcia konta oznacza to natychmiastową anonimizację i wylogowanie użytkownika.', { confirmLabel: 'Zatwierdź' }))) return;
     setGdprBusy(id);
     try {
       await api.adminApproveGdpr(id);
@@ -555,6 +592,36 @@ export default function DebugPage() {
     setSavingSettings(false);
   };
 
+  const saveSmtpSettings = async () => {
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({
+        smtp_host: smtpForm.host, smtp_port: smtpForm.port, smtp_secure: smtpForm.secure,
+        smtp_user: smtpForm.user, smtp_password: smtpForm.password, smtp_from: smtpForm.from,
+      });
+      setSettingsState(s => ({ ...s, ...r }));
+      setSmtpForm({
+        host: r.smtp_host || '', port: String(r.smtp_port || '587'), secure: !!r.smtp_secure,
+        user: r.smtp_user || '', password: r.smtp_password || '', from: r.smtp_from || '',
+      });
+      setStatus({ type: 'success', msg: 'Ustawienia SMTP zapisane.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const sendTestEmail = async () => {
+    setTestingEmail(true);
+    try {
+      const r = await api.sendTestEmail(testEmailTo);
+      setStatus({ type: 'success', msg: `Testowy e-mail wysłany na ${r.to}.` });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setTestingEmail(false);
+  };
+
   const saveDiscordRoles = async () => {
     setSavingSettings(true);
     try {
@@ -676,7 +743,7 @@ export default function DebugPage() {
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 mb-6 border-b border-zinc-200 dark:border-zinc-800">
-        {TABS.map(t => {
+        {TABS.filter(t => t.id !== 'gdpr' || (settings?.gdpr_region && settings.gdpr_region !== 'off')).map(t => {
           const Icon = t.icon;
           const active = activeTab === t.id;
           return (
@@ -1107,7 +1174,7 @@ export default function DebugPage() {
                   {/* Delete button */}
                   <button
                     onClick={async () => {
-                      if (!confirm(`Usunąć party ${p.code}? Wszyscy uczestnicy zostaną rozłączeni.`)) return;
+                      if (!(await confirm(`Usunąć party ${p.code}? Wszyscy uczestnicy zostaną rozłączeni.`, { danger: true, confirmLabel: 'Usuń' }))) return;
                       await api.forceDeleteWatchParty(p.code).catch(() => {});
                       loadWatchParties();
                     }}
@@ -1342,7 +1409,7 @@ export default function DebugPage() {
       )}
 
       {/* ============ RODO ============ */}
-      {activeTab === 'gdpr' && (
+      {activeTab === 'gdpr' && settings?.gdpr_region && settings.gdpr_region !== 'off' && (
       <div className="animate-fade-in">
         <input ref={gdprFileRef} type="file" accept="application/json" className="hidden" onChange={handleGdprFileSelected} />
         <div className="card p-6">
@@ -1418,6 +1485,41 @@ export default function DebugPage() {
               })}
             </div>
           )}
+        </div>
+      </div>
+      )}
+
+      {/* ============ REGULAMIN ============ */}
+      {activeTab === 'tos' && (
+      <div className="animate-fade-in">
+        <div className="card p-6">
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Regulamin platformy</h3>
+            {tosUpdatedAt && (
+              <span className="text-xs text-zinc-400 shrink-0">Ostatnia aktualizacja: {new Date(tosUpdatedAt).toLocaleString('pl-PL')}</span>
+            )}
+          </div>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+            Prosty markdown: <code className="font-mono text-xs">## Nagłówek</code>, akapity oddzielone pustą linią, listy przez <code className="font-mono text-xs">- </code>, <code className="font-mono text-xs">**pogrubienie**</code>, <code className="font-mono text-xs">[etykieta](url)</code>.
+            Zapisanie ustawia nową datę aktualizacji — każde konto, które zaakceptowało regulamin wcześniej, będzie musiało zaakceptować go ponownie.
+          </p>
+          {tosLoading ? (
+            <div className="h-96 skeleton rounded-2xl" />
+          ) : (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <textarea
+                value={tosContent}
+                onChange={e => setTosContent(e.target.value)}
+                className="input-field font-mono text-xs resize-y h-[32rem]"
+              />
+              <div className="border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 h-[32rem] overflow-y-auto text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed bg-zinc-50 dark:bg-zinc-950">
+                {renderMarkdown(tosContent)}
+              </div>
+            </div>
+          )}
+          <button onClick={saveTos} disabled={tosSaving || tosLoading} className="btn-primary text-sm mt-4">
+            {tosSaving ? 'Zapisywanie...' : 'Zapisz regulamin'}
+          </button>
         </div>
       </div>
       )}
@@ -1554,6 +1656,65 @@ export default function DebugPage() {
                     {label}
                   </button>
                 ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SMTP / Email */}
+        <div className="card p-8 h-full flex flex-col xl:col-span-2">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <Mail className="w-6 h-6 text-blue-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">SMTP (wysyłka e-mail)</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                Konfiguracja serwera SMTP używanego do powiadomień email o nowych filmach oraz eksportu danych RODO.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="label-field">Host</label>
+                  <input type="text" value={smtpForm.host} onChange={e => setSmtpForm(f => ({ ...f, host: e.target.value }))} className="input-field !py-3 text-sm font-mono" placeholder="smtp.example.com" />
+                </div>
+                <div>
+                  <label className="label-field">Port</label>
+                  <input type="text" value={smtpForm.port} onChange={e => setSmtpForm(f => ({ ...f, port: e.target.value }))} className="input-field !py-3 text-sm font-mono" placeholder="587" />
+                </div>
+                <div>
+                  <label className="label-field">Użytkownik</label>
+                  <input type="text" value={smtpForm.user} onChange={e => setSmtpForm(f => ({ ...f, user: e.target.value }))} className="input-field !py-3 text-sm font-mono" />
+                </div>
+                <div>
+                  <label className="label-field">Hasło</label>
+                  <input type="password" value={smtpForm.password} onChange={e => setSmtpForm(f => ({ ...f, password: e.target.value }))} className="input-field !py-3 text-sm font-mono" />
+                </div>
+                <div>
+                  <label className="label-field">Nadawca (From)</label>
+                  <input type="text" value={smtpForm.from} onChange={e => setSmtpForm(f => ({ ...f, from: e.target.value }))} className="input-field !py-3 text-sm font-mono" placeholder="Alleria Filmy <no-reply@alleria.pl>" />
+                </div>
+                <div className="flex items-end">
+                  <ToggleSwitch
+                    checked={smtpForm.secure}
+                    onChange={() => setSmtpForm(f => ({ ...f, secure: !f.secure }))}
+                    label={smtpForm.secure ? 'SSL/TLS: WŁĄCZONE' : 'SSL/TLS: WYŁĄCZONE'}
+                  />
+                </div>
+              </div>
+              <button onClick={saveSmtpSettings} disabled={savingSettings} className="btn-primary text-sm mb-4 disabled:opacity-50">
+                {savingSettings ? 'Zapisywanie...' : 'Zapisz SMTP'}
+              </button>
+              <div className="flex items-center gap-2 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                <input
+                  type="email"
+                  value={testEmailTo}
+                  onChange={e => setTestEmailTo(e.target.value)}
+                  placeholder="adres@testowy.pl (puste = Twój zapisany e-mail)"
+                  className="input-field !py-2.5 text-sm flex-1"
+                />
+                <button onClick={sendTestEmail} disabled={testingEmail} className="btn-secondary text-sm shrink-0 disabled:opacity-50">
+                  {testingEmail ? 'Wysyłanie...' : 'Wyślij testowy e-mail'}
+                </button>
               </div>
             </div>
           </div>
@@ -1982,7 +2143,7 @@ export default function DebugPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   onClick={async () => {
-                    if (!confirm('Wyczyścić logi wyświetleń filmów?')) return;
+                    if (!(await confirm('Wyczyścić logi wyświetleń filmów?', { danger: true, confirmLabel: 'Wyczyść' }))) return;
                     try {
                       const r = await api.clearWatchLogs();
                       setStatus({ type: 'success', msg: `Usunięto ${r.deleted} logów wyświetleń.` });
@@ -1994,7 +2155,7 @@ export default function DebugPage() {
                 </button>
                 <button
                   onClick={async () => {
-                    if (!confirm('Wyczyścić logi logowania?')) return;
+                    if (!(await confirm('Wyczyścić logi logowania?', { danger: true, confirmLabel: 'Wyczyść' }))) return;
                     try {
                       const r = await api.clearLoginLogs();
                       setStatus({ type: 'success', msg: `Usunięto ${r.deleted} logów logowania.` });
@@ -2006,7 +2167,7 @@ export default function DebugPage() {
                 </button>
                 <button
                   onClick={async () => {
-                    if (!confirm('Wyczyścić logi audytu?')) return;
+                    if (!(await confirm('Wyczyścić logi audytu?', { danger: true, confirmLabel: 'Wyczyść' }))) return;
                     try {
                       const r = await api.clearAuditLogs();
                       setStatus({ type: 'success', msg: `Usunięto ${r.deleted} logów audytu.` });
@@ -2018,7 +2179,7 @@ export default function DebugPage() {
                 </button>
                 <button
                   onClick={async () => {
-                    if (!confirm('Wyczyścić logi watch party?')) return;
+                    if (!(await confirm('Wyczyścić logi watch party?', { danger: true, confirmLabel: 'Wyczyść' }))) return;
                     try {
                       const r = await api.clearWatchPartyLogs();
                       setStatus({ type: 'success', msg: `Usunięto ${r.deleted} logów watch party.` });

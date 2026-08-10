@@ -318,6 +318,24 @@ function initDB() {
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   )`);
 
+  // Regulamin (terms of service) acceptance — content itself lives in app_settings
+  // (tos_content/tos_updated_at); this just tracks when THIS user last agreed to it.
+  try { db.exec(`ALTER TABLE users ADD COLUMN tos_accepted_at TEXT`); } catch (e) {}
+
+  // Category notification toggles — webhook_enabled defaults to whether a URL was already
+  // configured, so upgrading never silently stops a webhook that was already firing.
+  try { db.exec(`ALTER TABLE categories ADD COLUMN webhook_enabled INTEGER DEFAULT 0`); } catch (e) {}
+  try {
+    db.exec(`UPDATE categories SET webhook_enabled = 1 WHERE webhook_url IS NOT NULL AND webhook_url != ''`);
+  } catch (e) {}
+  try { db.exec(`ALTER TABLE categories ADD COLUMN email_enabled INTEGER DEFAULT 0`); } catch (e) {}
+  try { db.exec(`ALTER TABLE categories ADD COLUMN email_template TEXT DEFAULT ''`); } catch (e) {}
+
+  // Account contact email — separate from discord_email (the raw OAuth capture); this is the
+  // effective address used for notifications/GDPR/admin display, editable regardless of login method.
+  try { db.exec(`ALTER TABLE users ADD COLUMN email TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN email_notifications INTEGER DEFAULT 0`); } catch (e) {}
+
   return db;
 }
 

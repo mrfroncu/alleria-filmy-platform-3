@@ -4,6 +4,7 @@ import { Eye, LogIn, Shield, Users, Search, Trash2 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import { useSettings } from '../contexts/SettingsContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 const LOGS_TAB_IDS = ['audit', 'watchparty', 'watch', 'login'];
 
@@ -31,6 +32,7 @@ function actionMeta(action) {
 
 export default function LogsPage() {
   const { config } = useSettings();
+  const confirm = useConfirm();
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState(LOGS_TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'audit');
 
@@ -227,7 +229,7 @@ export default function LogsPage() {
 
             <div className="ml-auto">
               <button
-                onClick={() => { if (!confirm('Wyczyścić logi Watch Party?')) return; api.clearWatchPartyLogs(wpCodeFilter).then(() => loadWpLogs(1)); }}
+                onClick={async () => { if (!(await confirm('Wyczyścić logi Watch Party?', { danger: true, confirmLabel: 'Wyczyść' }))) return; api.clearWatchPartyLogs(wpCodeFilter).then(() => loadWpLogs(1)); }}
                 className="btn-link-red flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-red-500/10"
               >
                 <Trash2 className="w-3.5 h-3.5" />

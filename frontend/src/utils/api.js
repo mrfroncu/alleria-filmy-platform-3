@@ -26,6 +26,14 @@ export const api = {
   // Auth
   getMe: () => request('/auth/me'),
   logout: () => request('/auth/logout', { method: 'POST' }),
+
+  // Regulamin (ToS)
+  getTos: () => request('/tos'),
+  acceptTos: () => request('/tos/accept', { method: 'POST' }),
+  updateTos: (content) => request('/debug/tos', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }),
+  }),
+
   // opts: { linkMode: true } — attach the matched TS identity to the logged-in account
   // instead of logging in as a (possibly different) TS-origin account.
   loginTeamspeak: (opts) => request('/auth/teamspeak', {
@@ -220,6 +228,11 @@ export const api = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
+  }),
+  sendTestEmail: (to) => request('/debug/settings/test-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to }),
   }),
   envCheck: () => request('/debug/env-check'),
   categoryRoleOverview: () => request('/debug/category-role-overview'),

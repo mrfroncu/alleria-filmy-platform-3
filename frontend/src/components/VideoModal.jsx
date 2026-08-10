@@ -4,6 +4,7 @@ import { api } from '../utils/api';
 import { extractYoutubeId, buildCategoryTreeOptions } from '../utils/helpers';
 import DateTimePicker from './DateTimePicker';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 
 function SmartThumbnail({ ytId, customSrc, alt }) {
   const [src, setSrc] = useState('');
@@ -29,6 +30,7 @@ function SmartThumbnail({ ytId, customSrc, alt }) {
 export default function VideoModal({ isOpen, onClose, video, users = [], onSaved, defaultCategoryId = '' }) {
   const isEdit = !!video;
   const { user: currentUser } = useAuth();
+  const toast = useToast();
   const [title, setTitle] = useState('');
   const [authorId, setAuthorId] = useState('');
   const [mainSource, setMainSource] = useState('');
@@ -408,7 +410,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
       onClose();
     } catch (err) {
       console.error('Save error:', err);
-      alert('Wystąpił błąd: ' + err.message);
+      toast.error('Wystąpił błąd: ' + err.message);
     } finally {
       setSubmitting(false);
       setUploadProgress('');

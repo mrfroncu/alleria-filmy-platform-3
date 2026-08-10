@@ -12,10 +12,12 @@ const session = require('express-session');
 const cors = require('cors');
 const fetch = require('node-fetch');
 const multer = require('multer');
+const nodemailer = require('nodemailer');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const crypto = require('crypto');
 const { initDB, DB_PATH } = require('./database');
+const { DEFAULT_TOS_MD, DEFAULT_TOS_UPDATED_AT } = require('./defaultTos');
 const { createParty, getParty, deleteParty, listParties, createWsToken, setupWatchPartyWS, reassignUserIdInParties } = require('./watchParty');
 const rateLimit = require('express-rate-limit');
 
@@ -670,6 +672,14 @@ function identityList(u) {
   ].filter(Boolean);
 }
 
+// Regulamin (ToS) — content lives in app_settings (tos_content/tos_updated_at), acceptance is
+// per-user (users.tos_accepted_at). Plain ISO-string comparison — both sides are always either
+// SQLite's datetime('now') or JS's toISOString(), which sort correctly as strings.
+function tosNeedsAcceptance(tosAcceptedAt) {
+  const updatedAt = getSetting('tos_updated_at', DEFAULT_TOS_UPDATED_AT);
+  return !tosAcceptedAt || tosAcceptedAt < updatedAt;
+}
+
 // A linked account can log in via multiple identities (Discord + TS3/TS6), each of which
 // independently computes a role from its own source (Discord guild roles, TS server
 // groups) every time it logs in. Without this, whichever method logs in LAST wins and
@@ -770,6 +780,7 @@ function mergeUsers(primaryId, secondaryId, { performedBy } = {}) {
         discord_roles: secondary.discord_roles,
         discord_avatar_hash: secondary.discord_avatar_hash,
         discord_guild_avatar_hash: secondary.discord_guild_avatar_hash,
+        discord_email: secondary.discord_email,
       });
     }
     if (!primary.ts3_uid && secondary.ts3_uid) {
@@ -777,6 +788,12 @@ function mergeUsers(primaryId, secondaryId, { performedBy } = {}) {
     }
     if (!primary.ts6_uid && secondary.ts6_uid) {
       Object.assign(patch, { ts6_uid: secondary.ts6_uid, ts6_ip: secondary.ts6_ip });
+    }
+    // Contact email is a general field, not tied to one identity type — keep primary's own
+    // if it already set one (manually or via Discord), otherwise inherit secondary's along
+    // with whatever notification preference was attached to it.
+    if (!primary.email && secondary.email) {
+      Object.assign(patch, { email: secondary.email, email_notifications: secondary.email_notifications });
     }
     if (Object.keys(patch).length) {
       const cols = Object.keys(patch);
@@ -1438,7 +1455,33 @@ app.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
 // ============ AUTH STATUS & LOGOUT ============
 app.get('/api/auth/me', (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Not logged in' });
-  res.json(req.session.user);
+  // Live DB lookup (not baked into the session at login) — so an admin editing the Regulamin
+  // immediately re-gates everyone on their next page load, no fresh login required.
+  const row = db.prepare('SELECT tos_accepted_at FROM users WHERE id = ?').get(req.session.user.id);
+  res.json({ ...req.session.user, tosAccepted: !tosNeedsAcceptance(row?.tos_accepted_at) });
+});
+
+// Public — the Regulamin is a legal document meant to be readable pre-login too.
+app.get('/api/tos', (req, res) => {
+  res.json({
+    content: getSetting('tos_content', DEFAULT_TOS_MD),
+    updatedAt: getSetting('tos_updated_at', DEFAULT_TOS_UPDATED_AT),
+  });
+});
+
+app.post('/api/tos/accept', requireAuth, (req, res) => {
+  db.prepare("UPDATE users SET tos_accepted_at = datetime('now') WHERE id = ?").run(req.session.user.id);
+  audit(req.session.user.id, 'tos_accept', 'user', req.session.user.id, null);
+  res.json({ success: true });
+});
+
+app.post('/api/debug/tos', requireDev, (req, res) => {
+  const content = String(req.body.content || '').trim();
+  if (!content) return res.status(400).json({ error: 'Treść regulaminu nie może być pusta.' });
+  setSetting('tos_content', content);
+  setSetting('tos_updated_at', new Date().toISOString());
+  audit(req.session.user.id, 'edit', 'settings', null, 'tos_content updated');
+  res.json({ content, updatedAt: getSetting('tos_updated_at', DEFAULT_TOS_UPDATED_AT) });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -1681,18 +1724,22 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
       if (pubDate.getTime() <= Date.now()) {
         const videoFull = db.prepare(`
           SELECT v.*, c.name AS category_name, c.webhook_url, c.webhook_template,
+          c.webhook_enabled, c.email_enabled, c.email_template,
           u.display_name AS author_name FROM videos v
           LEFT JOIN categories c ON v.category_id = c.id
           LEFT JOIN users u ON v.author_id = u.id WHERE v.id = ?
         `).get(videoId);
-        if (videoFull && videoFull.webhook_url) {
-          console.log(`[WEBHOOK] Immediate send for "${title}" (cat: ${videoFull.category_name})`);
+        if (videoFull) {
           db.prepare("UPDATE videos SET webhook_sent = 1 WHERE id = ?").run(videoId);
-          sendDiscordWebhook(videoFull).catch(e => console.error('[WEBHOOK] Error:', e.message));
-        } else if (videoFull) {
-          // No webhook URL on category — mark as sent to avoid retry spam
-          db.prepare("UPDATE videos SET webhook_sent = 1 WHERE id = ?").run(videoId);
-          console.log(`[WEBHOOK] No webhook URL for "${title}" — skipped`);
+          if (videoFull.webhook_enabled && videoFull.webhook_url) {
+            console.log(`[WEBHOOK] Immediate send for "${title}" (cat: ${videoFull.category_name})`);
+            sendDiscordWebhook(videoFull).catch(e => console.error('[WEBHOOK] Error:', e.message));
+          } else {
+            console.log(`[WEBHOOK] Disabled/no URL for "${title}" — skipped`);
+          }
+          if (videoFull.email_enabled) {
+            sendCategoryEmailNotifications(videoFull).catch(e => console.error('[EMAIL] Error:', e.message));
+          }
         }
       } else {
         console.log(`[WEBHOOK] Scheduled "${title}" for ${publish_date} — webhook will fire later`);
@@ -1941,11 +1988,11 @@ app.get('/api/categories', requireAuth, (req, res) => {
 // Create category (dev only)
 app.post('/api/categories', requireDev, (req, res) => {
   try {
-    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template } = req.body;
+    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, email_template } = req.body;
     if (!name) return res.status(400).json({ error: 'Name required' });
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    const result = db.prepare('INSERT INTO categories (name, slug, description, icon, sort_order, parent_id, webhook_url, webhook_template) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '');
+    const result = db.prepare('INSERT INTO categories (name, slug, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, email_template) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', webhook_enabled ? 1 : 0, email_enabled ? 1 : 0, email_template || '');
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(result.lastInsertRowid);
     audit(req.session.user.id, "create", "category", cat.id, name);
     res.json({ success: true, category: cat });
@@ -1955,10 +2002,10 @@ app.post('/api/categories', requireDev, (req, res) => {
 // Update category (dev only)
 app.put('/api/categories/:id', requireDev, (req, res) => {
   try {
-    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template } = req.body;
+    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, email_template } = req.body;
     const slug = name ? name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : undefined;
-    if (name) db.prepare('UPDATE categories SET name=?, slug=?, description=?, icon=?, sort_order=?, parent_id=?, webhook_url=?, webhook_template=? WHERE id=?')
-      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', req.params.id);
+    if (name) db.prepare('UPDATE categories SET name=?, slug=?, description=?, icon=?, sort_order=?, parent_id=?, webhook_url=?, webhook_template=?, webhook_enabled=?, email_enabled=?, email_template=? WHERE id=?')
+      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', webhook_enabled ? 1 : 0, email_enabled ? 1 : 0, email_template || '', req.params.id);
     audit(req.session.user.id, "edit", "category", parseInt(req.params.id), name || "");
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2177,7 +2224,7 @@ app.get('/api/authors/:id', requireAuth, (req, res) => {
 
 // ============ USERS API ============
 app.get('/api/users', requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, username, display_name, avatar, role, auth_method, created_at, last_login, discord_roles FROM users ORDER BY created_at DESC').all();
+  const users = db.prepare('SELECT id, username, display_name, avatar, role, auth_method, created_at, last_login, discord_roles, email, discord_email FROM users ORDER BY created_at DESC').all();
   res.json(users);
 });
 
@@ -2362,12 +2409,12 @@ app.get('/api/stats', requireAuth, (req, res) => {
 
 // ============ PROFILE API ============
 app.get('/api/profile', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, username, display_name, avatar, role, bio, auth_method, avatar_source, discord_id, discord_email, ts3_uid, ts6_uid, discord_guild_avatar_hash, created_at, last_login FROM users WHERE id = ?').get(req.session.user.id);
+  const user = db.prepare('SELECT id, username, display_name, avatar, role, bio, auth_method, avatar_source, discord_id, discord_email, ts3_uid, ts6_uid, discord_guild_avatar_hash, email, email_notifications, created_at, last_login FROM users WHERE id = ?').get(req.session.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   const videoCount = db.prepare('SELECT COUNT(*) AS c FROM videos WHERE author_id = ?').get(user.id).c;
   const viewCount = db.prepare('SELECT COUNT(*) AS c FROM watch_logs WHERE user_id = ?').get(user.id).c;
   const favCount = db.prepare('SELECT COUNT(*) AS c FROM favorites WHERE user_id = ?').get(user.id).c;
-  const { discord_guild_avatar_hash, discord_id, discord_email, ts3_uid, ts6_uid, ...userFields } = user;
+  const { discord_guild_avatar_hash, discord_id, discord_email, ts3_uid, ts6_uid, email_notifications, ...userFields } = user;
   res.json({
     ...userFields,
     has_guild_avatar: !!discord_guild_avatar_hash,
@@ -2375,13 +2422,14 @@ app.get('/api/profile', requireAuth, (req, res) => {
     has_teamspeak3: !!ts3_uid,
     has_teamspeak6: !!ts6_uid,
     discordEmail: discord_email || null,
+    emailNotifications: !!email_notifications,
     videoCount, viewCount, favCount,
   });
 });
 
 app.put('/api/profile', requireAuth, (req, res) => {
   try {
-    const { display_name, bio, avatar_source } = req.body;
+    const { display_name, bio, avatar_source, email, email_notifications } = req.body;
     const maxName = getLimit('limit_display_name');
     const maxBio = getLimit('limit_bio');
     if (display_name !== undefined) {
@@ -2395,6 +2443,16 @@ app.put('/api/profile', requireAuth, (req, res) => {
       const b = String(bio);
       if (b.length > maxBio) return res.status(400).json({ error: `Bio może mieć maksymalnie ${maxBio} znaków.` });
       db.prepare('UPDATE users SET bio = ? WHERE id = ?').run(b.slice(0, maxBio), req.session.user.id);
+    }
+    if (email !== undefined) {
+      const e = String(email).trim();
+      if (e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+        return res.status(400).json({ error: 'Nieprawidłowy adres e-mail.' });
+      }
+      db.prepare('UPDATE users SET email = ? WHERE id = ?').run(e || null, req.session.user.id);
+    }
+    if (email_notifications !== undefined) {
+      db.prepare('UPDATE users SET email_notifications = ? WHERE id = ?').run(email_notifications ? 1 : 0, req.session.user.id);
     }
     if (avatar_source !== undefined) {
       if (!['global', 'guild'].includes(avatar_source)) {
@@ -2537,7 +2595,7 @@ function gdprEnabled() {
 }
 
 function buildUserDataExport(userId) {
-  const user = db.prepare('SELECT id, username, display_name, bio, role, auth_method, discord_id, discord_email, ts3_uid, ts6_uid, created_at, last_login FROM users WHERE id = ?').get(userId);
+  const user = db.prepare('SELECT id, username, display_name, bio, role, auth_method, discord_id, discord_email, email, email_notifications, ts3_uid, ts6_uid, created_at, last_login FROM users WHERE id = ?').get(userId);
   return {
     exported_at: new Date().toISOString(),
     profile: user,
@@ -2555,6 +2613,7 @@ function anonymizeUser(userId) {
   db.prepare(`UPDATE users SET
     username = ?, display_name = 'Usunięty użytkownik', bio = '', avatar = NULL, avatar_source = 'global',
     discord_id = NULL, discord_roles = '[]', discord_avatar_hash = NULL, discord_guild_avatar_hash = NULL, discord_email = NULL,
+    email = NULL, email_notifications = 0,
     ts3_uid = NULL, ts3_ip = NULL, ts6_uid = NULL, ts6_ip = NULL, role = 'member',
     is_anonymized = 1, anonymized_original_username = ?, anonymized_original_display_name = ?,
     anonymized_at = datetime('now')
@@ -2826,6 +2885,14 @@ function settingsPayload() {
     youtube_custom_player: getSetting('youtube_custom_player', '0') === '1',
     gdpr_region: getSetting('gdpr_region', 'off'),
 
+    // SMTP — dev-only payload, so the raw password is returned here same as ts3/ts6 passwords below.
+    smtp_host: getSetting('smtp_host', ''),
+    smtp_port: getSetting('smtp_port', '587'),
+    smtp_secure: getSetting('smtp_secure', '0') === '1',
+    smtp_user: getSetting('smtp_user', ''),
+    smtp_password: getSetting('smtp_password', ''),
+    smtp_from: getSetting('smtp_from', ''),
+
     // Login config — source flags are .env-only (boot-time, no panel override; see tsConfigSource/
     // discordRolesConfigSource). The fields below always report the *effective* value, whichever
     // source is currently active, so the panel can show something sensible either way.
@@ -2892,6 +2959,28 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
     }
     setSetting('gdpr_region', v);
     audit(req.session.user.id, 'edit', 'settings', null, `gdpr_region → ${v}`);
+  }
+  // SMTP config
+  const SMTP_TEXT_FIELDS = ['smtp_host', 'smtp_user', 'smtp_password', 'smtp_from'];
+  for (const key of SMTP_TEXT_FIELDS) {
+    if (req.body[key] !== undefined) {
+      const v = String(req.body[key]);
+      setSetting(key, v);
+      const isSecret = key === 'smtp_password';
+      audit(req.session.user.id, 'edit', 'settings', null, `${key} → ${isSecret ? '(zmieniono)' : v}`);
+    }
+  }
+  if (req.body.smtp_port !== undefined) {
+    const v = String(req.body.smtp_port).trim();
+    if (v !== '' && !/^\d+$/.test(v)) {
+      return res.status(400).json({ error: 'Nieprawidłowa wartość smtp_port — oczekiwano samych cyfr.' });
+    }
+    setSetting('smtp_port', v || '587');
+    audit(req.session.user.id, 'edit', 'settings', null, `smtp_port → ${v}`);
+  }
+  if (req.body.smtp_secure !== undefined) {
+    setSetting('smtp_secure', req.body.smtp_secure ? '1' : '0');
+    audit(req.session.user.id, 'edit', 'settings', null, `smtp_secure → ${req.body.smtp_secure ? 'ON' : 'OFF'}`);
   }
   // Display settings — videos per page / grid columns / logs per page (formerly .env-only)
   for (const key of ['videos_per_page', 'grid_columns', 'logs_per_page']) {
@@ -2978,6 +3067,15 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
     }
   }
   res.json({ success: true, ...settingsPayload() });
+});
+
+app.post('/api/debug/settings/test-email', requireDev, async (req, res) => {
+  const dev = db.prepare('SELECT email, discord_email FROM users WHERE id = ?').get(req.session.user.id);
+  const to = String(req.body.to || '').trim() || dev?.email || dev?.discord_email;
+  if (!to) return res.status(400).json({ error: 'Podaj adres e-mail — Twoje konto nie ma żadnego zapisanego.' });
+  const ok = await sendEmail({ to, subject: 'Alleria Filmy — testowy e-mail', html: '<p>To jest testowa wiadomość z panelu Dev Tools. Konfiguracja SMTP działa poprawnie.</p>' });
+  if (!ok) return res.status(500).json({ error: 'Wysyłka nie powiodła się — sprawdź konfigurację SMTP i logi serwera.' });
+  res.json({ success: true, to });
 });
 
 // ============ GDPR / RODO (admin review) ============
@@ -3972,6 +4070,7 @@ if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
     try {
       const needsWebhook = db.prepare(`
         SELECT v.*, c.name AS category_name, c.webhook_url, c.webhook_template,
+        c.webhook_enabled, c.email_enabled, c.email_template,
         u.display_name AS author_name
         FROM videos v
         LEFT JOIN categories c ON v.category_id = c.id
@@ -3985,8 +4084,8 @@ if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
         // Mark as sent first to prevent duplicates
         db.prepare("UPDATE videos SET webhook_sent = 1 WHERE id = ?").run(video.id);
 
-        // Send Discord webhook if category has one configured
-        if (video.webhook_url) {
+        // Send Discord webhook if category has one configured and enabled
+        if (video.webhook_enabled && video.webhook_url) {
           try {
             await sendDiscordWebhook(video);
             console.log(`[WEBHOOK] ✅ Sent for "${video.title}" (ID: ${video.id})`);
@@ -3994,7 +4093,17 @@ if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
             console.error(`[WEBHOOK] ❌ Failed for "${video.title}": ${e.message}`);
           }
         } else {
-          console.log(`[WEBHOOK] Skipped "${video.title}" — no webhook URL on category`);
+          console.log(`[WEBHOOK] Skipped "${video.title}" — disabled or no webhook URL on category`);
+        }
+
+        // Email notification is independent of the webhook
+        if (video.email_enabled) {
+          try {
+            await sendCategoryEmailNotifications(video);
+            console.log(`[EMAIL] ✅ Sent for "${video.title}" (ID: ${video.id})`);
+          } catch (e) {
+            console.error(`[EMAIL] ❌ Failed for "${video.title}": ${e.message}`);
+          }
         }
       }
     } catch (e) { console.error('[WEBHOOK] Interval error:', e.message); }
@@ -4061,4 +4170,60 @@ async function sendDiscordWebhook(video) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+// Fresh transport per send — this app's email volume doesn't warrant pooling/cache invalidation.
+function getMailTransport() {
+  return nodemailer.createTransport({
+    host: getSetting('smtp_host', ''),
+    port: parseInt(getSetting('smtp_port', '587'), 10) || 587,
+    secure: getSetting('smtp_secure', '0') === '1',
+    auth: {
+      user: getSetting('smtp_user', ''),
+      pass: getSetting('smtp_password', ''),
+    },
+  });
+}
+
+// Never throws — one bad send should never break the publish flow, same philosophy as sendDiscordWebhook.
+async function sendEmail({ to, subject, html }) {
+  try {
+    const from = getSetting('smtp_from', '') || getSetting('smtp_user', '');
+    await getMailTransport().sendMail({ from, to, subject, html });
+    return true;
+  } catch (e) {
+    console.error(`[EMAIL] Send to ${to} failed: ${e.message}`);
+    return false;
+  }
+}
+
+async function sendCategoryEmailNotifications(video) {
+  if (!video.email_enabled) return;
+
+  const defaultTemplate = 'Nowy film: {title}\nAutor: {author}\nKategoria: {category}\n{url}';
+  let template = video.email_template || defaultTemplate;
+
+  const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
+  const replacements = {
+    '{title}': video.title || '',
+    '{author}': video.author_name || video.author_display_name || '',
+    '{category}': video.category_name || 'Bez kategorii',
+    '{description}': (video.description || '').slice(0, 200),
+    '{date}': video.publish_date || '',
+    '{id}': String(video.id),
+    '{url}': `${baseUrl}/video/${video.id}`,
+    '{thumbnail}': video.thumbnail || '',
+  };
+  let body = template;
+  for (const [key, val] of Object.entries(replacements)) {
+    body = body.split(key).join(val);
+  }
+  const html = body.split('\n').map(line => `<p>${line}</p>`).join('');
+
+  const recipients = db.prepare(`SELECT email, discord_email FROM users WHERE email_notifications = 1`).all();
+  for (const r of recipients) {
+    const to = r.email || r.discord_email;
+    if (!to) continue;
+    await sendEmail({ to, subject: `Nowy film: ${video.title}`, html });
+  }
 }

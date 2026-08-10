@@ -4,11 +4,13 @@ import { Search, SlidersHorizontal, X, ChevronDown, Film, RotateCcw, Lock } from
 import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
 import { useSettings } from '../contexts/SettingsContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 export default function VideosPage() {
   const { authorId, tagId, categorySlug } = useParams();
   const navigate = useNavigate();
   const { config: siteConfig } = useSettings();
+  const confirm = useConfirm();
   const [searchParams] = useSearchParams();
   const [videos, setVideos] = useState([]);
   const [tags, setTags] = useState([]);
@@ -83,7 +85,7 @@ export default function VideosPage() {
   const hasActiveFilters = search || selectedTags.length > 0 || selectedAuthor;
 
   const handleResetProgress = async () => {
-    if (!confirm('Zresetować postęp wszystkich filmów? Funkcja "Kontynuuj oglądanie" zostanie wyczyszczona.')) return;
+    if (!(await confirm('Zresetować postęp wszystkich filmów? Funkcja "Kontynuuj oglądanie" zostanie wyczyszczona.', { danger: true, confirmLabel: 'Resetuj' }))) return;
     setResetting(true);
     try { await api.resetProgress(); setContinueWatching([]); } catch (e) {}
     setResetting(false);
