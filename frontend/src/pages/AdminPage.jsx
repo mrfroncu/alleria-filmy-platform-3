@@ -22,6 +22,7 @@ export default function AdminPage() {
   const [editingVideo, setEditingVideo] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [searchVideos, setSearchVideos] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
 
   // Bulk actions
   const [selectedIds, setSelectedIds] = useState([]);
@@ -102,7 +103,8 @@ export default function AdminPage() {
   const getCatName = (catId) => categories.find(c => c.id === catId)?.name || '—';
 
   const filteredVideos = videos.filter(v =>
-    v.title.toLowerCase().includes(searchVideos.toLowerCase())
+    v.title.toLowerCase().includes(searchVideos.toLowerCase()) &&
+    (!filterCategory || String(v.category_id || '') === filterCategory)
   );
 
   const tabs = [
@@ -179,9 +181,15 @@ export default function AdminPage() {
       {tab === 'videos' && (
         <div>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-              <input type="text" value={searchVideos} onChange={e => setSearchVideos(e.target.value)} placeholder="Szukaj filmów..." className="input-field pl-11 !py-3 text-sm" />
+            <div className="flex flex-1 flex-col sm:flex-row gap-3 w-full sm:max-w-2xl">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                <input type="text" value={searchVideos} onChange={e => setSearchVideos(e.target.value)} placeholder="Szukaj filmów..." className="input-field pl-11 !py-3 text-sm" />
+              </div>
+              <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="input-field !py-3 !w-auto min-w-[180px] text-sm">
+                <option value="">Wszystkie kategorie</option>
+                {categories.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+              </select>
             </div>
             <button onClick={() => { setEditingVideo(null); setIsModalOpen(true); }} className="btn-primary flex items-center gap-2 text-sm">
               <Plus className="w-4 h-4" /> Dodaj film
@@ -377,6 +385,7 @@ export default function AdminPage() {
         video={editingVideo}
         users={allUsers}
         onSaved={loadData}
+        defaultCategoryId={filterCategory}
       />
 
       {/* Delete Confirmation Modal */}

@@ -21,6 +21,8 @@ export default function DateTimePicker({ value, onChange, label }) {
   const validDate = isNaN(parsed.getTime()) ? new Date() : parsed;
 
   const [open, setOpen] = useState(false);
+  const [pickerMode, setPickerMode] = useState('days'); // 'days' | 'months' | 'years'
+  const [yearsBase, setYearsBase] = useState(validDate.getFullYear() - 5);
   const [viewYear, setViewYear] = useState(validDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(validDate.getMonth());
   const [selDay, setSelDay] = useState(validDate.getDate());
@@ -47,7 +49,7 @@ export default function DateTimePicker({ value, onChange, label }) {
   // Close on outside click
   useEffect(() => {
     const handler = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+      if (containerRef.current && !containerRef.current.contains(e.target)) { setOpen(false); setPickerMode('days'); }
     };
     if (open) document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -73,6 +75,15 @@ export default function DateTimePicker({ value, onChange, label }) {
   const nextMonth = () => {
     if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
     else setViewMonth(m => m + 1);
+  };
+
+  const prevYearsPage = () => setYearsBase(b => b - 12);
+  const nextYearsPage = () => setYearsBase(b => b + 12);
+
+  const openMonthsPicker = () => setPickerMode(m => m === 'months' ? 'days' : 'months');
+  const openYearsPicker = () => {
+    setYearsBase(viewYear - 5);
+    setPickerMode(m => m === 'years' ? 'days' : 'years');
   };
 
   const handleHour = (v) => {
@@ -114,7 +125,7 @@ export default function DateTimePicker({ value, onChange, label }) {
       {label && <label className="label-field">{label}</label>}
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => { setOpen(!open); setPickerMode('days'); }}
         className="input-field text-left flex items-center gap-3 cursor-pointer"
       >
         <Calendar className="w-4 h-4 text-zinc-400 shrink-0" />
@@ -125,46 +136,111 @@ export default function DateTimePicker({ value, onChange, label }) {
         <div className="absolute z-50 mt-2 w-[320px] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl shadow-zinc-900/20 dark:shadow-black/40 overflow-hidden" style={{ animation: 'slideUp 0.2s ease-out' }}>
           {/* Month/Year nav */}
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
-            <button type="button" onClick={prevMonth} className="btn-icon-zinc">
+            <button
+              type="button"
+              onClick={pickerMode === 'years' ? prevYearsPage : prevMonth}
+              className="btn-icon-zinc"
+              style={{ visibility: pickerMode === 'months' ? 'hidden' : 'visible' }}
+            >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-sm font-bold text-zinc-900 dark:text-white font-display">
-              {MONTHS_PL[viewMonth]} {viewYear}
-            </span>
-            <button type="button" onClick={nextMonth} className="btn-icon-zinc">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={openMonthsPicker}
+                className={`text-sm font-bold font-display px-1.5 py-0.5 rounded-lg transition-colors ${pickerMode === 'months' ? 'text-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'text-zinc-900 dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}
+              >
+                {MONTHS_PL[viewMonth]}
+              </button>
+              <button
+                type="button"
+                onClick={openYearsPicker}
+                className={`text-sm font-bold font-display px-1.5 py-0.5 rounded-lg transition-colors ${pickerMode === 'years' ? 'text-violet-500 bg-violet-50 dark:bg-violet-500/10' : 'text-zinc-900 dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}
+              >
+                {viewYear}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={pickerMode === 'years' ? nextYearsPage : nextMonth}
+              className="btn-icon-zinc"
+              style={{ visibility: pickerMode === 'months' ? 'hidden' : 'visible' }}
+            >
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Day headers */}
-          <div className="grid grid-cols-7 px-3">
-            {DAYS_PL.map(d => (
-              <div key={d} className="text-center text-[10px] font-bold text-zinc-400 uppercase py-1">{d}</div>
-            ))}
-          </div>
-
-          {/* Day grid */}
-          <div className="grid grid-cols-7 px-3 pb-3">
-            {Array(firstDay).fill(null).map((_, i) => (
-              <div key={`empty-${i}`} />
-            ))}
-            {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => (
-              <button
-                key={day}
-                type="button"
-                onClick={() => selectDay(day)}
-                className={`w-9 h-9 mx-auto rounded-xl text-sm font-medium transition-all flex items-center justify-center ${
-                  isSelected(day)
-                    ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20 font-bold'
-                    : isToday(day)
-                      ? 'bg-violet-50 dark:bg-violet-500/10 text-violet-500 dark:text-violet-400 font-bold'
+          {pickerMode === 'months' && (
+            <div className="grid grid-cols-3 gap-2 px-4 pb-4">
+              {MONTHS_PL.map((m, idx) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => { setViewMonth(idx); setPickerMode('days'); }}
+                  className={`py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    idx === viewMonth
+                      ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20'
                       : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                }`}
-              >
-                {day}
-              </button>
-            ))}
-          </div>
+                  }`}
+                >
+                  {m.slice(0, 3)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {pickerMode === 'years' && (
+            <div className="grid grid-cols-3 gap-2 px-4 pb-4">
+              {Array.from({ length: 12 }, (_, i) => yearsBase + i).map(y => (
+                <button
+                  key={y}
+                  type="button"
+                  onClick={() => { setViewYear(y); setPickerMode('days'); }}
+                  className={`py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    y === viewYear
+                      ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20'
+                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                  }`}
+                >
+                  {y}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {pickerMode === 'days' && (
+            <>
+              {/* Day headers */}
+              <div className="grid grid-cols-7 px-3">
+                {DAYS_PL.map(d => (
+                  <div key={d} className="text-center text-[10px] font-bold text-zinc-400 uppercase py-1">{d}</div>
+                ))}
+              </div>
+
+              {/* Day grid */}
+              <div className="grid grid-cols-7 px-3 pb-3">
+                {Array(firstDay).fill(null).map((_, i) => (
+                  <div key={`empty-${i}`} />
+                ))}
+                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => selectDay(day)}
+                    className={`w-9 h-9 mx-auto rounded-xl text-sm font-medium transition-all flex items-center justify-center ${
+                      isSelected(day)
+                        ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20 font-bold'
+                        : isToday(day)
+                          ? 'bg-violet-50 dark:bg-violet-500/10 text-violet-500 dark:text-violet-400 font-bold'
+                          : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                    }`}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
           {/* Time */}
           <div className="border-t border-zinc-200 dark:border-zinc-800 px-4 py-3 flex items-center gap-2">

@@ -26,7 +26,7 @@ function SmartThumbnail({ ytId, customSrc, alt }) {
   );
 }
 
-export default function VideoModal({ isOpen, onClose, video, users = [], onSaved }) {
+export default function VideoModal({ isOpen, onClose, video, users = [], onSaved, defaultCategoryId = '' }) {
   const isEdit = !!video;
   const { user: currentUser } = useAuth();
   const [title, setTitle] = useState('');
@@ -165,7 +165,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     setMirror5Name(''); setMirror5Url(''); setMirror5Type('link'); setMirror5VideoFile(null); setMirror5StreamVideoId('');
     setDescription(''); setPublishDate(new Date().toISOString());
     setSelectedTags([]); setTagInput(''); setShowMirror1(false); setShowMirror2(false); setShowMirror3(false); setShowMirror4(false); setShowMirror5(false);
-    setIsSelfHosted(false); setVideoFile(null); setDrmEnhanced(false); setUploadProgress(''); setUploadPercent(0); setChunkPercent(0); setStreamVideoId(''); setCategoryId(''); setAccessMode('category'); setAllowedUsers([]);
+    setIsSelfHosted(false); setVideoFile(null); setDrmEnhanced(false); setUploadProgress(''); setUploadPercent(0); setChunkPercent(0); setStreamVideoId(''); setCategoryId(defaultCategoryId ? String(defaultCategoryId) : ''); setAccessMode('category'); setAllowedUsers([]);
   };
 
   useEffect(() => {
