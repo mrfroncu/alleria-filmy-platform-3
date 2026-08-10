@@ -416,8 +416,11 @@ export default function DebugPage() {
     e.target.value = '';
   };
 
-  const handleGdprApprove = async (id) => {
-    if (!(await confirm('Zatwierdzić to zgłoszenie? Dla usunięcia konta oznacza to natychmiastową anonimizację i wylogowanie użytkownika.', { confirmLabel: 'Zatwierdź' }))) return;
+  const handleGdprApprove = async (id, type) => {
+    const message = type === 'deletion'
+      ? 'Zatwierdzić usunięcie konta? Nastąpi natychmiastowa anonimizacja danych i wylogowanie użytkownika. Tej operacji nie można cofnąć.'
+      : 'Zatwierdzić eksport danych? Plik stanie się dostępny do pobrania w profilu użytkownika.';
+    if (!(await confirm(message, { confirmLabel: 'Zatwierdź', danger: type === 'deletion' }))) return;
     setGdprBusy(id);
     try {
       await api.adminApproveGdpr(id);
@@ -1462,7 +1465,7 @@ export default function DebugPage() {
                         )}
                         {r.status === 'pending' && (
                           <>
-                            <button onClick={() => handleGdprApprove(r.id)} disabled={busy} className="btn-sm-primary disabled:opacity-50">Zatwierdź</button>
+                            <button onClick={() => handleGdprApprove(r.id, r.type)} disabled={busy} className="btn-sm-primary disabled:opacity-50">Zatwierdź</button>
                             <button onClick={() => { setRejectingId(rejectingId === r.id ? null : r.id); setRejectReason(''); }} disabled={busy} className="btn-sm-secondary disabled:opacity-50">Odrzuć</button>
                           </>
                         )}
