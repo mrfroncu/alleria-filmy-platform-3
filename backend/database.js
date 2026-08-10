@@ -292,6 +292,32 @@ function initDB() {
   try { db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ts3_uid ON users(ts3_uid) WHERE ts3_uid IS NOT NULL`); } catch (e) {}
   try { db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ts6_uid ON users(ts6_uid) WHERE ts6_uid IS NOT NULL`); } catch (e) {}
 
+  // Discord email — only populated once the OAuth flow requests the `email` scope; existing
+  // sessions/accounts backfill it on their next Discord login (Discord doesn't retroactively
+  // grant new scopes), so this stays nullable indefinitely.
+  try { db.exec(`ALTER TABLE users ADD COLUMN discord_email TEXT`); } catch (e) {}
+
+  // GDPR/RODO — anonymization state on the existing users row. Deletion never removes the row
+  // (comments/videos reference it) — it blanks PII and keeps the original name around for admins.
+  try { db.exec(`ALTER TABLE users ADD COLUMN is_anonymized INTEGER DEFAULT 0`); } catch (e) {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN anonymized_original_username TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN anonymized_original_display_name TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN anonymized_at TEXT`); } catch (e) {}
+
+  db.exec(`CREATE TABLE IF NOT EXISTS gdpr_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    requested_at TEXT DEFAULT (datetime('now')),
+    due_at TEXT NOT NULL,
+    export_file TEXT,
+    admin_note TEXT DEFAULT '',
+    processed_by INTEGER,
+    processed_at TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`);
+
   return db;
 }
 

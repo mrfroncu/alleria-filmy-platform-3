@@ -13,6 +13,7 @@ const DEFAULT_CONFIG = {
   limitComment: 3000,
   showTopBar: true,
   customYoutubePlayer: false,
+  gdprRegion: 'off',
 };
 
 export function SettingsProvider({ children }) {

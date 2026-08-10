@@ -78,6 +78,10 @@ if (redirectUri && !redirectUri.includes('/auth/discord/callback')) {
 const uploadsDir = path.join(__dirname, 'data', 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
+// GDPR/RODO data-export files
+const gdprDir = path.join(__dirname, 'data', 'gdpr');
+if (!fs.existsSync(gdprDir)) fs.mkdirSync(gdprDir, { recursive: true });
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => cb(null, uuidv4() + path.extname(file.originalname))
@@ -210,6 +214,7 @@ app.get('/api/config', requireAuth, (req, res) => {
     limitComment: s.limit_comment,
     showTopBar: s.show_top_bar,
     customYoutubePlayer: s.youtube_custom_player,
+    gdprRegion: s.gdpr_region,
   });
 });
 
@@ -416,7 +421,7 @@ function discordRedirectHandler(req, res) {
     client_id: process.env.DISCORD_CLIENT_ID,
     redirect_uri: process.env.DISCORD_REDIRECT_URI,
     response_type: 'code',
-    scope: 'identify guilds.members.read'
+    scope: 'identify guilds.members.read email'
   });
   const url = `https://discord.com/api/oauth2/authorize?${params}`;
   console.log('Redirecting to Discord OAuth:', url.replace(process.env.DISCORD_CLIENT_ID, '***'));
@@ -502,6 +507,7 @@ async function discordCallbackHandler(req, res) {
     // Discord avatar hashes — global (account) and per-server (guild, Nitro-only)
     const discordAvatarHash = discordUser.avatar || null;
     const discordGuildAvatarHash = member.avatar || null;
+    const discordEmail = discordUser.email || null;
 
     // Upsert user
     const existing = db.prepare('SELECT * FROM users WHERE discord_id = ?').get(discordUser.id);
@@ -526,8 +532,8 @@ async function discordCallbackHandler(req, res) {
       if (primary.discord_id && primary.discord_id !== discordUser.id) {
         return req.session.save(() => res.redirect('/profile?error=already_linked_discord'));
       }
-      db.prepare(`UPDATE users SET discord_id = ?, discord_roles = ?, discord_avatar_hash = ?, discord_guild_avatar_hash = ? WHERE id = ?`)
-        .run(discordUser.id, rolesJson, discordAvatarHash, discordGuildAvatarHash, linkPrimaryUserId);
+      db.prepare(`UPDATE users SET discord_id = ?, discord_roles = ?, discord_avatar_hash = ?, discord_guild_avatar_hash = ?, discord_email = ? WHERE id = ?`)
+        .run(discordUser.id, rolesJson, discordAvatarHash, discordGuildAvatarHash, discordEmail, linkPrimaryUserId);
       if (req.session.user) req.session.user.discord_roles = roles;
       audit(linkPrimaryUserId, 'link_account', 'user', linkPrimaryUserId, `linked Discord (${discordUser.username})`);
       return req.session.save(() => res.redirect('/profile?linked=discord'));
@@ -545,12 +551,12 @@ async function discordCallbackHandler(req, res) {
       // Never let this login downgrade a role earned via a different linked identity
       // (e.g. admin/dev via a linked TS3/TS6 account) — see maxRole's comment.
       const finalRole = maxRole(existing.role, role);
-      db.prepare(`UPDATE users SET username = ?, display_name = ?, avatar = ?, role = ?, discord_roles = ?, discord_avatar_hash = ?, discord_guild_avatar_hash = ?, last_login = datetime('now') WHERE discord_id = ?`)
-        .run(discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, finalRole, rolesJson, discordAvatarHash, discordGuildAvatarHash, discordUser.id);
+      db.prepare(`UPDATE users SET username = ?, display_name = ?, avatar = ?, role = ?, discord_roles = ?, discord_avatar_hash = ?, discord_guild_avatar_hash = ?, discord_email = ?, last_login = datetime('now') WHERE discord_id = ?`)
+        .run(discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, finalRole, rolesJson, discordAvatarHash, discordGuildAvatarHash, discordEmail, discordUser.id);
       userId = existing.id;
     } else {
-      const result = db.prepare('INSERT INTO users (discord_id, username, display_name, avatar, role, auth_method, discord_roles, discord_avatar_hash, discord_guild_avatar_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(discordUser.id, discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, role, 'discord', rolesJson, discordAvatarHash, discordGuildAvatarHash);
+      const result = db.prepare('INSERT INTO users (discord_id, username, display_name, avatar, role, auth_method, discord_roles, discord_avatar_hash, discord_guild_avatar_hash, discord_email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(discordUser.id, discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, role, 'discord', rolesJson, discordAvatarHash, discordGuildAvatarHash, discordEmail);
       userId = result.lastInsertRowid;
     }
 
@@ -2356,18 +2362,19 @@ app.get('/api/stats', requireAuth, (req, res) => {
 
 // ============ PROFILE API ============
 app.get('/api/profile', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, username, display_name, avatar, role, bio, auth_method, avatar_source, discord_id, ts3_uid, ts6_uid, discord_guild_avatar_hash, created_at, last_login FROM users WHERE id = ?').get(req.session.user.id);
+  const user = db.prepare('SELECT id, username, display_name, avatar, role, bio, auth_method, avatar_source, discord_id, discord_email, ts3_uid, ts6_uid, discord_guild_avatar_hash, created_at, last_login FROM users WHERE id = ?').get(req.session.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   const videoCount = db.prepare('SELECT COUNT(*) AS c FROM videos WHERE author_id = ?').get(user.id).c;
   const viewCount = db.prepare('SELECT COUNT(*) AS c FROM watch_logs WHERE user_id = ?').get(user.id).c;
   const favCount = db.prepare('SELECT COUNT(*) AS c FROM favorites WHERE user_id = ?').get(user.id).c;
-  const { discord_guild_avatar_hash, discord_id, ts3_uid, ts6_uid, ...userFields } = user;
+  const { discord_guild_avatar_hash, discord_id, discord_email, ts3_uid, ts6_uid, ...userFields } = user;
   res.json({
     ...userFields,
     has_guild_avatar: !!discord_guild_avatar_hash,
     has_discord: !!discord_id,
     has_teamspeak3: !!ts3_uid,
     has_teamspeak6: !!ts6_uid,
+    discordEmail: discord_email || null,
     videoCount, viewCount, favCount,
   });
 });
@@ -2477,6 +2484,131 @@ app.delete('/api/profile/merge/:mergeId', requireAuth, (req, res) => {
   if (pending.primaryId !== req.session.user.id) return res.status(403).json({ error: 'Forbidden' });
   consumePendingMerge(req.params.mergeId);
   res.json({ success: true });
+});
+
+// Unlink a single identity (Discord/TS3/TS6) from the current account. Unlike merge, this
+// never touches another row — it's just a column-clear on this same user row, so id, role,
+// comments, authored videos etc. all stay put. The freed identity (discord_id/ts3_uid/ts6_uid)
+// goes back to NULL, so the next login with it won't match this row anymore — it'll either
+// create a brand-new account or be linked fresh into a different one, exactly like an
+// identity that was never connected here in the first place.
+app.post('/api/profile/unlink', requireAuth, (req, res) => {
+  const { method } = req.body; // 'discord' | 'teamspeak3' | 'teamspeak' (TS6 — see identityList)
+  if (!['discord', 'teamspeak3', 'teamspeak'].includes(method)) {
+    return res.status(400).json({ error: 'Nieprawidłowa metoda.' });
+  }
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.user.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const identities = identityList(user);
+  if (!identities.includes(method)) {
+    return res.status(400).json({ error: 'To konto nie ma połączonej tej metody logowania.' });
+  }
+  if (identities.length <= 1) {
+    return res.status(400).json({ error: 'Nie można rozłączyć jedynej metody logowania — dodaj najpierw inną.' });
+  }
+
+  try {
+    if (method === 'discord') {
+      // Avatar only ever comes from Discord in this codebase (TS-only accounts have avatar =
+      // NULL and the frontend falls back to a generated one) — clear it along with the identity.
+      db.prepare(`UPDATE users SET discord_id = NULL, discord_roles = '[]', discord_avatar_hash = NULL,
+                  discord_guild_avatar_hash = NULL, discord_email = NULL, avatar_source = 'global', avatar = NULL WHERE id = ?`).run(user.id);
+      req.session.user.discord_id = null;
+      req.session.user.avatar = null;
+    } else {
+      const uidCol = method === 'teamspeak3' ? 'ts3_uid' : 'ts6_uid';
+      const ipCol = method === 'teamspeak3' ? 'ts3_ip' : 'ts6_ip';
+      db.prepare(`UPDATE users SET ${uidCol} = NULL, ${ipCol} = NULL WHERE id = ?`).run(user.id);
+    }
+    audit(req.session.user.id, 'unlink_account', 'user', user.id, method);
+    req.session.save(() => res.json({ success: true }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ GDPR / RODO ============
+// Data export + account deletion (anonymization). Gated behind the gdpr_region setting so it's
+// only exposed where legally required. Deletion never removes the users row — comments/videos
+// reference it — it blanks PII on that same row instead (see anonymizeUser below).
+function gdprEnabled() {
+  return getSetting('gdpr_region', 'off') !== 'off';
+}
+
+function buildUserDataExport(userId) {
+  const user = db.prepare('SELECT id, username, display_name, bio, role, auth_method, discord_id, discord_email, ts3_uid, ts6_uid, created_at, last_login FROM users WHERE id = ?').get(userId);
+  return {
+    exported_at: new Date().toISOString(),
+    profile: user,
+    comments: db.prepare('SELECT c.content, c.created_at, v.title AS video_title FROM comments c JOIN videos v ON c.video_id = v.id WHERE c.user_id = ? AND c.deleted = 0').all(userId),
+    authored_videos: db.prepare('SELECT id, title, created_at, publish_date FROM videos WHERE author_id = ?').all(userId),
+    watch_history: db.prepare('SELECT video_id, watched_at FROM watch_logs WHERE user_id = ?').all(userId),
+    favorites: db.prepare('SELECT video_id, created_at FROM favorites WHERE user_id = ?').all(userId),
+    login_history: db.prepare('SELECT auth_method, ip_address, success, logged_at FROM login_logs WHERE user_id = ? ORDER BY logged_at DESC LIMIT 500').all(userId),
+  };
+}
+
+function anonymizeUser(userId) {
+  const u = db.prepare('SELECT username, display_name FROM users WHERE id = ?').get(userId);
+  if (!u) return;
+  db.prepare(`UPDATE users SET
+    username = ?, display_name = 'Usunięty użytkownik', bio = '', avatar = NULL, avatar_source = 'global',
+    discord_id = NULL, discord_roles = '[]', discord_avatar_hash = NULL, discord_guild_avatar_hash = NULL, discord_email = NULL,
+    ts3_uid = NULL, ts3_ip = NULL, ts6_uid = NULL, ts6_ip = NULL, role = 'member',
+    is_anonymized = 1, anonymized_original_username = ?, anonymized_original_display_name = ?,
+    anonymized_at = datetime('now')
+    WHERE id = ?`).run(`deleted_user_${userId}`, u.username, u.display_name, userId);
+  invalidateUserSessions(userId);
+}
+
+app.post('/api/profile/gdpr/export', requireAuth, (req, res) => {
+  if (!gdprEnabled()) return res.status(403).json({ error: 'Funkcja RODO nie jest włączona.' });
+  const userId = req.session.user.id;
+  const existing = db.prepare("SELECT id FROM gdpr_requests WHERE user_id = ? AND type = 'export' AND status = 'pending'").get(userId);
+  if (existing) return res.status(400).json({ error: 'Masz już oczekujące zgłoszenie eksportu danych.' });
+  try {
+    const info = db.prepare("INSERT INTO gdpr_requests (user_id, type, due_at) VALUES (?, 'export', datetime('now', '+30 days'))").run(userId);
+    const requestId = info.lastInsertRowid;
+    const filename = `export_${requestId}.json`;
+    fs.writeFileSync(path.join(gdprDir, filename), JSON.stringify(buildUserDataExport(userId), null, 2));
+    db.prepare('UPDATE gdpr_requests SET export_file = ? WHERE id = ?').run(filename, requestId);
+    audit(userId, 'gdpr_request', 'user', userId, 'export');
+    res.json(db.prepare('SELECT * FROM gdpr_requests WHERE id = ?').get(requestId));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/profile/gdpr/deletion', requireAuth, (req, res) => {
+  if (!gdprEnabled()) return res.status(403).json({ error: 'Funkcja RODO nie jest włączona.' });
+  const userId = req.session.user.id;
+  const existing = db.prepare("SELECT id FROM gdpr_requests WHERE user_id = ? AND type = 'deletion' AND status = 'pending'").get(userId);
+  if (existing) return res.status(400).json({ error: 'Masz już oczekujące zgłoszenie usunięcia konta.' });
+  try {
+    const info = db.prepare("INSERT INTO gdpr_requests (user_id, type, due_at) VALUES (?, 'deletion', datetime('now', '+30 days'))").run(userId);
+    audit(userId, 'gdpr_request', 'user', userId, 'deletion');
+    res.json(db.prepare('SELECT * FROM gdpr_requests WHERE id = ?').get(info.lastInsertRowid));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/profile/gdpr/requests', requireAuth, (req, res) => {
+  res.json(db.prepare('SELECT * FROM gdpr_requests WHERE user_id = ? ORDER BY requested_at DESC').all(req.session.user.id));
+});
+
+app.delete('/api/profile/gdpr/requests/:id', requireAuth, (req, res) => {
+  const reqRow = db.prepare('SELECT * FROM gdpr_requests WHERE id = ?').get(req.params.id);
+  if (!reqRow || reqRow.user_id !== req.session.user.id) return res.status(404).json({ error: 'Nie znaleziono zgłoszenia.' });
+  if (reqRow.status !== 'pending') return res.status(400).json({ error: 'Można anulować tylko oczekujące zgłoszenie.' });
+  db.prepare('DELETE FROM gdpr_requests WHERE id = ?').run(reqRow.id);
+  if (reqRow.export_file) { try { fs.unlinkSync(path.join(gdprDir, reqRow.export_file)); } catch (e) {} }
+  res.json({ success: true });
+});
+
+app.get('/api/profile/gdpr/export/:id/download', requireAuth, (req, res) => {
+  const reqRow = db.prepare('SELECT * FROM gdpr_requests WHERE id = ?').get(req.params.id);
+  if (!reqRow || reqRow.user_id !== req.session.user.id || reqRow.type !== 'export' || reqRow.status !== 'approved' || !reqRow.export_file) {
+    return res.status(403).json({ error: 'Plik nie jest (jeszcze) dostępny.' });
+  }
+  res.download(path.join(gdprDir, reqRow.export_file), `moje-dane-alleria-${reqRow.id}.json`);
 });
 
 // ============ DEBUG / DEV API ============
@@ -2674,6 +2806,7 @@ app.post('/api/debug/sql', requireDev, (req, res) => {
 
 // ============ APP SETTINGS API (dev only) ============
 const TS3_DELIVERY_VALUES = ['pm', 'poke', 'both'];
+const GDPR_REGION_VALUES = ['off', 'eu', 'brazil'];
 
 function settingsPayload() {
   return {
@@ -2691,6 +2824,7 @@ function settingsPayload() {
     iframe_allowed_origins: getSetting('iframe_allowed_origins', '').split(',').map(o => o.trim()).filter(Boolean),
     show_top_bar: getSetting('show_top_bar', '1') === '1',
     youtube_custom_player: getSetting('youtube_custom_player', '0') === '1',
+    gdpr_region: getSetting('gdpr_region', 'off'),
 
     // Login config — source flags are .env-only (boot-time, no panel override; see tsConfigSource/
     // discordRolesConfigSource). The fields below always report the *effective* value, whichever
@@ -2749,6 +2883,15 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
     }
     setSetting('ts3_code_delivery', v);
     audit(req.session.user.id, 'edit', 'settings', null, `ts3_code_delivery → ${v}`);
+  }
+  // GDPR/RODO region — gates the data-export/deletion request UI and endpoints
+  if (req.body.gdpr_region !== undefined) {
+    const v = String(req.body.gdpr_region);
+    if (!GDPR_REGION_VALUES.includes(v)) {
+      return res.status(400).json({ error: 'Nieprawidłowa wartość gdpr_region (off | eu | brazil).' });
+    }
+    setSetting('gdpr_region', v);
+    audit(req.session.user.id, 'edit', 'settings', null, `gdpr_region → ${v}`);
   }
   // Display settings — videos per page / grid columns / logs per page (formerly .env-only)
   for (const key of ['videos_per_page', 'grid_columns', 'logs_per_page']) {
@@ -2835,6 +2978,68 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
     }
   }
   res.json({ success: true, ...settingsPayload() });
+});
+
+// ============ GDPR / RODO (admin review) ============
+const gdprUpload = multer({ dest: gdprDir, limits: { fileSize: 20 * 1024 * 1024 } });
+
+app.get('/api/debug/gdpr/requests', requireDev, (req, res) => {
+  const rows = db.prepare(`
+    SELECT r.*, u.username, u.display_name, u.anonymized_original_username, u.anonymized_original_display_name
+    FROM gdpr_requests r JOIN users u ON r.user_id = u.id
+    ORDER BY r.requested_at DESC
+  `).all();
+  res.json(rows);
+});
+
+app.get('/api/debug/gdpr/requests/:id/file', requireDev, (req, res) => {
+  const reqRow = db.prepare('SELECT * FROM gdpr_requests WHERE id = ?').get(req.params.id);
+  if (!reqRow || reqRow.type !== 'export' || !reqRow.export_file) return res.status(404).json({ error: 'Brak pliku.' });
+  res.download(path.join(gdprDir, reqRow.export_file), reqRow.export_file);
+});
+
+app.post('/api/debug/gdpr/requests/:id/replace', requireDev, gdprUpload.single('file'), (req, res) => {
+  const reqRow = db.prepare('SELECT * FROM gdpr_requests WHERE id = ?').get(req.params.id);
+  if (!reqRow || reqRow.type !== 'export') {
+    if (req.file) { try { fs.unlinkSync(req.file.path); } catch (e) {} }
+    return res.status(404).json({ error: 'Nie znaleziono zgłoszenia eksportu.' });
+  }
+  if (!req.file) return res.status(400).json({ error: 'Brak pliku.' });
+  try {
+    JSON.parse(fs.readFileSync(req.file.path, 'utf8'));
+  } catch (e) {
+    try { fs.unlinkSync(req.file.path); } catch (_) {}
+    return res.status(400).json({ error: 'Przesłany plik nie jest poprawnym JSON-em.' });
+  }
+  const filename = reqRow.export_file || `export_${reqRow.id}.json`;
+  fs.renameSync(req.file.path, path.join(gdprDir, filename));
+  db.prepare('UPDATE gdpr_requests SET export_file = ? WHERE id = ?').run(filename, reqRow.id);
+  audit(req.session.user.id, 'gdpr_replace_file', 'user', reqRow.user_id, `request #${reqRow.id}`);
+  res.json({ success: true });
+});
+
+app.post('/api/debug/gdpr/requests/:id/approve', requireDev, (req, res) => {
+  const reqRow = db.prepare('SELECT * FROM gdpr_requests WHERE id = ?').get(req.params.id);
+  if (!reqRow) return res.status(404).json({ error: 'Nie znaleziono zgłoszenia.' });
+  if (reqRow.status !== 'pending') return res.status(400).json({ error: 'Zgłoszenie zostało już rozpatrzone.' });
+  try {
+    if (reqRow.type === 'deletion') anonymizeUser(reqRow.user_id);
+    db.prepare("UPDATE gdpr_requests SET status = 'approved', processed_by = ?, processed_at = datetime('now') WHERE id = ?")
+      .run(req.session.user.id, reqRow.id);
+    audit(req.session.user.id, 'gdpr_approve', 'user', reqRow.user_id, reqRow.type);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/debug/gdpr/requests/:id/reject', requireDev, (req, res) => {
+  const reqRow = db.prepare('SELECT * FROM gdpr_requests WHERE id = ?').get(req.params.id);
+  if (!reqRow) return res.status(404).json({ error: 'Nie znaleziono zgłoszenia.' });
+  if (reqRow.status !== 'pending') return res.status(400).json({ error: 'Zgłoszenie zostało już rozpatrzone.' });
+  const reason = String(req.body.reason || '').slice(0, 1000);
+  db.prepare("UPDATE gdpr_requests SET status = 'rejected', admin_note = ?, processed_by = ?, processed_at = datetime('now') WHERE id = ?")
+    .run(reason, req.session.user.id, reqRow.id);
+  audit(req.session.user.id, 'gdpr_reject', 'user', reqRow.user_id, `${reqRow.type}: ${reason}`);
+  res.json({ success: true });
 });
 
 // .env sanity check — variable names only, values are never inspected/returned

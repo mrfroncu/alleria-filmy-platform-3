@@ -9,6 +9,7 @@ const TABS = [
   { id: 'streaming', label: 'Streaming', icon: HardDrive },
   { id: 'admin', label: 'Administracyjne', icon: Users },
   { id: 'categories', label: 'Kategorie', icon: ShieldCheck },
+  { id: 'gdpr', label: 'RODO', icon: Lock },
   { id: 'settings', label: 'Ustawienia', icon: Settings },
   { id: 'debug', label: 'Debug', icon: Bug },
 ];
@@ -230,6 +231,15 @@ export default function DebugPage() {
   // App settings (webhook domain restriction + content limits)
   const [settings, setSettingsState] = useState(null);
   const [savingSettings, setSavingSettings] = useState(false);
+
+  // GDPR / RODO admin review
+  const [gdprRequests, setGdprRequests] = useState([]);
+  const [gdprLoading, setGdprLoading] = useState(false);
+  const [gdprBusy, setGdprBusy] = useState(null); // request id currently being acted on
+  const [replacingId, setReplacingId] = useState(null);
+  const [rejectingId, setRejectingId] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const gdprFileRef = useRef(null);
   const [limitForm, setLimitForm] = useState({ limit_display_name: '', limit_bio: '', limit_comment: '' });
   const [displayForm, setDisplayForm] = useState({ videos_per_page: '', grid_columns: '', grid_card_min_width: '' });
   const [logsForm, setLogsForm] = useState({ logs_per_page: '' });
@@ -311,6 +321,92 @@ export default function DebugPage() {
     }
     setSavingSettings(false);
   };
+
+  const setGdprRegion = async (value) => {
+    if (!settings || settings.gdpr_region === value) return;
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ gdpr_region: value });
+      setSettingsState(s => ({ ...s, gdpr_region: r.gdpr_region }));
+      const label = value === 'off' ? 'wyłączone' : value === 'eu' ? 'UE' : 'Brazylia';
+      setStatus({ type: 'success', msg: `Region RODO: ${label}` });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const loadGdprAdmin = () => {
+    setGdprLoading(true);
+    api.adminGetGdprRequests().then(setGdprRequests).catch(() => {}).finally(() => setGdprLoading(false));
+  };
+  useEffect(() => { if (activeTab === 'gdpr') loadGdprAdmin(); }, [activeTab]);
+
+  const handleGdprDownloadFile = async (r) => {
+    try {
+      const data = await api.adminDownloadGdprFile(r.id);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = r.export_file || `export_${r.id}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setStatus({ type: 'error', msg: 'Błąd: ' + err.message });
+    }
+  };
+
+  const triggerReplace = (id) => {
+    setReplacingId(id);
+    gdprFileRef.current?.click();
+  };
+
+  const handleGdprFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    const id = replacingId;
+    if (!file || !id) return;
+    setGdprBusy(id);
+    try {
+      await api.adminReplaceGdprFile(id, file);
+      setStatus({ type: 'success', msg: 'Plik podmieniony.' });
+      loadGdprAdmin();
+    } catch (err) {
+      setStatus({ type: 'error', msg: 'Błąd: ' + err.message });
+    }
+    setGdprBusy(null);
+    setReplacingId(null);
+    e.target.value = '';
+  };
+
+  const handleGdprApprove = async (id) => {
+    if (!confirm('Zatwierdzić to zgłoszenie? Dla usunięcia konta oznacza to natychmiastową anonimizację i wylogowanie użytkownika.')) return;
+    setGdprBusy(id);
+    try {
+      await api.adminApproveGdpr(id);
+      setStatus({ type: 'success', msg: 'Zgłoszenie zatwierdzone.' });
+      loadGdprAdmin();
+    } catch (err) {
+      setStatus({ type: 'error', msg: 'Błąd: ' + err.message });
+    }
+    setGdprBusy(null);
+  };
+
+  const handleGdprReject = async (id) => {
+    setGdprBusy(id);
+    try {
+      await api.adminRejectGdpr(id, rejectReason);
+      setStatus({ type: 'success', msg: 'Zgłoszenie odrzucone.' });
+      setRejectingId(null);
+      setRejectReason('');
+      loadGdprAdmin();
+    } catch (err) {
+      setStatus({ type: 'error', msg: 'Błąd: ' + err.message });
+    }
+    setGdprBusy(null);
+  };
+
+  const gdprDaysLeft = (dueAt) => Math.ceil((new Date(dueAt) - new Date()) / 86400000);
 
   const saveDisplaySettings = async () => {
     setSavingSettings(true);
@@ -1245,6 +1341,87 @@ export default function DebugPage() {
       </div>
       )}
 
+      {/* ============ RODO ============ */}
+      {activeTab === 'gdpr' && (
+      <div className="animate-fade-in">
+        <input ref={gdprFileRef} type="file" accept="application/json" className="hidden" onChange={handleGdprFileSelected} />
+        <div className="card p-6">
+          <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-1">Zgłoszenia RODO / LGPD</h3>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
+            Eksport danych: pobierz i sprawdź wygenerowany plik (ewentualnie podmień), a następnie zatwierdź — wtedy staje się dostępny do pobrania w profilu użytkownika.
+            Usunięcie konta: zatwierdzenie od razu anonimizuje konto i wylogowuje użytkownika.
+          </p>
+
+          {gdprLoading ? (
+            <div className="h-24 skeleton rounded-2xl" />
+          ) : gdprRequests.length === 0 ? (
+            <p className="text-zinc-400 text-sm text-center py-8">Brak zgłoszeń.</p>
+          ) : (
+            <div className="space-y-2.5">
+              {gdprRequests.map(r => {
+                const daysLeft = gdprDaysLeft(r.due_at);
+                const busy = gdprBusy === r.id;
+                return (
+                  <div key={r.id} className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800">
+                    <div className="flex flex-wrap items-center gap-3 text-xs">
+                      <span className="font-bold text-zinc-900 dark:text-white">{r.display_name || r.username}</span>
+                      <span className="text-zinc-400 font-mono">@{r.username}</span>
+                      <span className="px-2 py-0.5 rounded-lg font-bold bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300">
+                        {r.type === 'export' ? 'Eksport danych' : 'Usunięcie konta'}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-lg font-bold ${
+                        r.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                          : r.status === 'approved' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300'
+                      }`}>
+                        {r.status === 'pending' ? 'Oczekujące' : r.status === 'approved' ? 'Zatwierdzone' : 'Odrzucone'}
+                      </span>
+                      {r.status === 'pending' && (
+                        <span className={`font-mono ${daysLeft <= 3 ? 'text-red-500' : daysLeft <= 10 ? 'text-amber-600 dark:text-amber-400' : 'text-zinc-400'}`}>
+                          {daysLeft > 0 ? `${daysLeft} dni do ustawowego terminu` : 'termin minął'}
+                        </span>
+                      )}
+                      {r.anonymized_original_display_name && (
+                        <span className="text-zinc-400 italic">
+                          było: {r.anonymized_original_display_name} (@{r.anonymized_original_username})
+                        </span>
+                      )}
+                      <div className="ml-auto flex items-center gap-2">
+                        {r.type === 'export' && r.export_file && (
+                          <button onClick={() => handleGdprDownloadFile(r)} className="btn-link-violet text-xs font-bold">Pobierz plik</button>
+                        )}
+                        {r.type === 'export' && r.status === 'pending' && (
+                          <button onClick={() => triggerReplace(r.id)} disabled={busy} className="btn-link-zinc text-xs font-bold disabled:opacity-50">Podmień plik</button>
+                        )}
+                        {r.status === 'pending' && (
+                          <>
+                            <button onClick={() => handleGdprApprove(r.id)} disabled={busy} className="btn-sm-primary disabled:opacity-50">Zatwierdź</button>
+                            <button onClick={() => { setRejectingId(rejectingId === r.id ? null : r.id); setRejectReason(''); }} disabled={busy} className="btn-sm-secondary disabled:opacity-50">Odrzuć</button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {rejectingId === r.id && (
+                      <div className="flex items-center gap-2 mt-3">
+                        <input
+                          type="text"
+                          value={rejectReason}
+                          onChange={e => setRejectReason(e.target.value)}
+                          placeholder="Powód odrzucenia (opcjonalnie)..."
+                          className="input-field !py-2 text-sm flex-1"
+                        />
+                        <button onClick={() => handleGdprReject(r.id)} disabled={busy} className="btn-sm-primary shrink-0 disabled:opacity-50">Potwierdź odrzucenie</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+      )}
+
       {/* ============ USTAWIENIA ============ */}
       {activeTab === 'settings' && (
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-fade-in">
@@ -1346,6 +1523,38 @@ export default function DebugPage() {
                 disabled={!settings || savingSettings}
                 label={settings == null ? 'Ładowanie...' : (settings.webhook_domain_restriction ? 'Ograniczenie domen: WŁĄCZONE' : 'Ograniczenie domen: WYŁĄCZONE')}
               />
+            </div>
+          </div>
+        </div>
+
+        {/* GDPR / RODO region */}
+        <div className="card p-8 h-full flex flex-col">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-6 h-6 text-violet-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Region RODO / LGPD</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                Włącza sekcję "Twoje dane" w profilu (eksport danych, usunięcie konta) oraz zakładkę RODO w tym panelu.
+              </p>
+              <div className="flex rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 w-full max-w-xs">
+                {[['off', 'Wyłączone'], ['eu', 'UE'], ['brazil', 'Brazylia']].map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setGdprRegion(val)}
+                    disabled={!settings || savingSettings}
+                    className={`flex-1 px-3 py-2.5 text-xs font-bold transition-colors disabled:opacity-50 ${
+                      settings?.gdpr_region === val
+                        ? 'bg-violet-500 text-white'
+                        : 'bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>

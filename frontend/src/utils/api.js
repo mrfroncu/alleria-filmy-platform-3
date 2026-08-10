@@ -176,6 +176,31 @@ export const api = {
   getPendingMerge: (mergeId) => request(`/profile/merge/${mergeId}`),
   confirmMerge: (mergeId) => request(`/profile/merge/${mergeId}/confirm`, { method: 'POST' }),
   cancelMerge: (mergeId) => request(`/profile/merge/${mergeId}`, { method: 'DELETE' }),
+  unlinkAccount: (method) => request('/profile/unlink', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method }),
+  }),
+
+  // GDPR / RODO
+  gdprRequestExport: () => request('/profile/gdpr/export', { method: 'POST' }),
+  gdprRequestDeletion: () => request('/profile/gdpr/deletion', { method: 'POST' }),
+  getGdprRequests: () => request('/profile/gdpr/requests'),
+  cancelGdprRequest: (id) => request(`/profile/gdpr/requests/${id}`, { method: 'DELETE' }),
+  downloadGdprExport: (id) => request(`/profile/gdpr/export/${id}/download`),
+  adminGetGdprRequests: () => request('/debug/gdpr/requests'),
+  adminDownloadGdprFile: (id) => request(`/debug/gdpr/requests/${id}/file`),
+  adminReplaceGdprFile: (id, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request(`/debug/gdpr/requests/${id}/replace`, { method: 'POST', body: formData });
+  },
+  adminApproveGdpr: (id) => request(`/debug/gdpr/requests/${id}/approve`, { method: 'POST' }),
+  adminRejectGdpr: (id, reason) => request(`/debug/gdpr/requests/${id}/reject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  }),
 
   // Watch Party management (admin)
   getActiveWatchParties: () => request('/admin/watch-parties'),

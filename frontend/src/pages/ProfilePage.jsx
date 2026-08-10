@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink } from 'lucide-react';
+import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink, Download, Trash2, Clock, ShieldCheck } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, parseTsError } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
@@ -33,6 +33,12 @@ export default function ProfilePage() {
   const [ts3ConnectError, setTs3ConnectError] = useState(null);
   const [ts6ConnectError, setTs6ConnectError] = useState(null);
   const [tsInfoOpen, setTsInfoOpen] = useState(false);
+  const [unlinking, setUnlinking] = useState(null); // 'discord' | 'teamspeak3' | 'teamspeak' | null
+
+  // GDPR / RODO
+  const [gdprRequests, setGdprRequests] = useState([]);
+  const [gdprBusy, setGdprBusy] = useState(false);
+  const [gdprMsg, setGdprMsg] = useState(null);
 
   useEffect(() => { api.getConfig().then(c => setConfig(prev => ({ ...prev, ...c }))).catch(() => {}); }, []);
 
@@ -65,6 +71,76 @@ export default function ProfilePage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const loadGdprRequests = () => {
+    api.getGdprRequests().then(setGdprRequests).catch(() => {});
+  };
+  useEffect(() => {
+    if (siteConfig.gdprRegion && siteConfig.gdprRegion !== 'off') loadGdprRequests();
+  }, [siteConfig.gdprRegion]);
+
+  const handleGdprExport = async () => {
+    if (gdprBusy) return;
+    if (!confirm('Zażądać kopii swoich danych?\n\nPlik zostanie przygotowany i po weryfikacji przez administratora (maksymalnie do 30 dni) pojawi się tu do pobrania.')) return;
+    setGdprBusy(true);
+    setGdprMsg(null);
+    try {
+      await api.gdprRequestExport();
+      setGdprMsg({ type: 'success', text: 'Zgłoszenie eksportu danych zostało złożone.' });
+      loadGdprRequests();
+    } catch (err) {
+      setGdprMsg({ type: 'error', text: 'Błąd: ' + err.message });
+    }
+    setGdprBusy(false);
+  };
+
+  const handleGdprDeletion = async () => {
+    if (gdprBusy) return;
+    if (!confirm('Zażądać usunięcia konta?\n\nPo zatwierdzeniu przez administratora (maksymalnie do 30 dni) Twoje dane osobowe zostaną zanonimizowane, a konto wylogowane wszędzie. Komentarze i dodane filmy zostaną — bez powiązania z Twoją tożsamością. Tej operacji po zatwierdzeniu nie można cofnąć.')) return;
+    setGdprBusy(true);
+    setGdprMsg(null);
+    try {
+      await api.gdprRequestDeletion();
+      setGdprMsg({ type: 'success', text: 'Zgłoszenie usunięcia konta zostało złożone.' });
+      loadGdprRequests();
+    } catch (err) {
+      setGdprMsg({ type: 'error', text: 'Błąd: ' + err.message });
+    }
+    setGdprBusy(false);
+  };
+
+  const handleCancelGdpr = async (id) => {
+    if (gdprBusy) return;
+    setGdprBusy(true);
+    try {
+      await api.cancelGdprRequest(id);
+      loadGdprRequests();
+    } catch (err) {
+      setGdprMsg({ type: 'error', text: 'Błąd: ' + err.message });
+    }
+    setGdprBusy(false);
+  };
+
+  const handleDownloadGdpr = async (id) => {
+    try {
+      const data = await api.downloadGdprExport(id);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `moje-dane-alleria-${id}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setGdprMsg({ type: 'error', text: 'Błąd: ' + err.message });
+    }
+  };
+
+  const gdprDaysLeft = (dueAt) => Math.ceil((new Date(dueAt) - new Date()) / 86400000);
+  const gdprTypeLabel = (t) => t === 'export' ? 'Eksport danych' : 'Usunięcie konta';
+  const gdprStatusLabel = (s) => s === 'pending' ? 'Oczekujące' : s === 'approved' ? 'Zatwierdzone' : 'Odrzucone';
 
   const handleSave = async () => {
     setSaving(true);
@@ -183,6 +259,20 @@ export default function ProfilePage() {
     try { await api.cancelMerge(mergeId); } catch (_) {}
   };
 
+  const handleUnlink = async (method, label) => {
+    if (unlinking) return;
+    if (!confirm(`Rozłączyć konto ${label}?\n\nBędziesz mógł zalogować się tą metodą ponownie — powstanie nowe, osobne konto, albo połączysz ją z innym kontem od nowa. Historia na TYM koncie (komentarze, obejrzane filmy, dodane przez Ciebie filmy jako redaktor) zostaje bez zmian.`)) return;
+    setUnlinking(method);
+    try {
+      await api.unlinkAccount(method);
+      setLinkMsg({ type: 'success', text: `Rozłączono konto ${label}.` });
+      load();
+    } catch (err) {
+      setLinkMsg({ type: 'error', text: 'Błąd: ' + (err.message || 'Nie udało się rozłączyć konta.') });
+    }
+    setUnlinking(null);
+  };
+
   if (loading) {
     return (
       <div className="p-6 sm:p-10 max-w-3xl mx-auto page-enter">
@@ -192,6 +282,9 @@ export default function ProfilePage() {
   }
 
   if (!profile) return null;
+
+  const identityCount = [profile.has_discord, profile.has_teamspeak3, profile.has_teamspeak6].filter(Boolean).length;
+  const canUnlink = identityCount > 1;
 
   return (
     <div className="p-6 sm:p-10 max-w-3xl mx-auto page-enter">
@@ -355,9 +448,16 @@ export default function ProfilePage() {
               <span className="text-sm font-medium text-zinc-900 dark:text-white">Discord</span>
             </div>
             {profile.has_discord ? (
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Połączone
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Połączone
+                </span>
+                {canUnlink && (
+                  <button onClick={() => handleUnlink('discord', 'Discord')} disabled={unlinking !== null} className="btn-link-red text-xs font-bold disabled:opacity-50">
+                    {unlinking === 'discord' ? 'Rozłączanie…' : 'Rozłącz'}
+                  </button>
+                )}
+              </div>
             ) : (
               <button onClick={handleLinkDiscord} className="btn-link-violet inline-flex items-center gap-1.5 text-xs font-bold">
                 <Link2 className="w-3.5 h-3.5" /> Połącz
@@ -376,9 +476,16 @@ export default function ProfilePage() {
                 <span className="text-sm font-medium text-zinc-900 dark:text-white">TeamSpeak 3</span>
               </div>
               {profile.has_teamspeak3 ? (
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Połączone
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Połączone
+                  </span>
+                  {canUnlink && (
+                    <button onClick={() => handleUnlink('teamspeak3', 'TeamSpeak 3')} disabled={unlinking !== null} className="btn-link-red text-xs font-bold disabled:opacity-50">
+                      {unlinking === 'teamspeak3' ? 'Rozłączanie…' : 'Rozłącz'}
+                    </button>
+                  )}
+                </div>
               ) : (
                 <div className="flex items-center gap-2">
                   <a
@@ -412,9 +519,16 @@ export default function ProfilePage() {
                 <span className="text-sm font-medium text-zinc-900 dark:text-white">TeamSpeak 6</span>
               </div>
               {profile.has_teamspeak6 ? (
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Połączone
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Połączone
+                  </span>
+                  {canUnlink && (
+                    <button onClick={() => handleUnlink('teamspeak', 'TeamSpeak 6')} disabled={unlinking !== null} className="btn-link-red text-xs font-bold disabled:opacity-50">
+                      {unlinking === 'teamspeak' ? 'Rozłączanie…' : 'Rozłącz'}
+                    </button>
+                  )}
+                </div>
               ) : (
                 <div className="flex items-center gap-2">
                   <a
@@ -455,6 +569,7 @@ export default function ProfilePage() {
             <p>• Wymagana jest <span className="font-semibold text-zinc-700 dark:text-zinc-300">odpowiednia grupa serwerowa</span> na TS.</p>
             <p>• Bot wyśle Ci na TeamSpeaku <span className="font-semibold text-zinc-700 dark:text-zinc-300">6-znakowy kod</span> — wpisz go, aby dokończyć łączenie.</p>
             <p>• TS3 i TS6 to osobne serwery z osobnymi kontami — możesz połączyć oba niezależnie.</p>
+            <p>• Przycisk „Rozłącz" pojawia się, gdy masz połączoną więcej niż jedną metodę — nie można rozłączyć jedynego sposobu logowania.</p>
           </div>
         )}
       </div>
@@ -502,6 +617,85 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* GDPR / RODO */}
+      {siteConfig.gdprRegion && siteConfig.gdprRegion !== 'off' && (
+        <div className="card p-6 mt-6">
+          <div className="flex items-center gap-2 mb-1">
+            <ShieldCheck className="w-4 h-4 text-violet-500" />
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Twoje dane (RODO)</h3>
+          </div>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+            Możesz zażądać kopii swoich danych albo usunięcia konta. Zgłoszenia są weryfikowane ręcznie przez administratora — maksymalny ustawowy termin realizacji to 30 dni.
+          </p>
+
+          {gdprMsg && (
+            <div className={`mb-4 p-3 rounded-xl border text-xs font-medium flex items-center gap-2 ${
+              gdprMsg.type === 'success'
+                ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-300'
+            }`}>
+              {gdprMsg.type === 'success' ? <Check className="w-3.5 h-3.5 shrink-0" /> : <X className="w-3.5 h-3.5 shrink-0" />}
+              {gdprMsg.text}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2.5 mb-4">
+            <button onClick={handleGdprExport} disabled={gdprBusy} className="btn-secondary text-xs inline-flex items-center gap-1.5 disabled:opacity-50">
+              <Download className="w-3.5 h-3.5" /> Pobierz swoje dane
+            </button>
+            <button onClick={handleGdprDeletion} disabled={gdprBusy} className="btn-danger text-xs inline-flex items-center gap-1.5 disabled:opacity-50">
+              <Trash2 className="w-3.5 h-3.5" /> Usuń konto
+            </button>
+          </div>
+
+          {gdprRequests.length > 0 && (
+            <div className="space-y-2">
+              {gdprRequests.map(r => {
+                const daysLeft = gdprDaysLeft(r.due_at);
+                return (
+                  <div key={r.id} className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800 text-xs">
+                    <span className="font-bold text-zinc-900 dark:text-white">{gdprTypeLabel(r.type)}</span>
+                    <span className={`px-2 py-0.5 rounded-lg font-bold ${
+                      r.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                        : r.status === 'approved' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300'
+                    }`}>{gdprStatusLabel(r.status)}</span>
+                    {r.status === 'pending' && (
+                      <span className={`inline-flex items-center gap-1 font-mono ${daysLeft <= 3 ? 'text-red-500' : daysLeft <= 10 ? 'text-amber-600 dark:text-amber-400' : 'text-zinc-400'}`}>
+                        <Clock className="w-3 h-3" /> {daysLeft > 0 ? `${daysLeft} dni do terminu` : 'termin minął'}
+                      </span>
+                    )}
+                    {r.status === 'rejected' && r.admin_note && (
+                      <span className="text-zinc-400 italic">Powód: {r.admin_note}</span>
+                    )}
+                    <div className="ml-auto flex items-center gap-2">
+                      {r.type === 'export' && r.status === 'approved' && (
+                        <button onClick={() => handleDownloadGdpr(r.id)} className="btn-link-violet text-xs font-bold">Pobierz plik</button>
+                      )}
+                      {r.status === 'pending' && (
+                        <button onClick={() => handleCancelGdpr(r.id)} disabled={gdprBusy} className="btn-link-zinc text-xs font-bold disabled:opacity-50">Anuluj</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800 leading-relaxed">
+            Pozostałe uprawnienia wynikające z art. 15–21 RODO (m.in. dostęp do danych, sprostowanie, ograniczenie przetwarzania, przenoszalność, sprzeciw) możesz zrealizować, wysyłając wiadomość na{' '}
+            <a
+              href={`mailto:kontakt@alleria.pl?subject=${encodeURIComponent(`RODO — konto #${profile.id}`)}&body=${encodeURIComponent(`Identyfikator konta: #${profile.id}`)}`}
+              className="text-violet-500 hover:text-violet-400 font-medium"
+            >kontakt@alleria.pl</a>
+            {' '}— podaj w niej identyfikator swojego konta: <span className="font-mono font-bold text-zinc-600 dark:text-zinc-300">#{profile.id}</span>.
+            {profile.discordEmail && (
+              <> Najlepiej wyślij ją z adresu <span className="font-mono font-bold text-zinc-600 dark:text-zinc-300">{profile.discordEmail}</span> powiązanego z Twoim kontem Discord — ułatwi to weryfikację, że to Ty.</>
+            )}
+          </p>
+        </div>
+      )}
 
       {/* TS account-linking challenge modal */}
       <TsChallengeModal

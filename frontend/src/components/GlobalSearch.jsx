@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search, Film, Loader2, Heart, Clock, Users, User, Tag as TagIcon,
@@ -10,6 +11,10 @@ import { api } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 
 const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || navigator.userAgent || '');
+
+// Rendered into document.body — the top bar's backdrop-blur establishes a containing
+// block for position:fixed descendants, which would otherwise trap this overlay inside it.
+function Portal({ children }) { return ReactDOM.createPortal(children, document.body); }
 
 const PAGES = [
   { label: 'Baza Filmów', to: '/', icon: Film },
@@ -268,6 +273,7 @@ export default function GlobalSearch({ compact = false }) {
 
       {/* Command palette */}
       {open && (
+        <Portal>
         <div
           className="fixed inset-0 z-[60] flex items-start justify-center pt-[10vh] sm:pt-[14vh] px-4 bg-black/50 dark:bg-black/70 backdrop-blur-sm"
           style={{ animation: 'fadeIn 0.15s ease-out' }}
@@ -439,6 +445,7 @@ export default function GlobalSearch({ compact = false }) {
             </div>
           </div>
         </div>
+        </Portal>
       )}
     </>
   );
