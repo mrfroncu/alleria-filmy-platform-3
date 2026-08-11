@@ -6,12 +6,13 @@ import { useUnsavedGuard } from '../contexts/UnsavedChangesContext';
 import { api } from '../utils/api';
 import {
   Film, Shield, Menu, X, Wrench, ChevronRight, ChevronDown, LogOut,
-  Heart, Clock, BarChart3, FolderOpen, FileText, MessageSquarePlus, Lock
+  Heart, Clock, BarChart3, FolderOpen, FileText, MessageSquarePlus, Lock, Clapperboard
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
 import WatchPartyTab from './WatchPartyTab';
 import ProfileMenu from './ProfileMenu';
 import GlobalSearch from './GlobalSearch';
+import NotificationBell from './NotificationBell';
 
 const LOGO_URL = 'https://alleria.pl/image/favicon.png';
 
@@ -26,6 +27,7 @@ const STATIC_PAGE_TITLES = {
   '/logs': 'Logi systemowe',
   '/debug': 'Narzędzia Developerskie',
   '/watch-party': 'Watch Party',
+  '/shorts': 'Shorts',
 };
 
 function getPageTitle(pathname, categories) {
@@ -227,6 +229,7 @@ export default function Layout({ children }) {
           <nav className="space-y-0.5">
             {/* Baza Filmów with categories */}
             <NavLink to="/" icon={Film} label="Wszystkie filmy" active={allFilmsActive && !anyCatActive} />
+            <NavLink to="/shorts" icon={Clapperboard} label="Shorts" active={isActive('/shorts')} />
 
             {categories.length > 0 && (
               <>
@@ -293,6 +296,7 @@ export default function Layout({ children }) {
                     </p>
                   </div>
                 </Link>
+                <NotificationBell fullScreenOnly />
                 <button onClick={() => guardNav(logout)} className="p-1.5 rounded-lg text-zinc-400 hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 transition-all duration-300 shrink-0" title="Wyloguj">
                   <LogOut className="w-4 h-4" />
                 </button>
@@ -318,7 +322,11 @@ export default function Layout({ children }) {
       <main ref={mainRef} className="flex-1 overflow-y-auto relative flex flex-col">
         {/* Mobile top bar — always present (hamburger is the only way to reach the sidebar on mobile) */}
         <div className="lg:hidden shrink-0 flex items-center justify-between gap-3 p-4 bg-gradient-to-r from-violet-100/50 via-white/60 to-fuchsia-100/40 dark:from-violet-500/10 dark:via-zinc-950/50 dark:to-fuchsia-500/10 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 dark:border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sticky top-0 z-30">
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            {/* Sidebar opens from the left, so its trigger lives on the left too */}
+            <button onClick={() => setSidebarOpen(true)} className="btn-icon-zinc shrink-0">
+              <Menu className="w-5 h-5" />
+            </button>
             <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain shrink-0" />
             {showTopBar
               ? <span className="font-bold text-zinc-900 dark:text-white font-display text-sm truncate">{pageTitle}</span>
@@ -326,10 +334,8 @@ export default function Layout({ children }) {
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {showTopBar && <GlobalSearch compact />}
+            {showTopBar && <NotificationBell />}
             {showTopBar && <ProfileMenu compact />}
-            <button onClick={() => setSidebarOpen(true)} className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white">
-              <Menu className="w-5 h-5" />
-            </button>
           </div>
         </div>
 
@@ -340,7 +346,8 @@ export default function Layout({ children }) {
             <div className="flex-1 flex justify-center">
               <GlobalSearch />
             </div>
-            <div className="shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
+              <NotificationBell />
               <ProfileMenu />
             </div>
           </div>
@@ -356,7 +363,7 @@ export default function Layout({ children }) {
         </footer>
       </main>
 
-      <WatchPartyTab />
+      {location.pathname !== '/watch-party' && location.pathname !== '/shorts' && <WatchPartyTab />}
     </div>
   );
 }

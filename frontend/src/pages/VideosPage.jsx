@@ -5,6 +5,7 @@ import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
 import { useSettings } from '../contexts/SettingsContext';
 import { useConfirm } from '../contexts/ConfirmContext';
+import HoverScrubThumbnail from '../components/HoverScrubThumbnail';
 
 export default function VideosPage() {
   const { authorId, tagId, categorySlug } = useParams();
@@ -27,6 +28,7 @@ export default function VideosPage() {
   const [page, setPage] = useState(1);
   const [continueWatching, setContinueWatching] = useState([]);
   const [resetting, setResetting] = useState(false);
+  const [hoveredVideoId, setHoveredVideoId] = useState(null);
 
   // Display config — videosPerPage should be a multiple of gridColumns (default 3)
   const [config, setConfig] = useState({ videosPerPage: 12, gridColumns: 3, gridCardMinWidth: 300 });
@@ -303,20 +305,11 @@ export default function VideosPage() {
               to={`/video/${video.id}${categorySlug ? `?from=${categorySlug}` : ''}`}
               className="video-card card overflow-hidden group"
               style={{ animationDelay: `${idx * 50}ms` }}
+              onMouseEnter={() => setHoveredVideoId(video.id)}
+              onMouseLeave={() => setHoveredVideoId(id => (id === video.id ? null : id))}
             >
               <div className="relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
-                {video.thumbnail ? (
-                  <img
-                    src={video.thumbnail}
-                    alt={video.title}
-                    className="video-thumb w-full h-full object-cover"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Film className="w-12 h-12 text-zinc-300 dark:text-zinc-700" />
-                  </div>
-                )}
+                <HoverScrubThumbnail video={video} hovered={hoveredVideoId === video.id} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 {progressMap[video.id] && (() => {
                   const p = progressMap[video.id];

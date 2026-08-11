@@ -356,3 +356,7 @@
   color: #ccc; background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15);
   transform: translateY(-1px);
 }
+
+/* Shorts feed — hide the scroll-snap container's own scrollbar, scrubbing is via swipe/arrows */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }

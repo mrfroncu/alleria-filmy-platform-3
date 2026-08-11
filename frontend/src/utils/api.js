@@ -59,6 +59,7 @@ export const api = {
     if (params.include_transcoding) q.set('include_transcoding', '1');
     if (params.category) q.set('category', params.category);
     if (params.limit) q.set('limit', params.limit);
+    if (params.shorts) q.set('shorts', '1');
     return request(`/videos?${q}`);
   },
   getVideo: (id) => request(`/videos/${id}`),
@@ -172,6 +173,13 @@ export const api = {
   removeFavorite: (videoId) => request(`/favorites/${videoId}`, { method: 'DELETE' }),
   checkFavorite: (videoId) => request(`/favorites/check/${videoId}`),
 
+  // Ratings
+  getRating: (videoId) => request(`/videos/${videoId}/rating`),
+  rateVideo: (videoId, rating) => request(`/videos/${videoId}/rating`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating }),
+  }),
+  clearRating: (videoId) => request(`/videos/${videoId}/rating`, { method: 'DELETE' }),
+
   // History
   getHistory: () => request('/history'),
 
@@ -186,6 +194,10 @@ export const api = {
     body: JSON.stringify(data),
   }),
   refreshDiscordAvatar: () => request('/profile/refresh-discord', { method: 'POST' }),
+
+  // Active sessions / devices
+  getSessions: () => request('/profile/sessions'),
+  revokeSession: (sid) => request(`/profile/sessions/${encodeURIComponent(sid)}`, { method: 'DELETE' }),
 
   // Browser push notifications
   getVapidPublicKey: () => request('/push/vapid-public-key'),
@@ -266,6 +278,15 @@ export const api = {
     body: JSON.stringify(data),
   }),
 
+  // In-app notifications
+  getNotificationsToken: () => request('/notifications/token'),
+  getNotifications: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/notifications${q ? `?${q}` : ''}`);
+  },
+  markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'POST' }),
+  markAllNotificationsRead: () => request('/notifications/read-all', { method: 'POST' }),
+
   // Watch Party
   getWatchPartyToken: () => request('/watch-party/token'),
   createWatchParty: () => request('/watch-party', { method: 'POST' }),
@@ -286,6 +307,9 @@ export const api = {
   resetProgress: () => request('/progress', { method: 'DELETE' }),
   clearProgress: (videoId) => request(`/progress/${videoId}`, { method: 'DELETE' }),
 
+  // Video analytics
+  getVideoAnalytics: (videoId) => request(`/videos/${videoId}/analytics`),
+
   // Comments
   getComments: (videoId) => request(`/videos/${videoId}/comments`),
   addComment: (videoId, content, parentId) => request(`/videos/${videoId}/comments`, {
@@ -296,6 +320,19 @@ export const api = {
   }),
   deleteComment: (commentId) => request(`/comments/${commentId}`, { method: 'DELETE' }),
   hardDeleteComment: (commentId) => request(`/comments/${commentId}/hard`, { method: 'DELETE' }),
+  reactToComment: (commentId, emoji) => request(`/comments/${commentId}/react`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emoji }),
+  }),
+  reportComment: (commentId, reason, description) => request(`/comments/${commentId}/report`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason, description }),
+  }),
+
+  // Comment moderation queue (admin)
+  getCommentReports: (status) => request(`/admin/comment-reports${status ? `?status=${status}` : ''}`),
+  getCommentReportsPendingCount: () => request('/admin/comment-reports/pending-count'),
+  resolveCommentReport: (id, action) => request(`/admin/comment-reports/${id}/resolve`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }),
+  }),
   getAuditLogs: (params = {}) => {
     const q = new URLSearchParams(params).toString();
     return request(`/audit-logs${q ? `?${q}` : ''}`);

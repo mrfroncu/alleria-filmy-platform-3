@@ -176,9 +176,14 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000).unref();
 
-function setupWatchPartyWS(server, db) {
+// noServer: true — server.js owns the single shared 'upgrade' listener on httpServer and
+// dispatches to this WSS by pathname. Two WebSocketServers each independently attached via
+// `{ server, path }` fight over the same 'upgrade' event: both listeners fire for every
+// request, and the one whose path doesn't match actively aborts the socket with a 400 —
+// even when the OTHER one would have handled it correctly. noServer + manual dispatch avoids that.
+function setupWatchPartyWS(db) {
   _db = db;
-  const wss = new WebSocketServer({ server, path: '/ws/watch-party' });
+  const wss = new WebSocketServer({ noServer: true });
 
   wss.on('connection', (ws) => {
     let userId = null;

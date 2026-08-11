@@ -20,7 +20,7 @@ const CAST_SDK_URL = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loa
 const DOUBLE_TAP_MS = 300;
 const EDGE_ZONE = 0.35;
 
-export default function SecurePlayer({ streamVideoId, drmEnhanced, title, controlRef, onTimeUpdate, onPlay, onPause, onSeek }) {
+export default function SecurePlayer({ streamVideoId, drmEnhanced, title, controlRef, onTimeUpdate, onPlay, onPause, onSeek, containerClassName, startMuted }) {
   const { user } = useAuth();
   const videoRef = useRef(null);
   const containerRef = useRef(null);
@@ -29,7 +29,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(!!startMuted);
   const [volume, setVolume] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -74,6 +74,14 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
     script.async = true;
     document.head.appendChild(script);
     return () => {};
+  }, []);
+
+  // Seed the DOM element's own muted flag from startMuted (e.g. the Shorts feed, which
+  // autoplays off-gesture — browsers only allow that muted). React state alone (the
+  // `muted` useState above) doesn't reach the underlying <video>; every other mute toggle
+  // in this file sets `v.muted` imperatively too, so this follows the same pattern.
+  useEffect(() => {
+    if (startMuted && videoRef.current) videoRef.current.muted = true;
   }, []);
 
   // AirPlay availability — Safari/WebKit only. The target picker itself
@@ -760,7 +768,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
 
   if (error) {
     return (
-      <div className="aspect-video bg-black rounded-[32px] flex items-center justify-center">
+      <div className={`${containerClassName || 'aspect-video rounded-[32px]'} bg-black flex items-center justify-center`}>
         <div className="text-center p-8">
           <Shield className="w-12 h-12 text-red-400 mx-auto mb-4" />
           <p className="text-red-300 text-sm font-medium">{error}</p>
@@ -773,7 +781,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
     <div
       ref={containerRef}
       tabIndex={0}
-      className="relative aspect-video bg-black rounded-[32px] overflow-hidden group select-none outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60"
+      className={`relative ${containerClassName || 'aspect-video rounded-[32px]'} bg-black overflow-hidden group select-none outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60`}
       onMouseMove={handleMouseMove}
       onMouseLeave={() => playing && setShowControls(false)}
       onContextMenu={e => e.preventDefault()}

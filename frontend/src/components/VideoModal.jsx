@@ -80,6 +80,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const [isSelfHosted, setIsSelfHosted] = useState(false);
   const [videoFile, setVideoFile] = useState(null);
   const [drmEnhanced, setDrmEnhanced] = useState(false);
+  const [isShort, setIsShort] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [uploadPercent, setUploadPercent] = useState(0);
   const [chunkPercent, setChunkPercent] = useState(0);
@@ -135,6 +136,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
         setIsSelfHosted(!!video.stream_video_id);
         setStreamVideoId(video.stream_video_id || '');
         setDrmEnhanced(!!video.drm_enhanced);
+        setIsShort(!!video.is_short);
         setAccessMode(video.access_mode || 'category');
         // Load per-video access list if custom
         if (video.access_mode === 'custom') {
@@ -168,6 +170,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     tags: (video?.tags || []).map(t => t.id ?? t.name).slice().sort(),
     isSelfHosted: !!video?.stream_video_id,
     drmEnhanced: !!video?.drm_enhanced,
+    isShort: !!video?.is_short,
     accessMode: video?.access_mode || 'category',
     hasThumbnailFile: false,
     hasVideoFile: false,
@@ -183,7 +186,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     mirror5: { name: mirror5Name, url: mirror5Url, type: mirror5Type },
     description,
     tags: selectedTags.map(t => t.id ?? t.name).slice().sort(),
-    isSelfHosted, drmEnhanced, accessMode,
+    isSelfHosted, drmEnhanced, isShort, accessMode,
     hasThumbnailFile: !!thumbnailFile,
     hasVideoFile: !!videoFile,
   };
@@ -215,7 +218,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     setMirror5Name(''); setMirror5Url(''); setMirror5Type('link'); setMirror5VideoFile(null); setMirror5StreamVideoId('');
     setDescription(''); setPublishDate(new Date().toISOString());
     setSelectedTags([]); setTagInput(''); setShowMirror1(false); setShowMirror2(false); setShowMirror3(false); setShowMirror4(false); setShowMirror5(false);
-    setIsSelfHosted(false); setVideoFile(null); setDrmEnhanced(false); setUploadProgress(''); setUploadPercent(0); setChunkPercent(0); setStreamVideoId(''); setCategoryId(defaultCategoryId ? String(defaultCategoryId) : ''); setAccessMode('category'); setAllowedUsers([]);
+    setIsSelfHosted(false); setVideoFile(null); setDrmEnhanced(false); setIsShort(false); setUploadProgress(''); setUploadPercent(0); setChunkPercent(0); setStreamVideoId(''); setCategoryId(defaultCategoryId ? String(defaultCategoryId) : ''); setAccessMode('category'); setAllowedUsers([]);
   };
 
   useEffect(() => {
@@ -440,6 +443,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
       formData.append('tags', JSON.stringify(selectedTags));
       formData.append('stream_video_id', finalStreamId || '');
       formData.append('drm_enhanced', drmEnhanced ? 'true' : 'false');
+      formData.append('is_short', isShort ? 'true' : 'false');
       formData.append('category_id', categoryId || '');
       formData.append('access_mode', accessMode);
       formData.append('allowed_users', JSON.stringify(allowedUsers));
@@ -550,7 +554,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
             <div>
               <label className="label-field">Typ źródła</label>
               <div className="grid grid-cols-2 gap-3">
-                <button type="button" onClick={() => setIsSelfHosted(false)} className={`p-4 rounded-2xl border-2 font-bold text-sm transition-all flex items-center gap-2 ${!isSelfHosted ? 'bg-violet-50 dark:bg-violet-500/10 border-violet-500 text-violet-600 dark:text-violet-300 shadow-lg shadow-violet-500/10' : 'bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700'}`}>
+                <button type="button" onClick={() => { setIsSelfHosted(false); setIsShort(false); }} className={`p-4 rounded-2xl border-2 font-bold text-sm transition-all flex items-center gap-2 ${!isSelfHosted ? 'bg-violet-50 dark:bg-violet-500/10 border-violet-500 text-violet-600 dark:text-violet-300 shadow-lg shadow-violet-500/10' : 'bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700'}`}>
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M21.543 6.498C22 8.28 22 12 22 12s0 3.72-.457 5.502c-.254.985-.997 1.76-1.938 2.022C17.896 20 12 20 12 20s-5.893 0-7.605-.476c-.945-.266-1.687-1.04-1.938-2.022C2 15.72 2 12 2 12s0-3.72.457-5.502c.254-.985.997-1.76 1.938-2.022C6.107 4 12 4 12 4s5.896 0 7.605.476c.945.266 1.687 1.04 1.938 2.022zM10 15.5l6-3.5-6-3.5v7z"/></svg>
                   YouTube / Embed
                 </button>
@@ -625,6 +629,14 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                   <div>
                     <span className="text-sm text-zinc-900 dark:text-white font-bold">Wzmocniona ochrona DRM</span>
                     <p className="text-[10px] text-zinc-500 mt-0.5">Blokada nagrywania ekranu, watermark z nazwą użytkownika, blokada devtools</p>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                  <input type="checkbox" checked={isShort} onChange={e => setIsShort(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-emerald-600 focus:ring-emerald-500" />
+                  <div>
+                    <span className="text-sm text-zinc-900 dark:text-white font-bold">To jest Short (pionowy, krótki film)</span>
+                    <p className="text-[10px] text-zinc-500 mt-0.5">Trafi do osobnej zakładki Shorts zamiast głównej Biblioteki</p>
                   </div>
                 </label>
 

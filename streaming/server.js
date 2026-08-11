@@ -421,6 +421,28 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
     } catch (e2) {}
   }
 
+  // Generate hover-scrub preview sprite (storyboard), like YouTube's thumbnail hover preview.
+  // Skipped for very short clips — a handful of seconds isn't worth scrubbing through.
+  if (totalDuration >= 30) {
+    try {
+      const PREVIEW_INTERVAL_TARGET = 10; // seconds between frames, before the frame cap below
+      const PREVIEW_MAX_FRAMES = 100; // caps sprite size/ffmpeg cost for very long films
+      const frameCount = Math.min(PREVIEW_MAX_FRAMES, Math.max(1, Math.ceil(totalDuration / PREVIEW_INTERVAL_TARGET)));
+      const interval = totalDuration / frameCount;
+      const cols = Math.ceil(Math.sqrt(frameCount));
+      const rows = Math.ceil(frameCount / cols);
+      // Individual frames scaled to a fixed width, tiled into one grid image — the frontend reads
+      // cells back by percentage (cols/rows), so exact pixel size of the sprite doesn't matter.
+      execSync(
+        `ffmpeg -i "${inputPath}" -vf "fps=1/${interval},scale=160:-2,tile=${cols}x${rows}" -frames:v 1 -q:v 4 "${path.join(outputDir, 'preview.jpg')}" -y`,
+        { stdio: 'pipe' }
+      );
+      fs.writeFileSync(path.join(outputDir, 'preview.json'), JSON.stringify({ frames: frameCount, cols, rows, interval }));
+    } catch (e) {
+      console.log(`[STREAM] Preview sprite generation failed for ${videoId}: ${e.message}`);
+    }
+  }
+
   // Get duration
   let duration = 0;
   try {

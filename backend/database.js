@@ -349,6 +349,81 @@ function initDB() {
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   )`);
 
+  // Star ratings — one rating per user per video, updatable (upsert on re-rate).
+  db.exec(`CREATE TABLE IF NOT EXISTS video_ratings (
+    video_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    rating INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (video_id, user_id),
+    FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`);
+
+  // Comment reactions — a user can react to the same comment with several different emoji
+  // (each is its own toggle), but only once per emoji.
+  db.exec(`CREATE TABLE IF NOT EXISTS comment_reactions (
+    comment_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    emoji TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (comment_id, user_id, emoji),
+    FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`);
+
+  // Comment moderation reports. comment_id is a loose reference (like audit_logs.entity_id) —
+  // NOT a foreign key — so a resolved report survives even if its comment is later hard-deleted,
+  // keeping the moderation trail intact instead of cascading away or blocking the delete.
+  db.exec(`CREATE TABLE IF NOT EXISTS comment_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    comment_id INTEGER NOT NULL,
+    reporter_user_id INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    description TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    resolved_by INTEGER,
+    resolved_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (reporter_user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`);
+
+  // In-app notification center. Delivered live over /ws/notifications when the recipient is
+  // connected (see backend/notifications.js); this table is the source of truth either way —
+  // the bell's initial state and unread count always come from here, not from WS memory.
+  db.exec(`CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT DEFAULT '',
+    url TEXT DEFAULT '',
+    read INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at)`);
+
+  // Sampled player events (self-hosted videos only — see SecurePlayer's onPlay/onPause/onSeek)
+  // powering the per-video analytics heatmap. from_position is only set for 'seek' rows — it's
+  // what makes a rewind ("landed before where they were") distinguishable from a skip forward.
+  db.exec(`CREATE TABLE IF NOT EXISTS video_playback_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    position REAL NOT NULL,
+    from_position REAL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_playback_events_video ON video_playback_events(video_id, event_type)`);
+
+  // Shorts — an explicit flag set at upload time (self-hosted only), not auto-detected from
+  // aspect ratio/duration, per the decision made when this feature was scoped.
+  try { db.exec(`ALTER TABLE videos ADD COLUMN is_short INTEGER DEFAULT 0`); } catch (e) {}
+
   return db;
 }
 

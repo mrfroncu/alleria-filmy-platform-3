@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink, Download, Trash2, Clock, ShieldCheck, Mail, Bell } from 'lucide-react';
+import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink, Download, Trash2, Clock, ShieldCheck, Mail, Bell, Monitor, Smartphone, LogOut } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, parseTsError, urlBase64ToUint8Array } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
@@ -56,7 +56,17 @@ export default function ProfilePage() {
   const [gdprBusy, setGdprBusy] = useState(false);
   const setGdprMsg = (m) => { if (m) (m.type === 'success' ? toast.success : toast.error)(m.text); };
 
+  // Active sessions / devices
+  const [sessions, setSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [revokingSid, setRevokingSid] = useState(null);
+  const loadSessions = () => {
+    setSessionsLoading(true);
+    api.getSessions().then(setSessions).catch(() => {}).finally(() => setSessionsLoading(false));
+  };
+
   useEffect(() => { api.getConfig().then(c => setConfig(prev => ({ ...prev, ...c }))).catch(() => {}); }, []);
+  useEffect(() => { loadSessions(); }, []);
 
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
@@ -243,6 +253,27 @@ export default function ProfilePage() {
       toast.error('Błąd: ' + err.message);
     }
     setPushBusy(false);
+  };
+
+  const handleRevokeSession = async (session) => {
+    if (revokingSid) return;
+    const message = session.isCurrent
+      ? 'Wylogować to urządzenie? Zostaniesz natychmiast wylogowany/a.'
+      : `Wylogować sesję "${session.device}"?`;
+    if (!(await confirm(message, { danger: true, confirmLabel: 'Wyloguj' }))) return;
+    setRevokingSid(session.sid);
+    try {
+      await api.revokeSession(session.sid);
+      if (session.isCurrent) {
+        window.location.href = '/login';
+        return;
+      }
+      setSessions(prev => prev.filter(s => s.sid !== session.sid));
+      toast.success('Sesja wylogowana.');
+    } catch (err) {
+      toast.error('Błąd: ' + err.message);
+    }
+    setRevokingSid(null);
   };
 
   const handleRefreshDiscord = async () => {
@@ -676,6 +707,55 @@ export default function ProfilePage() {
             <span className="text-sm font-mono text-zinc-900 dark:text-white">{formatDate(profile.last_login)}</span>
           </div>
         </div>
+      </div>
+
+      {/* Aktywne sesje */}
+      <div className="card p-6 mt-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Monitor className="w-4 h-4 text-violet-500" />
+          <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Aktywne sesje</h3>
+        </div>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+          Urządzenia i przeglądarki aktualnie zalogowane na Twoje konto.
+        </p>
+        {sessionsLoading ? (
+          <p className="text-xs text-zinc-400">Ładowanie...</p>
+        ) : sessions.length === 0 ? (
+          <p className="text-xs text-zinc-400">Brak aktywnych sesji.</p>
+        ) : (
+          <div className="space-y-2">
+            {sessions.map(s => {
+              const isMobile = s.device.includes('iOS') || s.device.includes('Android');
+              const DeviceIcon = isMobile ? Smartphone : Monitor;
+              return (
+                <div key={s.sid} className="flex items-center gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
+                  <DeviceIcon className="w-4 h-4 text-zinc-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-zinc-900 dark:text-white">{s.device}</span>
+                      {s.isCurrent && (
+                        <span className="text-[9px] font-bold uppercase tracking-wider bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded">
+                          To urządzenie
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-zinc-500 font-mono">
+                      {s.ip || '—'}{s.loggedInAt ? ` · zalogowano ${formatDate(s.loggedInAt)}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleRevokeSession(s)}
+                    disabled={revokingSid === s.sid}
+                    title="Wyloguj to urządzenie"
+                    className="btn-icon-red shrink-0 disabled:opacity-50"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Powiadomienia */}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw, Star, SmilePlus, Flag, BarChart3 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
@@ -471,8 +471,85 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, controlRef }) {
   );
 }
 
+// Five-star widget — used both interactively (video header) and read-only (nowhere yet, kept
+// generic since average display doesn't need click handlers).
+function StarRating({ value, hoverValue, onRate, onHover, onLeave, readOnly, size = 'w-5 h-5' }) {
+  const display = hoverValue || value;
+  return (
+    <div className="flex items-center gap-0.5" onMouseLeave={onLeave}>
+      {[1, 2, 3, 4, 5].map(n => (
+        <button
+          key={n}
+          type="button"
+          disabled={readOnly}
+          onClick={() => onRate?.(n)}
+          onMouseEnter={() => onHover?.(n)}
+          className={`transition-transform ${readOnly ? 'cursor-default' : 'cursor-pointer hover:scale-110 active:scale-95'}`}
+        >
+          <Star className={`${size} transition-colors ${n <= display ? 'fill-amber-400 text-amber-400' : 'text-zinc-300 dark:text-zinc-700'}`} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const COMMENT_REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+
+const COMMENT_REPORT_REASONS = [
+  { key: 'spam', label: 'Spam' },
+  { key: 'harassment', label: 'Nękanie / obraźliwe treści' },
+  { key: 'spoiler', label: 'Spoiler' },
+  { key: 'inappropriate', label: 'Nieodpowiednia treść' },
+  { key: 'other', label: 'Inne' },
+];
+
+// Reaction chips + emoji picker under a comment — stable component outside render.
+function CommentReactions({ reactions, onReact }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef(null);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onClickOutside = (e) => { if (pickerRef.current && !pickerRef.current.contains(e.target)) setPickerOpen(false); };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [pickerOpen]);
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap mt-1.5">
+      {(reactions || []).filter(r => r.count > 0).map(r => (
+        <button
+          key={r.emoji}
+          onClick={() => onReact(r.emoji)}
+          className={`text-[11px] px-1.5 py-0.5 rounded-lg border transition-all flex items-center gap-1 ${
+            r.reacted
+              ? 'bg-violet-100 dark:bg-violet-500/15 border-violet-300 dark:border-violet-500/40 text-violet-700 dark:text-violet-300'
+              : 'bg-zinc-100 dark:bg-zinc-800 border-transparent text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+          }`}
+        >
+          <span>{r.emoji}</span><span className="font-semibold">{r.count}</span>
+        </button>
+      ))}
+      <div className="relative" ref={pickerRef}>
+        <button onClick={() => setPickerOpen(v => !v)} title="Dodaj reakcję" className="p-1 text-zinc-400 hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-lg transition-colors">
+          <SmilePlus className="w-3.5 h-3.5" />
+        </button>
+        {pickerOpen && (
+          <div className="absolute z-10 top-full left-0 mt-1 flex gap-1 p-1.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg animate-scale-in origin-top-left">
+            {COMMENT_REACTION_EMOJIS.map(e => (
+              <button key={e} onClick={() => { onReact(e); setPickerOpen(false); }} className="text-base hover:scale-125 transition-transform p-0.5">
+                {e}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Comment — stable component outside render
-function CommentNode({ c, depth, replies, user, editingId, editContent, setEditContent, silentEdit, setSilentEdit, onStartEdit, onSaveEdit, onCancelEdit, onReply, onDelete, onHardDelete, editHistoryId, setEditHistoryId }) {
+function CommentNode({ c, depth, replies, user, editingId, editContent, setEditContent, silentEdit, setSilentEdit, onStartEdit, onSaveEdit, onCancelEdit, onReply, onDelete, onHardDelete, onReact, onReport, editHistoryId, setEditHistoryId }) {
   const isEditing = editingId === c.id;
   const isDev = user?.role === 'dev';
   const canMod = c.user_id === user?.id || user?.role === 'admin' || isDev;
@@ -511,12 +588,14 @@ function CommentNode({ c, depth, replies, user, editingId, editContent, setEditC
               <button onClick={() => onReply(c)} className="btn-link-zinc hover:text-violet-500 px-2 py-1 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-500/10 flex items-center gap-1 text-[11px]"><Reply className="w-3 h-3" /> Odpowiedz</button>
               {(c.user_id === user?.id || isDev) && <button onClick={() => onStartEdit(c)} className="btn-link-zinc hover:text-amber-500 px-2 py-1 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-500/10 flex items-center gap-1 text-[11px]"><Pencil className="w-3 h-3" /> Edytuj</button>}
               {canMod && <button onClick={() => onDelete(c.id)} className="btn-link-red px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-1 text-[11px]"><Trash2 className="w-3 h-3" /> Usuń</button>}
+              {c.user_id !== user?.id && <button onClick={() => onReport(c)} className="btn-link-zinc hover:text-amber-500 px-2 py-1 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-500/10 flex items-center gap-1 text-[11px]"><Flag className="w-3 h-3" /> Zgłoś</button>}
             </div>
           )}
           {isDeleted && isDev && <button onClick={() => onHardDelete(c.id)} className="btn-link-red mt-1 text-[10px]">Usuń całkowicie{replies.length > 0 ? ` (+ ${replies.length} odp.)` : ''}</button>}
+          {!isDeleted && !isEditing && <CommentReactions reactions={c.reactions} onReact={emoji => onReact(c.id, emoji)} />}
         </div>
       </div>
-      {replies.map(r => <CommentNode key={r.id} c={r} depth={depth + 1} replies={r._replies || []} user={user} editingId={editingId} editContent={editContent} setEditContent={setEditContent} silentEdit={silentEdit} setSilentEdit={setSilentEdit} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete} editHistoryId={editHistoryId} setEditHistoryId={setEditHistoryId} />)}
+      {replies.map(r => <CommentNode key={r.id} c={r} depth={depth + 1} replies={r._replies || []} user={user} editingId={editingId} editContent={editContent} setEditContent={setEditContent} silentEdit={silentEdit} setSilentEdit={setSilentEdit} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete} onReact={onReact} onReport={onReport} editHistoryId={editHistoryId} setEditHistoryId={setEditHistoryId} />)}
     </div>
   );
 }
@@ -537,6 +616,11 @@ export default function VideoPage() {
   const [isFav, setIsFav] = useState(false);
   const [favCount, setFavCount] = useState(0);
   const [favLoading, setFavLoading] = useState(false);
+  const [myRating, setMyRating] = useState(0);
+  const [avgRating, setAvgRating] = useState(0);
+  const [ratingCount, setRatingCount] = useState(0);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [ratingBusy, setRatingBusy] = useState(false);
   const [prevVideo, setPrevVideo] = useState(null);
   const [nextVideo, setNextVideo] = useState(null);
   const [canEdit, setCanEdit] = useState(false);
@@ -554,12 +638,21 @@ export default function VideoPage() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [hardDeleteConfirm, setHardDeleteConfirm] = useState(null);
   const [editHistoryPopup, setEditHistoryPopup] = useState(null);
+  const [reportingComment, setReportingComment] = useState(null);
+  const [reportReason, setReportReason] = useState('');
+  const [reportDescription, setReportDescription] = useState('');
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportError, setReportError] = useState('');
 
   // Continue Watching
   const playerControlRef = useRef(null);
   const progressStateRef = useRef({ id: null, position: 0, duration: 0, completed: false, lastSaved: 0 });
   const [resumePosition, setResumePosition] = useState(null);
   const [showResumeBanner, setShowResumeBanner] = useState(false);
+
+  // Sampled play/pause/seek events for the per-video analytics heatmap (self-hosted only —
+  // see SecurePlayer's onPlay/onPause/onSeek). Buffered and flushed in batches, never per-event.
+  const eventBufferRef = useRef([]);
 
   const [devOpen, setDevOpen] = useState(false);
   const [devUserId, setDevUserId] = useState('');
@@ -592,8 +685,10 @@ export default function VideoPage() {
     Promise.all([
       api.getVideo(id),
       api.checkFavorite(id).catch(() => ({ isFavorite: false, count: 0 })),
-    ]).then(([v, f]) => {
+      api.getRating(id).catch(() => ({ myRating: 0, average: 0, count: 0 })),
+    ]).then(([v, f, r]) => {
       setVideo(v); setIsFav(f.isFavorite); setFavCount(f.count || 0); setError(null);
+      setMyRating(r.myRating || 0); setAvgRating(r.average || 0); setRatingCount(r.count || 0);
       // NEW data is now in state → trigger enter animation
       setPendingSlide(slideDir);
       setPhase('entering');
@@ -618,10 +713,27 @@ export default function VideoPage() {
     }).catch(err => setError(err.message)).finally(() => setLoading(false));
   }, [id]);
 
+  const flushPlaybackEvents = useCallback((videoId) => {
+    if (eventBufferRef.current.length === 0) return;
+    const events = eventBufferRef.current;
+    eventBufferRef.current = [];
+    fetch(`/api/videos/${videoId}/playback-events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ events }),
+      credentials: 'include',
+      keepalive: true,
+    }).catch(() => {});
+  }, []);
+
   // Save progress when navigating to a different video (id changes) or leaving the page entirely
   useEffect(() => {
     progressStateRef.current = { id, position: 0, duration: 0, completed: false, lastSaved: 0 };
+    eventBufferRef.current = [];
+    const flushInterval = setInterval(() => flushPlaybackEvents(id), 15000);
     return () => {
+      clearInterval(flushInterval);
+      flushPlaybackEvents(id);
       const s = progressStateRef.current;
       if (!s.id || !s.duration || s.completed) return;
       const pct = s.position / s.duration;
@@ -634,7 +746,7 @@ export default function VideoPage() {
         keepalive: true,
       }).catch(() => {});
     };
-  }, [id]);
+  }, [id, flushPlaybackEvents]);
 
   useEffect(() => { if (user?.role === 'dev' && devOpen && !allUsers.length) api.getAllUsers().then(setAllUsers).catch(() => {}); }, [devOpen]);
 
@@ -652,6 +764,17 @@ export default function VideoPage() {
     setFavLoading(true);
     try { if (isFav) { await api.removeFavorite(id); setIsFav(false); setFavCount(c => Math.max(0, c - 1)); } else { await api.addFavorite(id); setIsFav(true); setFavCount(c => c + 1); } } catch (e) {}
     setFavLoading(false);
+  };
+
+  const rateVideo = async (rating) => {
+    if (ratingBusy) return;
+    setRatingBusy(true);
+    try {
+      // Clicking the currently-set star again clears the rating instead of re-submitting it
+      const r = rating === myRating ? await api.clearRating(id) : await api.rateVideo(id, rating);
+      setMyRating(r.myRating || 0); setAvgRating(r.average || 0); setRatingCount(r.count || 0);
+    } catch (e) {}
+    setRatingBusy(false);
   };
   const openEditModal = async () => { try { setEditUsers(await api.getAllUsers()); } catch (e) { setEditUsers([]); } setShowEditModal(true); };
   const submitComment = async () => {
@@ -671,6 +794,26 @@ export default function VideoPage() {
   useEffect(() => { api.getConfig().then(c => { if (c.limitComment) setCommentLimit(c.limitComment); }).catch(() => {}); }, []);
   const onDelete = useCallback((cid) => setDeleteConfirm(cid), []);
   const onHardDelete = useCallback((cid) => setHardDeleteConfirm(cid), []);
+  const handleReact = useCallback(async (cid, emoji) => {
+    try {
+      const { reactions } = await api.reactToComment(cid, emoji);
+      setComments(p => p.map(c => c.id === cid ? { ...c, reactions } : c));
+    } catch (e) {}
+  }, []);
+  const openReportModal = useCallback((c) => {
+    setReportingComment(c); setReportReason(''); setReportDescription(''); setReportError('');
+  }, []);
+  const closeReportModal = () => { setReportingComment(null); setReportReason(''); setReportDescription(''); setReportError(''); };
+  const submitReport = async () => {
+    if (!reportReason) { setReportError('Wybierz powód zgłoszenia.'); return; }
+    if (!reportDescription.trim()) { setReportError('Opis jest wymagany.'); return; }
+    setReportSubmitting(true); setReportError('');
+    try {
+      await api.reportComment(reportingComment.id, reportReason, reportDescription.trim());
+      closeReportModal();
+    } catch (e) { setReportError(e.message); }
+    setReportSubmitting(false);
+  };
   const softDel = async () => { if (!deleteConfirm) return; try { await api.deleteComment(deleteConfirm); setComments(p => p.map(c => c.id === deleteConfirm ? { ...c, deleted: 1, content: '' } : c)); } catch (e) {} setDeleteConfirm(null); };
   const hardDel = async () => { if (!hardDeleteConfirm) return; try { await api.hardDeleteComment(hardDeleteConfirm); const rm = new Set([hardDeleteConfirm]); const walk = pid => comments.filter(c => c.parent_id === pid).forEach(c => { rm.add(c.id); walk(c.id); }); walk(hardDeleteConfirm); setComments(p => p.filter(c => !rm.has(c.id))); } catch (e) {} setHardDeleteConfirm(null); };
 
@@ -697,6 +840,16 @@ export default function VideoPage() {
       api.saveProgress(id, currentTime, duration).catch(() => {});
     }
   }, [id]);
+
+  // SecurePlayer-only (self-hosted) — feeds the per-video analytics heatmap. from_position
+  // comes from progressStateRef, which handleTimeUpdate keeps fresh on every native tick, so
+  // it reflects "where playback was right before this seek" without SecurePlayer itself
+  // needing to know anything about analytics.
+  const handlePlayerPlay = useCallback((pos) => { eventBufferRef.current.push({ event_type: 'play', position: pos }); }, []);
+  const handlePlayerPause = useCallback((pos) => { eventBufferRef.current.push({ event_type: 'pause', position: pos }); }, []);
+  const handlePlayerSeek = useCallback((pos) => {
+    eventBufferRef.current.push({ event_type: 'seek', position: pos, from_position: progressStateRef.current.position });
+  }, []);
 
   const tree = useMemo(() => {
     const m = {}; comments.forEach(c => { m[c.id] = { ...c, _replies: [] }; });
@@ -749,6 +902,7 @@ export default function VideoPage() {
           <div className="flex-1">
             <div className="flex items-start gap-3 mb-3">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display flex-1">{video.title}</h1>
+              {canEdit && <Link to={`/video/${id}/analytics`} className="shrink-0 p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-violet-500 dark:hover:text-violet-400 transition-all hover:scale-110 active:scale-95" title="Analityka"><BarChart3 className="w-5 h-5" /></Link>}
               {canEdit && <button onClick={openEditModal} className="shrink-0 p-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-500/20 transition-all hover:scale-110 active:scale-95"><Pencil className="w-5 h-5" /></button>}
               <button onClick={toggleFav} disabled={favLoading} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl transition-all duration-300 hover:scale-105 active:scale-95 ${isFav ? 'bg-pink-50 dark:bg-pink-500/10 text-pink-500 shadow-lg shadow-pink-500/10' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-pink-500'}`}>
                 <Heart className={`w-5 h-5 transition-all ${isFav ? 'fill-current scale-110' : ''}`} />
@@ -759,6 +913,19 @@ export default function VideoPage() {
               <Link to={`/author/${video.author_id}`} className="text-sm font-bold text-violet-500 hover:text-violet-600 transition-colors">{video.author_display_name || video.author_name}</Link>
               {video.tags?.length > 0 && <div className="flex flex-wrap gap-1.5">{video.tags.map(t => <Link key={t.id} to={`/?tags=${t.id}`} className="tag-chip hover:scale-105 active:scale-95">{t.name}</Link>)}</div>}
             </div>
+            <div className="flex items-center gap-2 mt-2">
+              <StarRating
+                value={myRating}
+                hoverValue={hoverRating}
+                onRate={rateVideo}
+                onHover={setHoverRating}
+                onLeave={() => setHoverRating(0)}
+                readOnly={ratingBusy}
+              />
+              {ratingCount > 0 && (
+                <span className="text-xs text-zinc-400">{avgRating.toFixed(1)} <span className="text-zinc-300 dark:text-zinc-600">({ratingCount})</span></span>
+              )}
+            </div>
             <div className="flex items-center gap-3 mt-2 text-xs text-zinc-400">
               <span>{formatDate(video.publish_date)}</span>
               {video.category_name && <><span>•</span><Link to={`/category/${video.category_slug}`} className="hover:text-violet-500 transition-colors">{video.category_name}</Link></>}
@@ -768,9 +935,9 @@ export default function VideoPage() {
 
         <div className="mb-2 anim-stagger-2" key={`player-${activeSource}`}>
           {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
-            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} />
+            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} />
           ) : isStreamer && streamerVideoId ? (
-            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} />
+            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} />
           ) : isPlex && src.url ? (
             <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in plex-container flex items-center justify-center">
               {/* Floating particles */}
@@ -877,7 +1044,7 @@ export default function VideoPage() {
             </div>
           </div>
           {tree.length === 0 ? <p className="text-sm text-zinc-400 text-center py-6">Brak komentarzy - bądź pierwszą osobą!</p> : (
-            <div className="space-y-1">{tree.map(c => <CommentNode key={c.id} c={c} depth={0} replies={c._replies} user={user} editingId={editingComment} editContent={editContent} setEditContent={setEditContent} silentEdit={silentEdit} setSilentEdit={setSilentEdit} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete} editHistoryId={editHistoryPopup} setEditHistoryId={setEditHistoryPopup} />)}</div>
+            <div className="space-y-1">{tree.map(c => <CommentNode key={c.id} c={c} depth={0} replies={c._replies} user={user} editingId={editingComment} editContent={editContent} setEditContent={setEditContent} silentEdit={silentEdit} setSilentEdit={setSilentEdit} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete} onReact={handleReact} onReport={openReportModal} editHistoryId={editHistoryPopup} setEditHistoryId={setEditHistoryPopup} />)}</div>
           )}
         </div>
       </div>
@@ -886,6 +1053,49 @@ export default function VideoPage() {
       {deleteConfirm && <Portal><div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}><div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',backdropFilter:'blur(8px)'}} onClick={()=>setDeleteConfirm(null)}/><div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center" style={{position:'relative',zIndex:1,animation:'modalIn 0.35s cubic-bezier(0.16,1,0.3,1)'}}><Trash2 className="w-12 h-12 text-red-500 mx-auto mb-4"/><h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć komentarz?</h3><p className="text-sm text-zinc-500 mb-6">Treść zostanie ukryta, wątek zachowany.</p><div className="flex gap-3 justify-center"><button onClick={()=>setDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button><button onClick={softDel} className="btn-danger text-sm">Usuń</button></div></div></div></Portal>}
       {hardDeleteConfirm && <Portal><div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}><div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',backdropFilter:'blur(8px)'}} onClick={()=>setHardDeleteConfirm(null)}/><div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center" style={{position:'relative',zIndex:1,animation:'modalIn 0.35s cubic-bezier(0.16,1,0.3,1)'}}><AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4"/><h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć permanentnie?</h3><p className="text-sm text-zinc-500 mb-6">Komentarz i odpowiedzi usunięte na zawsze.</p><div className="flex gap-3 justify-center"><button onClick={()=>setHardDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button><button onClick={hardDel} className="btn-danger text-sm">Usuń</button></div></div></div></Portal>}
       {showEditModal && <Portal><VideoModal isOpen={showEditModal} onClose={()=>setShowEditModal(false)} video={video} users={editUsers} onSaved={()=>{setShowEditModal(false);api.getVideo(id).then(v=>setVideo(v)).catch(()=>{})}}/></Portal>}
+      {reportingComment && (
+        <Portal>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }} onClick={closeReportModal} />
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-md w-full p-8" style={{ position: 'relative', zIndex: 1, animation: 'modalIn 0.35s cubic-bezier(0.16,1,0.3,1)' }}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center shrink-0">
+                  <Flag className="w-5 h-5 text-amber-500" />
+                </div>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Zgłoś komentarz</h3>
+              </div>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4 line-clamp-2 italic">"{reportingComment.content}"</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="label-field">Powód</label>
+                  <select value={reportReason} onChange={e => setReportReason(e.target.value)} className="input-field text-sm">
+                    <option value="">Wybierz powód...</option>
+                    {COMMENT_REPORT_REASONS.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label-field">Opis</label>
+                  <textarea
+                    value={reportDescription}
+                    onChange={e => setReportDescription(e.target.value)}
+                    rows={3}
+                    maxLength={1000}
+                    placeholder="Opisz, dlaczego zgłaszasz ten komentarz..."
+                    className="input-field text-sm resize-none"
+                  />
+                </div>
+                {reportError && <p className="text-red-500 text-xs">{reportError}</p>}
+              </div>
+              <div className="flex gap-3 justify-end mt-6">
+                <button onClick={closeReportModal} className="btn-secondary text-sm">Anuluj</button>
+                <button onClick={submitReport} disabled={reportSubmitting} className="btn-primary text-sm disabled:opacity-50">
+                  {reportSubmitting ? 'Wysyłanie...' : 'Zgłoś'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
     </>
   );
 }

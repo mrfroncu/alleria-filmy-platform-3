@@ -20,6 +20,7 @@ const crypto = require('crypto');
 const { initDB, DB_PATH } = require('./database');
 const { DEFAULT_TOS_MD, DEFAULT_TOS_UPDATED_AT } = require('./defaultTos');
 const { createParty, getParty, deleteParty, listParties, createWsToken, setupWatchPartyWS, reassignUserIdInParties } = require('./watchParty');
+const { createWsToken: createNotificationsWsToken, notifyUser, setupNotificationsWS } = require('./notifications');
 const rateLimit = require('express-rate-limit');
 
 // Test mode (set by the API test suite in tests/): disables rate limits and the
@@ -231,6 +232,35 @@ app.get('/api/version', requireAuth, (req, res) => {
 app.get('/api/watch-party/token', requireAuth, (req, res) => {
   const token = createWsToken(req.session.user);
   res.json({ token });
+});
+
+// ============ IN-APP NOTIFICATIONS ============
+app.get('/api/notifications/token', requireAuth, (req, res) => {
+  const token = createNotificationsWsToken(req.session.user);
+  res.json({ token });
+});
+
+app.get('/api/notifications', requireAuth, (req, res) => {
+  try {
+    const before = parseInt(req.query.before, 10);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
+    let where = 'user_id = ?';
+    const params = [req.session.user.id];
+    if (Number.isInteger(before)) { where += ' AND id < ?'; params.push(before); }
+    const notifications = db.prepare(`SELECT * FROM notifications WHERE ${where} ORDER BY id DESC LIMIT ?`).all(...params, limit);
+    const unreadCount = db.prepare('SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND read = 0').get(req.session.user.id).c;
+    res.json({ notifications, unreadCount });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/notifications/:id/read', requireAuth, (req, res) => {
+  db.prepare('UPDATE notifications SET read = 1 WHERE id = ? AND user_id = ?').run(req.params.id, req.session.user.id);
+  res.json({ success: true });
+});
+
+app.post('/api/notifications/read-all', requireAuth, (req, res) => {
+  db.prepare('UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0').run(req.session.user.id);
+  res.json({ success: true });
 });
 
 app.post('/api/watch-party', requireAuth, (req, res) => {
@@ -589,6 +619,7 @@ async function discordCallbackHandler(req, res) {
         auth_method: 'discord',
         discord_roles: roles
       };
+      stampSessionMeta(req);
       // CRITICAL: explicitly save session before redirect to prevent race condition
       req.session.save((saveErr) => {
         if (saveErr) {
@@ -715,6 +746,52 @@ function invalidateUserSessions(userId) {
       try { sess = JSON.parse(row.sess); } catch (_) { continue; }
       if (sess?.user?.id === userId) sessionStore.destroy(row.sid, () => {});
     }
+  });
+}
+
+// Captures device context on the session at login time — express-session itself doesn't
+// track this, so without it "Aktywne sesje" would have nothing to show besides a sid.
+function stampSessionMeta(req) {
+  req.session.ua = req.get('user-agent') || '';
+  req.session.ip = req.ip || req.socket.remoteAddress || '';
+  req.session.loggedInAt = new Date().toISOString();
+}
+
+// Good-enough device label from a raw User-Agent string — not a full parser, just enough
+// to tell sessions apart in a list (e.g. "Chrome · Windows").
+function parseUserAgent(ua) {
+  if (!ua) return 'Nieznane urządzenie';
+  const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Chrome\//.test(ua) ? 'Chrome'
+    : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Przeglądarka';
+  // iPhone/iPad UAs contain "like Mac OS X" for compat, so they must be checked before macOS.
+  const os = /Windows/.test(ua) ? 'Windows' : /iPhone|iPad/.test(ua) ? 'iOS' : /Mac OS X/.test(ua) ? 'macOS'
+    : /Android/.test(ua) ? 'Android' : /Linux/.test(ua) ? 'Linux' : '';
+  return os ? `${browser} · ${os}` : browser;
+}
+
+// Same sessionStore.db reach-around as invalidateUserSessions above, but returns the rows
+// instead of destroying them — powers GET /api/profile/sessions.
+function listUserSessions(userId) {
+  return new Promise((resolve) => {
+    if (!sessionStore || !sessionStore.db || typeof sessionStore.db.all !== 'function') return resolve([]);
+    sessionStore.db.all(`SELECT sid, sess, expired FROM ${sessionStore.table}`, (err, rows) => {
+      if (err || !rows) return resolve([]);
+      const out = [];
+      for (const row of rows) {
+        let sess;
+        try { sess = JSON.parse(row.sess); } catch (_) { continue; }
+        if (sess?.user?.id !== userId) continue;
+        out.push({
+          sid: row.sid,
+          device: parseUserAgent(sess.ua),
+          ip: sess.ip || null,
+          loggedInAt: sess.loggedInAt || null,
+          expiresAt: row.expired ? new Date(row.expired).toISOString() : null,
+        });
+      }
+      out.sort((a, b) => (b.loggedInAt || '').localeCompare(a.loggedInAt || ''));
+      resolve(out);
+    });
   });
 }
 
@@ -896,6 +973,7 @@ function completeTsSession(req, res, user, method) {
       id: user.id, username: user.username, display_name: user.display_name,
       avatar: user.avatar, role: user.role, auth_method: method, discord_roles: []
     };
+    stampSessionMeta(req);
     req.session.save((saveErr) => {
       if (saveErr) return res.status(500).json({ error: 'Session save error' });
       res.json({ success: true, user: req.session.user });
@@ -1501,8 +1579,20 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 // ============ VIDEOS API ============
+// Hover-scrub preview sprite (YouTube-style filmstrip) — only ever generated for self-hosted
+// videos once transcoding finishes (see streaming/server.js), so the URLs are only worth handing
+// out once we know that file exists; the frontend still tolerates a 404 (skips the hover effect).
+function attachPreviewUrl(v) {
+  const hasPreview = v.main_source_type === 'selfhosted' && v.stream_status === 'ready' && v.stream_video_id;
+  return {
+    ...v,
+    preview_sprite_url: hasPreview ? `/stream/media/${v.stream_video_id}/preview.jpg` : null,
+    preview_meta_url: hasPreview ? `/stream/media/${v.stream_video_id}/preview.json` : null,
+  };
+}
+
 app.get('/api/videos', requireAuth, (req, res) => {
-  const { search, tags, author, sort = 'newest', include_transcoding, category } = req.query;
+  const { search, tags, author, sort = 'newest', include_transcoding, category, shorts } = req.query;
   const isAdminOrDev = req.session.user.role === 'admin' || req.session.user.role === 'dev';
   const isDev = req.session.user.role === 'dev';
 
@@ -1524,6 +1614,14 @@ app.get('/api/videos', requireAuth, (req, res) => {
   // Hide transcoding videos from regular users (admin+dev can see them)
   if (!isAdminOrDev || !include_transcoding) {
     conditions.push("(v.stream_status IS NULL OR v.stream_status = 'ready')");
+  }
+
+  // Shorts live in their own vertical feed (/shorts), not mixed into the main 16:9 grid — the
+  // regular listing excludes them unless explicitly asked for.
+  if (shorts === '1') {
+    conditions.push('v.is_short = 1');
+  } else {
+    conditions.push('(v.is_short IS NULL OR v.is_short = 0)');
   }
 
   // Hide scheduled (future) videos from regular users (admin+dev can see them)
@@ -1612,7 +1710,7 @@ app.get('/api/videos', requireAuth, (req, res) => {
 
   try {
     const videos = db.prepare(sql).all(...params);
-    res.json(videos.map(v => ({
+    res.json(videos.map(v => attachPreviewUrl({
       ...v,
       tags: v.tag_names ? v.tag_names.split(',').map((name, i) => ({
         id: parseInt(v.tag_ids.split(',')[i]),
@@ -1678,7 +1776,7 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
       mirror4_name, mirror4_url, mirror4_type,
       mirror5_name, mirror5_url, mirror5_type,
       description, publish_date, tags,
-      stream_video_id, drm_enhanced, category_id } = req.body;
+      stream_video_id, drm_enhanced, category_id, is_short } = req.body;
 
     let thumbUrl = thumbnail || extractYoutubeThumbnail(main_source);
     let customThumb = 0;
@@ -1706,8 +1804,8 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
         mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type, mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type,
         mirror3_name, mirror3_url, mirror3_type, mirror4_name, mirror4_url, mirror4_type,
         mirror5_name, mirror5_url, mirror5_type,
-        description, publish_date, stream_video_id, drm_enhanced, category_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        description, publish_date, stream_video_id, drm_enhanced, category_id, is_short)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(title, parseInt(author_id), main_source || '', main_source_type || 'youtube', main_source_title || '',
       thumbUrl, customThumb,
       mirror1_name || null, mirror1_url || null, m1t === 'embed' ? 1 : 0, m1t,
@@ -1717,7 +1815,8 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
       mirror5_name || null, mirror5_url || null, m5t,
       description || '', publish_date,
       stream_video_id || null, drm_enhanced === 'true' || drm_enhanced === '1' ? 1 : 0,
-      category_id ? parseInt(category_id) : null);
+      category_id ? parseInt(category_id) : null,
+      stream_video_id && (is_short === 'true' || is_short === '1') ? 1 : 0);
 
     const videoId = result.lastInsertRowid;
 
@@ -1755,6 +1854,7 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
           if (videoFull.push_enabled) {
             sendCategoryPushNotifications(videoFull).catch(e => console.error('[PUSH] Error:', e.message));
           }
+          notifyCategoryOfNewVideo(videoFull);
         }
       } else {
         console.log(`[WEBHOOK] Scheduled "${title}" for ${publish_date} — webhook will fire later`);
@@ -1800,7 +1900,7 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
       mirror4_name, mirror4_url, mirror4_type,
       mirror5_name, mirror5_url, mirror5_type,
       description, publish_date, tags,
-      category_id, stream_video_id, drm_enhanced, access_mode, allowed_users } = req.body;
+      category_id, stream_video_id, drm_enhanced, access_mode, allowed_users, is_short } = req.body;
 
     const existing = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Video not found' });
@@ -1829,7 +1929,7 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
         mirror3_name=?, mirror3_url=?, mirror3_type=?,
         mirror4_name=?, mirror4_url=?, mirror4_type=?,
         mirror5_name=?, mirror5_url=?, mirror5_type=?,
-        description=?, publish_date=?, category_id=?, stream_video_id=?, drm_enhanced=?, access_mode=?,
+        description=?, publish_date=?, category_id=?, stream_video_id=?, drm_enhanced=?, access_mode=?, is_short=?,
         updated_at=datetime('now') WHERE id=?
     `).run(title, parseInt(author_id), main_source, main_source_type || 'youtube', main_source_title || '',
       thumbUrl, customThumb,
@@ -1843,6 +1943,7 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
       stream_video_id || existing.stream_video_id || null,
       drm_enhanced === 'true' || drm_enhanced === '1' ? 1 : 0,
       access_mode || existing.access_mode || 'category',
+      (stream_video_id || existing.stream_video_id) && (is_short === 'true' || is_short === '1') ? 1 : 0,
       req.params.id);
 
     // Update per-video access if custom mode
@@ -2382,6 +2483,139 @@ app.get('/api/favorites/check/:videoId', requireAuth, (req, res) => {
   res.json({ isFavorite: !!fav, count: count?.c || 0 });
 });
 
+// ============ VIDEO RATINGS ============
+function ratingAggregate(videoId, userId) {
+  const agg = db.prepare('SELECT AVG(rating) AS avg, COUNT(*) AS count FROM video_ratings WHERE video_id = ?').get(videoId);
+  const mine = db.prepare('SELECT rating FROM video_ratings WHERE video_id = ? AND user_id = ?').get(videoId, userId);
+  return { myRating: mine?.rating || 0, average: agg.count > 0 ? Math.round(agg.avg * 10) / 10 : 0, count: agg.count };
+}
+
+app.get('/api/videos/:id/rating', requireAuth, (req, res) => {
+  res.json(ratingAggregate(req.params.id, req.session.user.id));
+});
+
+app.put('/api/videos/:id/rating', requireAuth, (req, res) => {
+  const rating = parseInt(req.body.rating, 10);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return res.status(400).json({ error: 'Ocena musi być liczbą od 1 do 5.' });
+  db.prepare(`
+    INSERT INTO video_ratings (video_id, user_id, rating) VALUES (?, ?, ?)
+    ON CONFLICT(video_id, user_id) DO UPDATE SET rating = excluded.rating
+  `).run(req.params.id, req.session.user.id, rating);
+  res.json(ratingAggregate(req.params.id, req.session.user.id));
+});
+
+app.delete('/api/videos/:id/rating', requireAuth, (req, res) => {
+  db.prepare('DELETE FROM video_ratings WHERE video_id = ? AND user_id = ?').run(req.params.id, req.session.user.id);
+  res.json(ratingAggregate(req.params.id, req.session.user.id));
+});
+
+// ============ VIDEO ANALYTICS ============
+// Batched sampled player events (self-hosted only) — the frontend buffers play/pause/seek and
+// flushes every ~15s / on pause / on unload, never one request per raw event.
+app.post('/api/videos/:id/playback-events', requireAuth, (req, res) => {
+  try {
+    const events = Array.isArray(req.body.events) ? req.body.events.slice(0, 200) : [];
+    if (events.length > 0) {
+      const insert = db.prepare('INSERT INTO video_playback_events (video_id, user_id, event_type, position, from_position) VALUES (?, ?, ?, ?, ?)');
+      const insertMany = db.transaction((rows) => {
+        for (const e of rows) {
+          if (!['play', 'pause', 'seek'].includes(e.event_type)) continue;
+          const position = Number(e.position);
+          if (!Number.isFinite(position) || position < 0) continue;
+          const fromPosition = Number(e.from_position);
+          insert.run(req.params.id, req.session.user.id, e.event_type, position, Number.isFinite(fromPosition) ? fromPosition : null);
+        }
+      });
+      insertMany(events);
+    }
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// videos.* has no canonical duration column (only ever reported client-side) — the longest
+// duration any viewer's player has reported is the best approximation available.
+function getVideoDuration(videoId) {
+  const wp = db.prepare('SELECT MAX(duration) AS d FROM watch_progress WHERE video_id = ?').get(videoId);
+  if (wp?.d > 0) return wp.d;
+  const pe = db.prepare('SELECT MAX(position) AS d FROM video_playback_events WHERE video_id = ?').get(videoId);
+  return pe?.d || 0;
+}
+
+function bucketPositions(positions, duration, bucketCount) {
+  const buckets = new Array(bucketCount).fill(0);
+  if (!duration || duration <= 0) return buckets;
+  const bucketSize = duration / bucketCount;
+  for (const pos of positions) {
+    const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor(pos / bucketSize)));
+    buckets[idx]++;
+  }
+  return buckets;
+}
+
+const ANALYTICS_BUCKETS = 50;
+
+app.get('/api/videos/:id/analytics', requireAuth, (req, res) => {
+  try {
+    const video = db.prepare('SELECT id, author_id, main_source_type, stream_video_id FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).json({ error: 'Nie znaleziono filmu.' });
+    const isOwner = video.author_id === req.session.user.id;
+    const isAdmin = req.session.user.role === 'admin' || req.session.user.role === 'dev';
+    if (!isOwner && !isAdmin) return res.status(403).json({ error: 'Brak uprawnień.' });
+
+    // Watch-time-over-time — daily view count, last 30 days. Works for every source type
+    // (YouTube included) since it's backed by watch_logs, not by sampled player events.
+    const dailyViews = db.prepare(`
+      SELECT DATE(watched_at) AS day, COUNT(*) AS views
+      FROM watch_logs WHERE video_id = ? AND watched_at >= datetime('now', '-30 days')
+      GROUP BY DATE(watched_at) ORDER BY day ASC
+    `).all(video.id);
+
+    // Heatmap needs sampled seek/pause events, which only self-hosted playback (SecurePlayer)
+    // reports — YouTube's iframe only exposes polled currentTime, no discrete play/pause/seek.
+    const isSelfHosted = video.main_source_type === 'selfhosted' && !!video.stream_video_id;
+    let heatmap = null;
+    if (isSelfHosted) {
+      const duration = getVideoDuration(video.id);
+      if (duration > 0) {
+        const pauses = db.prepare(`SELECT position FROM video_playback_events WHERE video_id = ? AND event_type = 'pause'`).all(video.id).map(r => r.position);
+        const rewinds = db.prepare(`SELECT position FROM video_playback_events WHERE video_id = ? AND event_type = 'seek' AND from_position IS NOT NULL AND position < from_position`).all(video.id).map(r => r.position);
+        const skips = db.prepare(`SELECT from_position AS position FROM video_playback_events WHERE video_id = ? AND event_type = 'seek' AND from_position IS NOT NULL AND position > from_position`).all(video.id).map(r => r.position);
+
+        // Retention curve: for each bucket, the fraction of viewers whose furthest-ever
+        // position reached at least that point — the standard simplified retention-graph
+        // definition (not true frame-by-frame "were they actively watching" reconstruction).
+        const progressPositions = db.prepare('SELECT user_id, MAX(position) AS position FROM watch_progress WHERE video_id = ? GROUP BY user_id').all(video.id);
+        const eventPositions = db.prepare(`SELECT user_id, MAX(position) AS position FROM video_playback_events WHERE video_id = ? GROUP BY user_id`).all(video.id);
+        const furthestByUser = {};
+        for (const r of [...progressPositions, ...eventPositions]) {
+          furthestByUser[r.user_id] = Math.max(furthestByUser[r.user_id] || 0, r.position || 0);
+        }
+        const furthestValues = Object.values(furthestByUser);
+        const bucketSize = duration / ANALYTICS_BUCKETS;
+        const retention = new Array(ANALYTICS_BUCKETS).fill(0);
+        if (furthestValues.length > 0) {
+          for (let i = 0; i < ANALYTICS_BUCKETS; i++) {
+            const bucketStart = i * bucketSize;
+            retention[i] = furthestValues.filter(p => p >= bucketStart).length / furthestValues.length;
+          }
+        }
+
+        heatmap = {
+          duration,
+          buckets: ANALYTICS_BUCKETS,
+          viewers: furthestValues.length,
+          retention,
+          pauses: bucketPositions(pauses, duration, ANALYTICS_BUCKETS),
+          rewinds: bucketPositions(rewinds, duration, ANALYTICS_BUCKETS),
+          skips: bucketPositions(skips, duration, ANALYTICS_BUCKETS),
+        };
+      }
+    }
+
+    res.json({ dailyViews, heatmap, selfHosted: isSelfHosted });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ============ WATCH HISTORY (personal) ============
 app.get('/api/history', requireAuth, (req, res) => {
   try {
@@ -2517,6 +2751,28 @@ app.put('/api/profile', requireAuth, (req, res) => {
     req.session.save(() => {});
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============ ACTIVE SESSIONS / DEVICES ============
+app.get('/api/profile/sessions', requireAuth, async (req, res) => {
+  try {
+    const sessions = await listUserSessions(req.session.user.id);
+    res.json(sessions.map(s => ({ ...s, isCurrent: s.sid === req.sessionID })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/profile/sessions/:sid', requireAuth, (req, res) => {
+  if (!sessionStore || typeof sessionStore.get !== 'function') return res.status(500).json({ error: 'Magazyn sesji niedostępny.' });
+  const { sid } = req.params;
+  sessionStore.get(sid, (err, sess) => {
+    if (err || !sess || sess.user?.id !== req.session.user.id) {
+      return res.status(404).json({ error: 'Nie znaleziono sesji.' });
+    }
+    sessionStore.destroy(sid, (destroyErr) => {
+      if (destroyErr) return res.status(500).json({ error: destroyErr.message });
+      res.json({ success: true });
+    });
+  });
 });
 
 // ============ WEB PUSH SUBSCRIPTIONS ============
@@ -3288,6 +3544,11 @@ app.post('/api/debug/gdpr/requests/:id/approve', requireDev, (req, res) => {
       .run(req.session.user.id, reqRow.id);
     audit(req.session.user.id, 'gdpr_approve', 'user', reqRow.user_id, reqRow.type);
     if (user) notifyUserOfGdprResult(reqRow.type, user).catch(e => console.error('[EMAIL] GDPR result notify failed:', e.message));
+    // Deletion anonymizes + logs the user out above — an in-app bell notification would never
+    // be seen, so only export (where the account and session stay intact) gets one.
+    if (reqRow.type === 'export') {
+      notifyUser(reqRow.user_id, { type: 'gdpr_export_ready', title: 'Eksport danych gotowy', body: 'Twoja prośba o eksport danych została zatwierdzona.', url: '/profile' });
+    }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3894,6 +4155,25 @@ app.get('/api/stream/transcoding', requireAdmin, async (req, res) => {
 });
 
 // ============ COMMENTS ============
+// Fixed preset — reactions are a lightweight signal, not free-form emoji input.
+const COMMENT_REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+
+// Attaches a `reactions: [{emoji, count, reacted}]` array to each comment in one extra
+// query (grouped in JS) instead of one query per comment.
+function attachReactions(comments, userId) {
+  if (comments.length === 0) return comments;
+  const placeholders = comments.map(() => '?').join(',');
+  const rows = db.prepare(`SELECT comment_id, emoji, user_id FROM comment_reactions WHERE comment_id IN (${placeholders})`).all(...comments.map(c => c.id));
+  const byComment = {};
+  for (const r of rows) {
+    const forComment = (byComment[r.comment_id] = byComment[r.comment_id] || {});
+    const entry = (forComment[r.emoji] = forComment[r.emoji] || { emoji: r.emoji, count: 0, reacted: false });
+    entry.count++;
+    if (r.user_id === userId) entry.reacted = true;
+  }
+  return comments.map(c => ({ ...c, reactions: Object.values(byComment[c.id] || {}) }));
+}
+
 app.get('/api/videos/:id/comments', requireAuth, (req, res) => {
   try {
     const comments = db.prepare(`
@@ -3901,7 +4181,25 @@ app.get('/api/videos/:id/comments', requireAuth, (req, res) => {
       FROM comments c JOIN users u ON c.user_id = u.id
       WHERE c.video_id = ? ORDER BY c.created_at ASC
     `).all(req.params.id);
-    res.json(comments);
+    res.json(attachReactions(comments, req.session.user.id));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/comments/:id/react', requireAuth, (req, res) => {
+  try {
+    const { emoji } = req.body;
+    if (!COMMENT_REACTION_EMOJIS.includes(emoji)) return res.status(400).json({ error: 'Nieprawidłowa reakcja.' });
+    const comment = db.prepare('SELECT id FROM comments WHERE id = ?').get(req.params.id);
+    if (!comment) return res.status(404).json({ error: 'Nie znaleziono komentarza.' });
+    const userId = req.session.user.id;
+    const existing = db.prepare('SELECT 1 FROM comment_reactions WHERE comment_id = ? AND user_id = ? AND emoji = ?').get(req.params.id, userId, emoji);
+    if (existing) {
+      db.prepare('DELETE FROM comment_reactions WHERE comment_id = ? AND user_id = ? AND emoji = ?').run(req.params.id, userId, emoji);
+    } else {
+      db.prepare('INSERT INTO comment_reactions (comment_id, user_id, emoji) VALUES (?, ?, ?)').run(req.params.id, userId, emoji);
+    }
+    const [{ reactions }] = attachReactions([{ id: parseInt(req.params.id) }], userId);
+    res.json({ reactions });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -3914,6 +4212,17 @@ app.post('/api/videos/:id/comments', requireAuth, (req, res) => {
     if (trimmed.length > maxComment) return res.status(400).json({ error: `Komentarz może mieć maksymalnie ${maxComment} znaków.` });
     const result = db.prepare('INSERT INTO comments (video_id, user_id, content, parent_id) VALUES (?, ?, ?, ?)').run(req.params.id, req.session.user.id, trimmed.slice(0, maxComment), parent_id || null);
     const comment = db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(result.lastInsertRowid);
+    if (parent_id) {
+      const parent = db.prepare('SELECT user_id FROM comments WHERE id = ?').get(parent_id);
+      if (parent && parent.user_id !== req.session.user.id) {
+        const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
+        notifyUser(parent.user_id, {
+          type: 'comment_reply', title: 'Nowa odpowiedź',
+          body: `${comment.display_name || comment.username} odpowiedział(a) na Twój komentarz`,
+          url: `${baseUrl}/video/${req.params.id}`,
+        });
+      }
+    }
     res.json(comment);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3969,6 +4278,91 @@ app.delete('/api/comments/:id/hard', requireDev, (req, res) => {
     db.prepare('DELETE FROM comments WHERE parent_id = ?').run(req.params.id);
     db.prepare('DELETE FROM comments WHERE id = ?').run(req.params.id);
     res.json({ success: true, hard: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============ COMMENT MODERATION QUEUE ============
+const COMMENT_REPORT_REASONS = ['spam', 'harassment', 'spoiler', 'inappropriate', 'other'];
+
+app.post('/api/comments/:id/report', requireAuth, (req, res) => {
+  try {
+    const comment = db.prepare('SELECT id FROM comments WHERE id = ?').get(req.params.id);
+    if (!comment) return res.status(404).json({ error: 'Nie znaleziono komentarza.' });
+    const { reason, description } = req.body;
+    if (!COMMENT_REPORT_REASONS.includes(reason)) return res.status(400).json({ error: 'Nieprawidłowy powód zgłoszenia.' });
+    const desc = String(description || '').trim();
+    if (!desc) return res.status(400).json({ error: 'Opis zgłoszenia jest wymagany.' });
+    if (desc.length > 1000) return res.status(400).json({ error: 'Opis może mieć maksymalnie 1000 znaków.' });
+    const existing = db.prepare(`SELECT 1 FROM comment_reports WHERE comment_id = ? AND reporter_user_id = ? AND status = 'pending'`).get(req.params.id, req.session.user.id);
+    if (existing) return res.status(400).json({ error: 'Masz już oczekujące zgłoszenie tego komentarza.' });
+    db.prepare('INSERT INTO comment_reports (comment_id, reporter_user_id, reason, description) VALUES (?, ?, ?, ?)')
+      .run(req.params.id, req.session.user.id, reason, desc);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/admin/comment-reports/pending-count', requireAdmin, (req, res) => {
+  const { count } = db.prepare(`SELECT COUNT(*) AS count FROM comment_reports WHERE status = 'pending'`).get();
+  res.json({ count });
+});
+
+app.get('/api/admin/comment-reports', requireAdmin, (req, res) => {
+  try {
+    const { status } = req.query;
+    let where = '1=1';
+    const params = [];
+    if (status) { where += ' AND cr.status = ?'; params.push(status); }
+    const reports = db.prepare(`
+      SELECT cr.*, ru.username AS reporter_username, ru.display_name AS reporter_display_name,
+      c.content AS comment_content, c.deleted AS comment_deleted, c.video_id,
+      cu.username AS comment_author_username, cu.display_name AS comment_author_display_name,
+      v.title AS video_title
+      FROM comment_reports cr
+      JOIN users ru ON cr.reporter_user_id = ru.id
+      LEFT JOIN comments c ON cr.comment_id = c.id
+      LEFT JOIN users cu ON c.user_id = cu.id
+      LEFT JOIN videos v ON c.video_id = v.id
+      WHERE ${where}
+      ORDER BY cr.status = 'pending' DESC, cr.created_at DESC
+    `).all(...params);
+    res.json(reports);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/comment-reports/:id/resolve', requireAdmin, (req, res) => {
+  try {
+    const report = db.prepare('SELECT * FROM comment_reports WHERE id = ?').get(req.params.id);
+    if (!report) return res.status(404).json({ error: 'Nie znaleziono zgłoszenia.' });
+    if (report.status !== 'pending') return res.status(400).json({ error: 'Zgłoszenie zostało już rozpatrzone.' });
+    const { action } = req.body;
+    if (!['dismiss', 'delete_comment', 'hard_delete'].includes(action)) return res.status(400).json({ error: 'Nieprawidłowa akcja.' });
+    if (action === 'hard_delete' && req.session.user.role !== 'dev') return res.status(403).json({ error: 'Tylko dev może usunąć komentarz trwale.' });
+
+    if (action === 'delete_comment') {
+      const comment = db.prepare('SELECT * FROM comments WHERE id = ?').get(report.comment_id);
+      if (comment && !comment.deleted) {
+        audit(req.session.user.id, 'delete', 'comment', report.comment_id, `[soft, ze zgłoszenia #${report.id}] treść: "${comment.content.slice(0, 80)}"`);
+        db.prepare("UPDATE comments SET deleted = 1, content = '' WHERE id = ?").run(report.comment_id);
+      }
+    } else if (action === 'hard_delete') {
+      const comment = db.prepare('SELECT * FROM comments WHERE id = ?').get(report.comment_id);
+      if (comment) {
+        const replyCount = db.prepare('SELECT COUNT(*) AS c FROM comments WHERE parent_id = ?').get(report.comment_id)?.c || 0;
+        audit(req.session.user.id, 'delete', 'comment', report.comment_id, `[hard, ze zgłoszenia #${report.id}] treść: "${(comment.content || '').slice(0, 80)}", +${replyCount} odpowiedzi`);
+        db.prepare('DELETE FROM comments WHERE parent_id = ?').run(report.comment_id);
+        db.prepare('DELETE FROM comments WHERE id = ?').run(report.comment_id);
+      }
+    }
+
+    db.prepare(`UPDATE comment_reports SET status = ?, resolved_by = ?, resolved_at = datetime('now') WHERE id = ?`)
+      .run(action === 'dismiss' ? 'dismissed' : 'resolved', req.session.user.id, report.id);
+    audit(req.session.user.id, 'edit', 'comment_report', report.id, action);
+    notifyUser(report.reporter_user_id, {
+      type: 'report_resolved', title: 'Zgłoszenie rozpatrzone',
+      body: action === 'dismiss' ? 'Twoje zgłoszenie zostało rozpatrzone — nie stwierdzono naruszenia.' : 'Twoje zgłoszenie zostało rozpatrzone — komentarz został usunięty.',
+      url: '',
+    });
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -4088,6 +4482,19 @@ function getVideoViewerUserIds(video) {
     const ur = getUserRankIds(u.id);
     return checkCatAccess(video.category_id, cat.access_mode, u.id, dr, ur).canView;
   }).map(u => u.id);
+}
+
+// In-app bell notification for a newly published video — unlike email/push, this isn't gated
+// by a per-category opt-in checkbox; a low-friction badge is on for everyone who can see it.
+function notifyCategoryOfNewVideo(video) {
+  try {
+    const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
+    const body = video.category_name ? `${video.title} • ${video.category_name}` : video.title;
+    for (const uid of getVideoViewerUserIds(video)) {
+      if (uid === video.author_id) continue; // don't notify authors about their own upload
+      notifyUser(uid, { type: 'new_video', title: 'Nowy film', body, url: `${baseUrl}/video/${video.id}` });
+    }
+  } catch (e) { console.error('[NOTIFY] Error:', e.message); }
 }
 
 // Never throws — same fire-and-forget philosophy as sendDiscordWebhook/sendCategoryEmailNotifications.
@@ -4244,7 +4651,21 @@ app.get('*', (req, res) => {
 });
 
 const httpServer = http.createServer(app);
-setupWatchPartyWS(httpServer, db);
+// Both WSS instances are created with `noServer: true` (see their setup functions) — a single
+// shared 'upgrade' listener here dispatches by pathname instead of each attaching its own,
+// which would otherwise fight over the same event (see the comment in watchParty.js).
+const watchPartyWss = setupWatchPartyWS(db);
+const notificationsWss = setupNotificationsWS(db);
+httpServer.on('upgrade', (req, socket, head) => {
+  const { pathname } = new URL(req.url, 'http://localhost');
+  if (pathname === '/ws/watch-party') {
+    watchPartyWss.handleUpgrade(req, socket, head, (ws) => watchPartyWss.emit('connection', ws, req));
+  } else if (pathname === '/ws/notifications') {
+    notificationsWss.handleUpgrade(req, socket, head, (ws) => notificationsWss.emit('connection', ws, req));
+  } else {
+    socket.destroy();
+  }
+});
 
 // Export for the API test suite (tests/) — supertest drives `app` directly.
 // The server only starts listening when this file is run directly (node server.js).
@@ -4351,6 +4772,8 @@ if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
             console.error(`[PUSH] ❌ Failed for "${video.title}": ${e.message}`);
           }
         }
+
+        notifyCategoryOfNewVideo(video);
       }
     } catch (e) { console.error('[WEBHOOK] Interval error:', e.message); }
   }, 60000);
