@@ -739,7 +739,9 @@ export default function ManagePage() {
 
   const tsLocked = settings?.ts_config_source !== 'panel';
   const discordRolesLocked = settings?.discord_roles_config_source !== 'panel';
-  const sourceBadgeClass = (locked) => `text-[10px] font-bold px-2 py-0.5 rounded-lg ${locked ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500' : 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'}`;
+  // Only ever shown when the setting is env-locked — a "Źródło: panel" badge for the unlocked
+  // case would just be noise, since panel is the unlocked default state.
+  const sourceBadgeClass = 'text-[10px] font-bold px-2 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500';
 
   useUnsavedForm('manage-limits', { dirty: JSON.stringify(limitForm) !== JSON.stringify(limitBaseline), save: saveLimits, label: 'Limity treści' });
   useUnsavedForm('manage-display', { dirty: JSON.stringify(displayForm) !== JSON.stringify(displayBaseline), save: saveDisplaySettings, label: 'Ustawienia wyświetlania' });
@@ -1368,11 +1370,11 @@ export default function ManagePage() {
                 <AlertTriangle className="w-6 h-6 text-amber-500" />
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Uwagi dotyczące pliku .env</h3>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Posiadasz starą wersję pliku .env</h3>
                 {envCheck.deprecated?.length > 0 && (
                   <div className="mb-3">
                     <p className="text-sm text-zinc-600 dark:text-zinc-300 mb-1.5">
-                      Te zmienne są teraz zarządzane z poziomu tej strony i można je bezpiecznie usunąć z <code className="font-mono text-xs">.env</code>:
+                      Poniższe zmienne są teraz zarządzane z poziomu tej zakładki i można je bezpiecznie usunąć z <code className="font-mono text-xs">.env</code>
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {envCheck.deprecated.map(name => (
@@ -1413,7 +1415,7 @@ export default function ManagePage() {
               <div className="flex-1">
                 <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Limity treści</h3>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                  Maksymalna długość pól (w znakach). Egzekwowane po stronie serwera.
+                  Maksymalna długość znaków.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl">
                   <div>
@@ -1451,7 +1453,7 @@ export default function ManagePage() {
               <div className="flex-1">
                 <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Wyświetlanie filmów</h3>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                  Liczba filmów na stronę, maksymalna liczba kolumn siatki i minimalna szerokość karty filmu (px) w widoku bazy filmów. Na szerokich ekranach dokłada się kolejna kolumna zamiast ściskać istniejące karty poniżej tej szerokości, aż do limitu kolumn; na węższych ekranach nadal redukuje się jak dotychczas. Jeśli po tej zmianie liczba kolumn na Twoim ekranie nadal nie zgadza się z oczekiwaniami, zmniejsz minimalną szerokość karty.
+                  Ustawienia wizualne siatki filmów. "Maks. kolumn siatki" - limit dla szerokich ekranów, na węższych ekranach redukuje się wg. min. szerok. karty.
                 </p>
                 <div className="grid grid-cols-2 gap-4 max-w-xs">
                   <div>
@@ -1480,23 +1482,26 @@ export default function ManagePage() {
             </div>
           </div>
 
-          {/* Top bar visibility */}
+          {/* Logs per page */}
           <div className="card p-8 h-full flex flex-col">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 bg-pink-50 dark:bg-pink-500/10 rounded-2xl flex items-center justify-center shrink-0">
-                <PanelTop className="w-6 h-6 text-pink-500" />
+              <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <FileText className="w-6 h-6 text-amber-500" />
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Górny pasek</h3>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Logi</h3>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                  Gdy włączony: tytuł strony, wyszukiwarka i profil użytkownika w górnym pasku. Gdy wyłączony: profil wraca do lewego dolnego rogu, a każda strona pokazuje własny tytuł.
+                  Liczba wpisów na jednej stronie logów.
                 </p>
-                <ToggleSwitch
-                  checked={!!settings?.show_top_bar}
-                  onChange={toggleTopBar}
-                  disabled={!settings || savingSettings}
-                  label={settings == null ? 'Ładowanie...' : (settings.show_top_bar ? 'Górny pasek: WŁĄCZONY' : 'Górny pasek: WYŁĄCZONY')}
-                />
+                <div className="max-w-[140px]">
+                  <label className="label-field">Logów na stronę</label>
+                  <input type="number" min="1" max="500" value={logsForm.logs_per_page}
+                    onChange={e => setLogsForm(f => ({ ...f, logs_per_page: e.target.value }))}
+                    className="input-field !py-3 text-sm" />
+                </div>
+                <button onClick={saveLogsSettings} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
+                  {savingSettings ? 'Zapisywanie...' : 'Zapisz'}
+                </button>
               </div>
             </div>
           </div>
@@ -1510,7 +1515,7 @@ export default function ManagePage() {
               <div className="flex-1">
                 <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Odtwarzacz YouTube</h3>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                  Gdy włączony: filmy z YouTube odtwarzają się w naszej nakładce sterującej (spójny wygląd z resztą platformy) zamiast domyślnych kontrolek YouTube. Sterowanie jakością nie jest dostępne - YouTube nie pozwala na to embedom od kilku lat, więc ten przycisk celowo nie istnieje w nakładce. Gdy wyłączony: zwykły embed YouTube, tak jak dotychczas.
+                  Nakładka UI na player YT (<i>eksperymentalna</i>).
                 </p>
                 <ToggleSwitch
                   checked={!!settings?.youtube_custom_player}
@@ -1522,26 +1527,25 @@ export default function ManagePage() {
             </div>
           </div>
 
-          {/* Logs per page */}
+          {/* Top bar visibility */}
           <div className="card p-8 h-full flex flex-col">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center shrink-0">
-                <FileText className="w-6 h-6 text-amber-500" />
+              <div className="w-12 h-12 bg-pink-50 dark:bg-pink-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <PanelTop className="w-6 h-6 text-pink-500" />
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Logi</h3>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Górny pasek</h3>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                  Liczba wpisów na stronę w logach oglądania, logowania i watch party.
+                  <b>WŁĄCZONY</b>: tytuł strony, wyszukiwarka i profil użytkownika w górnym pasku.
+                  <br />
+                  <b>WYŁĄCZONY</b>: profil w lewym dolnym rogu, a każda strona pokazuje własny tytuł, brak SmartSearch.
                 </p>
-                <div className="max-w-[140px]">
-                  <label className="label-field">Logów na stronę</label>
-                  <input type="number" min="1" max="500" value={logsForm.logs_per_page}
-                    onChange={e => setLogsForm(f => ({ ...f, logs_per_page: e.target.value }))}
-                    className="input-field !py-3 text-sm" />
-                </div>
-                <button onClick={saveLogsSettings} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
-                  {savingSettings ? 'Zapisywanie...' : 'Zapisz'}
-                </button>
+                <ToggleSwitch
+                  checked={!!settings?.show_top_bar}
+                  onChange={toggleTopBar}
+                  disabled={!settings || savingSettings}
+                  label={settings == null ? 'Ładowanie...' : (settings.show_top_bar ? 'Górny pasek: WŁĄCZONY' : 'Górny pasek: WYŁĄCZONY')}
+                />
               </div>
             </div>
           </div>
@@ -1561,7 +1565,7 @@ export default function ManagePage() {
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
                   Gdy włączone, serwer wysyła powiadomienia tylko do domen Discord
                   ({settings?.webhook_allowed_hosts?.join(', ') || 'discord.com, discordapp.com'}).
-                  Chroni przed SSRF.
+                  Ochrona przed przed podatnością SSRF.
                 </p>
                 <ToggleSwitch
                   checked={!!settings?.webhook_domain_restriction}
@@ -1580,9 +1584,9 @@ export default function ManagePage() {
                 <ShieldCheck className="w-6 h-6 text-violet-500" />
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Region RODO / LGPD</h3>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Region RODO (GDPR / LGPD)</h3>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                  Włącza sekcję "Twoje dane" w profilu (eksport danych, usunięcie konta) oraz zakładkę RODO w tym panelu.
+                  Zgodność z przepisami RODO (GDPR / LGPD). Włącza sekcję "Twoje dane" w profilu (eksport danych, usunięcie konta).
                 </p>
                 <div className="flex rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 w-full max-w-xs">
                   {[['off', 'Wyłączone'], ['eu', 'UE'], ['brazil', 'Brazylia']].map(([val, label]) => (
@@ -1656,7 +1660,7 @@ export default function ManagePage() {
           </div>
 
         {/* ============ POWIADOMIENIA EMAIL ============ */}
-        <SettingsSectionHeader id="settings-section-email" icon={Mail} label="Powiadomienia email" />
+        <SettingsSectionHeader id="settings-section-email" icon={Mail} label="Ustawienia serwera E-mail" />
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {/* SMTP / Email */}
           <div className="card p-8 h-full flex flex-col xl:col-span-2">
@@ -1665,7 +1669,7 @@ export default function ManagePage() {
                 <Mail className="w-6 h-6 text-blue-500" />
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">SMTP (wysyłka e-mail)</h3>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Konfiguracja SMTP (wysyłka e-mail)</h3>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
                   Konfiguracja serwera SMTP używanego do powiadomień email o nowych filmach oraz eksportu danych RODO.
                 </p>
@@ -1733,7 +1737,7 @@ export default function ManagePage() {
           </div>
 
           {/* Bot nickname (shared TS3/TS6) */}
-          <div className="card p-6 xl:col-span-2">
+          <div className="card p-8 h-full flex flex-col">
             <div className="flex items-start gap-4">
               <div className="w-10 h-10 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center shrink-0">
                 <Bot className="w-5 h-5 text-violet-500" />
@@ -1742,77 +1746,16 @@ export default function ManagePage() {
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Nazwa bota ServerQuery</h3>
                   <span className="text-[11px] text-zinc-400 font-normal">(wspólna dla TS3 i TS6)</span>
-                  <span className={sourceBadgeClass(tsLocked)}>{tsLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
+                  {tsLocked && <span className={sourceBadgeClass}>Źródło: .env</span>}
                 </div>
                 {tsLocked && (
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">Sterowane przez <code className="font-mono">.env</code> (<code className="font-mono">TS_CONFIG_SOURCE=env</code>, domyślnie).</p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">TS_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
                 )}
                 <div className="flex gap-2 max-w-md">
                   <input type="text" disabled={tsLocked} value={botNickname} onChange={e => setBotNickname(e.target.value)}
                     className="input-field !py-2.5 text-sm flex-1 disabled:opacity-50" placeholder="ALLERIA VIDEOS PLATFORM" />
                   <button onClick={saveBotNickname} disabled={tsLocked || savingSettings || settings == null} className="btn-primary text-sm shrink-0 disabled:opacity-50">Zapisz</button>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* TeamSpeak 6 */}
-          <div className="card p-8 h-full flex flex-col">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
-                <Headphones className="w-6 h-6 text-blue-500" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">TeamSpeak 6</h3>
-                  <span className={sourceBadgeClass(tsLocked)}>{tsLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
-                </div>
-                {tsLocked && (
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">TS_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
-                )}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2"><label className="label-field">Host</label><input type="text" disabled={tsLocked} value={ts6Form.host} onChange={e => setTs6Form(f => ({ ...f, host: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                  <div><label className="label-field">Port</label><input type="text" disabled={tsLocked} value={ts6Form.port} onChange={e => setTs6Form(f => ({ ...f, port: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                  <div><label className="label-field">Server ID</label><input type="text" disabled={tsLocked} value={ts6Form.server_id} onChange={e => setTs6Form(f => ({ ...f, server_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                  <div><label className="label-field">Użytkownik</label><input type="text" disabled={tsLocked} value={ts6Form.username} onChange={e => setTs6Form(f => ({ ...f, username: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                  <div><label className="label-field">Hasło</label><input type="password" disabled={tsLocked} value={ts6Form.password} onChange={e => setTs6Form(f => ({ ...f, password: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                  <div className="col-span-2"><label className="label-field">Klucz API</label><input type="password" disabled={tsLocked} value={ts6Form.api_key} onChange={e => setTs6Form(f => ({ ...f, api_key: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                  <div><label className="label-field">ID grupy Member</label><input type="text" disabled={tsLocked} value={ts6Form.member_group_id} onChange={e => setTs6Form(f => ({ ...f, member_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                  <div><label className="label-field">ID grupy Admin</label><input type="text" disabled={tsLocked} value={ts6Form.admin_group_id} onChange={e => setTs6Form(f => ({ ...f, admin_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                </div>
-                <button onClick={saveTs6Settings} disabled={tsLocked || savingSettings || settings == null} className="btn-primary text-sm mt-4 disabled:opacity-50">
-                  {savingSettings ? 'Zapisywanie...' : 'Zapisz TeamSpeak 6'}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* TeamSpeak 3 */}
-          <div className="card p-8 h-full flex flex-col">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center shrink-0">
-                <Radio className="w-6 h-6 text-indigo-500" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">TeamSpeak 3</h3>
-                  <span className={sourceBadgeClass(tsLocked)}>{tsLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
-                </div>
-                {tsLocked && (
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">TS_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
-                )}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2"><label className="label-field">Host</label><input type="text" disabled={tsLocked} value={ts3Form.host} onChange={e => setTs3Form(f => ({ ...f, host: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                  <div><label className="label-field">Port</label><input type="text" disabled={tsLocked} value={ts3Form.port} onChange={e => setTs3Form(f => ({ ...f, port: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                  <div><label className="label-field">Server ID</label><input type="text" disabled={tsLocked} value={ts3Form.server_id} onChange={e => setTs3Form(f => ({ ...f, server_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                  <div><label className="label-field">Użytkownik</label><input type="text" disabled={tsLocked} value={ts3Form.username} onChange={e => setTs3Form(f => ({ ...f, username: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                  <div><label className="label-field">Hasło</label><input type="password" disabled={tsLocked} value={ts3Form.password} onChange={e => setTs3Form(f => ({ ...f, password: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                  <div><label className="label-field">ID grupy Member</label><input type="text" disabled={tsLocked} value={ts3Form.member_group_id} onChange={e => setTs3Form(f => ({ ...f, member_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                  <div><label className="label-field">ID grupy Admin</label><input type="text" disabled={tsLocked} value={ts3Form.admin_group_id} onChange={e => setTs3Form(f => ({ ...f, admin_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                </div>
-                <button onClick={saveTs3Settings} disabled={tsLocked || savingSettings || settings == null} className="btn-primary text-sm mt-4 disabled:opacity-50">
-                  {savingSettings ? 'Zapisywanie...' : 'Zapisz TeamSpeak 3'}
-                </button>
               </div>
             </div>
           </div>
@@ -1849,6 +1792,67 @@ export default function ManagePage() {
             </div>
           </div>
 
+          {/* TeamSpeak 6 */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <Headphones className="w-6 h-6 text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">TeamSpeak 6</h3>
+                  {tsLocked && <span className={sourceBadgeClass}>Źródło: .env</span>}
+                </div>
+                {tsLocked && (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">TS_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2"><label className="label-field">Host</label><input type="text" disabled={tsLocked} value={ts6Form.host} onChange={e => setTs6Form(f => ({ ...f, host: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Port</label><input type="text" disabled={tsLocked} value={ts6Form.port} onChange={e => setTs6Form(f => ({ ...f, port: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Server ID</label><input type="text" disabled={tsLocked} value={ts6Form.server_id} onChange={e => setTs6Form(f => ({ ...f, server_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Użytkownik</label><input type="text" disabled={tsLocked} value={ts6Form.username} onChange={e => setTs6Form(f => ({ ...f, username: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Hasło</label><input type="password" disabled={tsLocked} value={ts6Form.password} onChange={e => setTs6Form(f => ({ ...f, password: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div className="col-span-2"><label className="label-field">Klucz API</label><input type="password" disabled={tsLocked} value={ts6Form.api_key} onChange={e => setTs6Form(f => ({ ...f, api_key: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">ID grupy Member</label><input type="text" disabled={tsLocked} value={ts6Form.member_group_id} onChange={e => setTs6Form(f => ({ ...f, member_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">ID grupy Admin</label><input type="text" disabled={tsLocked} value={ts6Form.admin_group_id} onChange={e => setTs6Form(f => ({ ...f, admin_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                </div>
+                <button onClick={saveTs6Settings} disabled={tsLocked || savingSettings || settings == null} className="btn-primary text-sm mt-4 disabled:opacity-50">
+                  {savingSettings ? 'Zapisywanie...' : 'Zapisz TeamSpeak 6'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* TeamSpeak 3 */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <Radio className="w-6 h-6 text-indigo-500" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">TeamSpeak 3</h3>
+                  {tsLocked && <span className={sourceBadgeClass}>Źródło: .env</span>}
+                </div>
+                {tsLocked && (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">TS_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2"><label className="label-field">Host</label><input type="text" disabled={tsLocked} value={ts3Form.host} onChange={e => setTs3Form(f => ({ ...f, host: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Port</label><input type="text" disabled={tsLocked} value={ts3Form.port} onChange={e => setTs3Form(f => ({ ...f, port: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Server ID</label><input type="text" disabled={tsLocked} value={ts3Form.server_id} onChange={e => setTs3Form(f => ({ ...f, server_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Użytkownik</label><input type="text" disabled={tsLocked} value={ts3Form.username} onChange={e => setTs3Form(f => ({ ...f, username: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Hasło</label><input type="password" disabled={tsLocked} value={ts3Form.password} onChange={e => setTs3Form(f => ({ ...f, password: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">ID grupy Member</label><input type="text" disabled={tsLocked} value={ts3Form.member_group_id} onChange={e => setTs3Form(f => ({ ...f, member_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">ID grupy Admin</label><input type="text" disabled={tsLocked} value={ts3Form.admin_group_id} onChange={e => setTs3Form(f => ({ ...f, admin_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                </div>
+                <button onClick={saveTs3Settings} disabled={tsLocked || savingSettings || settings == null} className="btn-primary text-sm mt-4 disabled:opacity-50">
+                  {savingSettings ? 'Zapisywanie...' : 'Zapisz TeamSpeak 3'}
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Discord — member/redaktor role IDs + category role overview */}
           <div className="card p-8 h-full flex flex-col xl:col-span-2">
             <div className="flex items-start gap-4">
@@ -1858,7 +1862,7 @@ export default function ManagePage() {
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Discord - role Member / Redaktor</h3>
-                  <span className={sourceBadgeClass(discordRolesLocked)}>{discordRolesLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
+                  {discordRolesLocked && <span className={sourceBadgeClass}>Źródło: .env</span>}
                 </div>
                 {discordRolesLocked && (
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">DISCORD_ROLES_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
