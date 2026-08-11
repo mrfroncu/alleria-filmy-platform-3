@@ -251,6 +251,8 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ to }),
   }),
+  // Not routed through request() — this returns an HTML document (rendered in a new tab), not JSON.
+  emailTemplatePreviewUrl: (type, template) => `${API}/debug/settings/email-preview/${type}?template=${encodeURIComponent(template)}`,
   envCheck: () => request('/debug/env-check'),
   categoryRoleOverview: () => request('/debug/category-role-overview'),
   execSQL: (query) => request('/debug/sql', {

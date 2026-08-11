@@ -2696,7 +2696,10 @@ async function notifyDevsOfGdprRequest(type, requestingUser) {
   const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
   const typeLabel = type === 'export' ? 'eksportu danych' : 'usunięcia konta';
   const who = `${requestingUser.display_name || requestingUser.username} (@${requestingUser.username})`;
-  const html = `<p>Użytkownik <strong>${who}</strong> złożył zgłoszenie ${typeLabel}.</p><p><a href="${baseUrl}/manage?tab=gdpr">Przejdź do zgłoszeń RODO</a></p>`;
+  const template = getSetting('email_template_gdpr_notify', EMAIL_TEMPLATE_DEFAULTS.gdpr_notify);
+  const replacements = { '{user}': who, '{type}': typeLabel, '{url}': `${baseUrl}/manage?tab=gdpr` };
+  const bodyHtml = renderTemplateParagraphs(template, replacements);
+  const html = wrapEmailHtml({ bodyHtml, ctaUrl: replacements['{url}'], ctaLabel: 'Przejdź do zgłoszeń RODO' });
   for (const d of devs) {
     const to = d.email || d.discord_email;
     if (!to) continue;
@@ -2978,6 +2981,10 @@ function settingsPayload() {
     smtp_password: getSetting('smtp_password', ''),
     smtp_from: getSetting('smtp_from', ''),
 
+    // Sitewide default email templates (content only — see wrapEmailHtml for the fixed design).
+    email_template_new_video: getSetting('email_template_new_video', EMAIL_TEMPLATE_DEFAULTS.new_video),
+    email_template_gdpr_notify: getSetting('email_template_gdpr_notify', EMAIL_TEMPLATE_DEFAULTS.gdpr_notify),
+
     // Login config — source flags are .env-only (boot-time, no panel override; see tsConfigSource/
     // discordRolesConfigSource). The fields below always report the *effective* value, whichever
     // source is currently active, so the panel can show something sensible either way.
@@ -3066,6 +3073,13 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
   if (req.body.smtp_secure !== undefined) {
     setSetting('smtp_secure', req.body.smtp_secure ? '1' : '0');
     audit(req.session.user.id, 'edit', 'settings', null, `smtp_secure → ${req.body.smtp_secure ? 'ON' : 'OFF'}`);
+  }
+  // Sitewide default email templates — content only, see wrapEmailHtml for the fixed design.
+  for (const key of ['email_template_new_video', 'email_template_gdpr_notify']) {
+    if (req.body[key] !== undefined) {
+      setSetting(key, String(req.body[key]));
+      audit(req.session.user.id, 'edit', 'settings', null, `${key} → (zmieniono)`);
+    }
   }
   // Display settings — videos per page / grid columns / logs per page (formerly .env-only)
   for (const key of ['videos_per_page', 'grid_columns', 'logs_per_page']) {
@@ -3158,9 +3172,34 @@ app.post('/api/debug/settings/test-email', requireDev, async (req, res) => {
   const dev = db.prepare('SELECT email, discord_email FROM users WHERE id = ?').get(req.session.user.id);
   const to = String(req.body.to || '').trim() || dev?.email || dev?.discord_email;
   if (!to) return res.status(400).json({ error: 'Podaj adres e-mail — Twoje konto nie ma żadnego zapisanego.' });
-  const ok = await sendEmail({ to, subject: 'Alleria Filmy — testowy e-mail', html: '<p>To jest testowa wiadomość z panelu Dev Tools. Konfiguracja SMTP działa poprawnie.</p>' });
+  const html = wrapEmailHtml({ bodyHtml: '<p style="margin:0; line-height:1.6; color:#3f3f46;">To jest testowa wiadomość z panelu Dev Tools. Konfiguracja SMTP działa poprawnie.</p>' });
+  const ok = await sendEmail({ to, subject: 'Alleria Filmy — testowy e-mail', html });
   if (!ok) return res.status(500).json({ error: 'Wysyłka nie powiodła się — sprawdź konfigurację SMTP i logi serwera.' });
   res.json({ success: true, to });
+});
+
+// Renders a template (saved, or an in-progress ?template= draft) with sample data through the
+// exact same code path a real send uses, so what you preview is guaranteed to match what's sent.
+app.get('/api/debug/settings/email-preview/:type', requireDev, (req, res) => {
+  const { type } = req.params;
+  const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
+  if (type === 'new_video') {
+    const template = req.query.template !== undefined ? String(req.query.template) : getSetting('email_template_new_video', EMAIL_TEMPLATE_DEFAULTS.new_video);
+    const replacements = {
+      '{title}': 'Przykładowy film', '{author}': 'Jan Kowalski', '{category}': 'Filmy akcji',
+      '{description}': 'Przykładowy opis filmu użyty w podglądzie szablonu.', '{date}': new Date().toISOString().slice(0, 10),
+      '{id}': '123', '{url}': `${baseUrl}/video/123`, '{thumbnail}': '',
+    };
+    const bodyHtml = renderTemplateParagraphs(template, replacements);
+    return res.type('html').send(wrapEmailHtml({ bodyHtml, ctaUrl: replacements['{url}'], ctaLabel: 'Obejrzyj film' }));
+  }
+  if (type === 'gdpr_notify') {
+    const template = req.query.template !== undefined ? String(req.query.template) : getSetting('email_template_gdpr_notify', EMAIL_TEMPLATE_DEFAULTS.gdpr_notify);
+    const replacements = { '{user}': 'Jan Kowalski (@jkowalski)', '{type}': 'eksportu danych', '{url}': `${baseUrl}/manage?tab=gdpr` };
+    const bodyHtml = renderTemplateParagraphs(template, replacements);
+    return res.type('html').send(wrapEmailHtml({ bodyHtml, ctaUrl: replacements['{url}'], ctaLabel: 'Przejdź do zgłoszeń RODO' }));
+  }
+  res.status(404).send('Nieznany typ szablonu.');
 });
 
 // ============ GDPR / RODO (admin review) ============
@@ -4345,6 +4384,67 @@ async function sendDiscordWebhook(video) {
   });
 }
 
+// ============ EMAIL TEMPLATES (shared design, admin-editable content) ============
+// Default body text for the admin-editable templates below — {tags} get replaced per-send.
+// The visual design (header/colors/footer signature) lives only in wrapEmailHtml(), never here.
+const EMAIL_TEMPLATE_DEFAULTS = {
+  new_video: 'Cześć!\nW kategorii {category} pojawił się nowy film:\n\n{title}\nAutor: {author}',
+  gdpr_notify: 'Użytkownik {user} złożył zgłoszenie: {type}.',
+};
+
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Template text is always plain content, never HTML — everything (including the static parts of
+// the template) is escaped first, so an admin typing "<b>" ends up as literal text, not markup.
+// Blank lines become paragraph breaks.
+function renderTemplateParagraphs(template, replacements) {
+  let body = escapeHtml(template);
+  for (const [key, val] of Object.entries(replacements)) {
+    body = body.split(escapeHtml(key)).join(escapeHtml(val));
+  }
+  return body.split('\n').filter(line => line.trim() !== '')
+    .map(line => `<p style="margin:0 0 14px 0; line-height:1.6; color:#3f3f46;">${line}</p>`).join('');
+}
+
+// Single shared shell for every email the platform sends — admin-editable templates only ever
+// supply bodyHtml (via renderTemplateParagraphs above); the header/colors/footer are fixed here
+// so every email looks consistent and professional regardless of who edits the content.
+function wrapEmailHtml({ bodyHtml, ctaUrl, ctaLabel }) {
+  const cta = ctaUrl ? `
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:6px;">
+          <tr><td style="border-radius:10px; background-color:#7c3aed;">
+            <a href="${escapeHtml(ctaUrl)}" style="display:inline-block; padding:12px 26px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; font-weight:600; color:#ffffff; text-decoration:none;">${escapeHtml(ctaLabel || 'Otwórz')}</a>
+          </td></tr>
+        </table>` : '';
+  return `<!doctype html>
+<html lang="pl">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0; padding:0; background-color:#f4f4f7;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f7; padding:32px 16px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px; background-color:#ffffff; border-radius:16px; overflow:hidden;">
+        <tr><td style="background-color:#7c3aed; padding:26px 32px;">
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+            <td style="padding-right:10px;"><img src="https://alleria.pl/image/logo-clr.png" alt="" width="28" height="28" style="display:block; border-radius:6px;"></td>
+            <td style="font-size:19px; font-weight:700; color:#ffffff;">Alleria Filmy</td>
+          </tr></table>
+        </td></tr>
+        <tr><td style="padding:32px; font-size:15px;">
+          ${bodyHtml}${cta}
+        </td></tr>
+        <tr><td style="padding:22px 32px; background-color:#fafafa; border-top:1px solid #ececec;">
+          <p style="margin:0; font-size:13px; color:#71717a;">Pozdrawiamy,<br><strong style="color:#3f3f46;">Zespół Alleria.pl</strong></p>
+          <p style="margin:10px 0 0; font-size:11px; color:#a1a1aa;">Ta wiadomość została wysłana automatycznie — nie odpowiadaj na nią.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
 // Fresh transport per send — this app's email volume doesn't warrant pooling/cache invalidation.
 function getMailTransport() {
   return nodemailer.createTransport({
@@ -4373,8 +4473,9 @@ async function sendEmail({ to, subject, html }) {
 async function sendCategoryEmailNotifications(video) {
   if (!video.email_enabled) return;
 
-  const defaultTemplate = 'Nowy film: {title}\nAutor: {author}\nKategoria: {category}\n{url}';
-  let template = video.email_template || defaultTemplate;
+  // Category-level template (set in the category's own editor) wins; otherwise fall back to the
+  // sitewide default template configured in Ustawienia > Powiadomienia email > Szablony e-mail.
+  const template = video.email_template || getSetting('email_template_new_video', EMAIL_TEMPLATE_DEFAULTS.new_video);
 
   const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
   const replacements = {
@@ -4387,11 +4488,8 @@ async function sendCategoryEmailNotifications(video) {
     '{url}': `${baseUrl}/video/${video.id}`,
     '{thumbnail}': video.thumbnail || '',
   };
-  let body = template;
-  for (const [key, val] of Object.entries(replacements)) {
-    body = body.split(key).join(val);
-  }
-  const html = body.split('\n').map(line => `<p>${line}</p>`).join('');
+  const bodyHtml = renderTemplateParagraphs(template, replacements);
+  const html = wrapEmailHtml({ bodyHtml, ctaUrl: replacements['{url}'], ctaLabel: 'Obejrzyj film' });
 
   const recipients = db.prepare(`SELECT email, discord_email FROM users WHERE email_notifications = 1`).all();
   for (const r of recipients) {

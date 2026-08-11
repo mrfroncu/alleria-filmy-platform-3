@@ -175,6 +175,15 @@ export default function ManagePage() {
   const [testEmailTo, setTestEmailTo] = useState('');
   const [testingEmail, setTestingEmail] = useState(false);
 
+  // Email templates (content only — design is fixed server-side)
+  const [showEmailTemplates, setShowEmailTemplates] = useState(false);
+  const [newVideoTemplate, setNewVideoTemplate] = useState('');
+  const [newVideoTemplateBaseline, setNewVideoTemplateBaseline] = useState('');
+  const [savingNewVideoTemplate, setSavingNewVideoTemplate] = useState(false);
+  const [gdprTemplate, setGdprTemplate] = useState('');
+  const [gdprTemplateBaseline, setGdprTemplateBaseline] = useState('');
+  const [savingGdprTemplate, setSavingGdprTemplate] = useState(false);
+
   useEffect(() => {
     api.getSettings().then(s => {
       setSettingsState(s);
@@ -205,6 +214,10 @@ export default function ManagePage() {
         user: s.smtp_user || '', password: s.smtp_password || '', from: s.smtp_from || '',
       };
       setSmtpForm(smtp); setSmtpBaseline(smtp);
+      const nv = s.email_template_new_video || '';
+      setNewVideoTemplate(nv); setNewVideoTemplateBaseline(nv);
+      const gdpr = s.email_template_gdpr_notify || '';
+      setGdprTemplate(gdpr); setGdprTemplateBaseline(gdpr);
     }).catch(() => {});
     api.envCheck().then(setEnvCheck).catch(() => {});
     api.categoryRoleOverview().then(setCategoryRoleOverview).catch(() => {});
@@ -537,6 +550,34 @@ export default function ManagePage() {
     setTestingEmail(false);
   };
 
+  const saveNewVideoTemplate = async () => {
+    setSavingNewVideoTemplate(true);
+    try {
+      const r = await api.setSettings({ email_template_new_video: newVideoTemplate });
+      setSettingsState(s => ({ ...s, ...r }));
+      const v = r.email_template_new_video || '';
+      setNewVideoTemplate(v); setNewVideoTemplateBaseline(v);
+      setStatus({ type: 'success', msg: 'Domyślny szablon "Nowy film" zapisany.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingNewVideoTemplate(false);
+  };
+
+  const saveGdprTemplate = async () => {
+    setSavingGdprTemplate(true);
+    try {
+      const r = await api.setSettings({ email_template_gdpr_notify: gdprTemplate });
+      setSettingsState(s => ({ ...s, ...r }));
+      const v = r.email_template_gdpr_notify || '';
+      setGdprTemplate(v); setGdprTemplateBaseline(v);
+      setStatus({ type: 'success', msg: 'Szablon powiadomienia RODO zapisany.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingGdprTemplate(false);
+  };
+
   const saveDiscordRoles = async () => {
     setSavingSettings(true);
     try {
@@ -752,6 +793,8 @@ export default function ManagePage() {
   useUnsavedForm('manage-bot-nickname', { dirty: botNickname !== botNicknameBaseline, save: saveBotNickname, label: 'Nazwa bota' });
   useUnsavedForm('manage-discord-roles', { dirty: JSON.stringify(discordRolesForm) !== JSON.stringify(discordRolesBaseline), save: saveDiscordRoles, label: 'Role Discord' });
   useUnsavedForm('manage-smtp', { dirty: JSON.stringify(smtpForm) !== JSON.stringify(smtpBaseline), save: saveSmtpSettings, label: 'SMTP' });
+  useUnsavedForm('manage-email-template-new-video', { dirty: newVideoTemplate !== newVideoTemplateBaseline, save: saveNewVideoTemplate, label: 'Szablon e-mail: Nowy film' });
+  useUnsavedForm('manage-email-template-gdpr', { dirty: gdprTemplate !== gdprTemplateBaseline, save: saveGdprTemplate, label: 'Szablon e-mail: RODO' });
   useUnsavedForm('manage-tos', { dirty: tosContent !== tosBaseline, save: saveTos, label: 'Regulamin' });
 
   const guardNav = useUnsavedGuard();
@@ -1717,6 +1760,62 @@ export default function ManagePage() {
                     {testingEmail ? 'Wysyłanie...' : 'Wyślij testowy e-mail'}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Email templates */}
+          <div className="card p-8 h-full flex flex-col xl:col-span-2">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <FileText className="w-6 h-6 text-violet-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Szablony e-mail</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Treść wiadomości wysyłanych z platformy. Wygląd wiadomości (nagłówek, kolory, stopka z podpisem) jest predefiniowany i jednakowy dla wszystkich e-maili — poniżej edytujesz wyłącznie tekst i dostępne znaczniki <code className="font-mono text-xs">{'{tagi}'}</code>.
+                </p>
+                <button type="button" onClick={() => setShowEmailTemplates(v => !v)} className="btn-secondary text-sm">
+                  {showEmailTemplates ? 'Ukryj szablony e-mail' : 'Zarządzaj szablonami e-mail'}
+                </button>
+
+                {showEmailTemplates && (
+                  <div className="mt-6 space-y-6">
+                    <div className="border-t border-zinc-100 dark:border-zinc-800 pt-6">
+                      <h4 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-1">Nowy film w kategorii</h4>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+                        Domyślna treść powiadomienia o nowym filmie — używana, gdy kategoria nie ma własnego szablonu (do ustawienia w edycji kategorii).
+                      </p>
+                      <textarea value={newVideoTemplate} onChange={e => setNewVideoTemplate(e.target.value)} className="input-field font-mono resize-y h-32 min-h-[6rem]" />
+                      <p className="text-[9px] text-zinc-400 mt-1">Znaczniki: {'{title}'} {'{author}'} {'{category}'} {'{description}'} {'{date}'} {'{id}'} {'{url}'} {'{thumbnail}'}</p>
+                      <div className="flex gap-2 mt-3">
+                        <button onClick={saveNewVideoTemplate} disabled={savingNewVideoTemplate} className="btn-primary text-sm disabled:opacity-50">
+                          {savingNewVideoTemplate ? 'Zapisywanie...' : 'Zapisz'}
+                        </button>
+                        <button type="button" onClick={() => window.open(api.emailTemplatePreviewUrl('new_video', newVideoTemplate), '_blank')} className="btn-secondary text-sm">
+                          Podgląd
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-zinc-100 dark:border-zinc-800 pt-6">
+                      <h4 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-1">Zgłoszenie RODO (do administracji)</h4>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+                        Wysyłane do kont z rolą Developer, gdy użytkownik złoży zgłoszenie eksportu danych lub usunięcia konta.
+                      </p>
+                      <textarea value={gdprTemplate} onChange={e => setGdprTemplate(e.target.value)} className="input-field font-mono resize-y h-24 min-h-[5rem]" />
+                      <p className="text-[9px] text-zinc-400 mt-1">Znaczniki: {'{user}'} {'{type}'} {'{url}'}</p>
+                      <div className="flex gap-2 mt-3">
+                        <button onClick={saveGdprTemplate} disabled={savingGdprTemplate} className="btn-primary text-sm disabled:opacity-50">
+                          {savingGdprTemplate ? 'Zapisywanie...' : 'Zapisz'}
+                        </button>
+                        <button type="button" onClick={() => window.open(api.emailTemplatePreviewUrl('gdpr_notify', gdprTemplate), '_blank')} className="btn-secondary text-sm">
+                          Podgląd
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
