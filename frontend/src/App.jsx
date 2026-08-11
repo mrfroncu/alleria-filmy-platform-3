@@ -5,6 +5,7 @@ import { SettingsProvider } from './contexts/SettingsContext';
 import { WatchPartyProvider } from './contexts/WatchPartyContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
 import { ToastProvider } from './contexts/ToastContext';
+import { UnsavedChangesProvider } from './contexts/UnsavedChangesContext';
 import LoginPage from './pages/LoginPage';
 import Layout from './components/Layout';
 import TosGate from './components/TosGate';
@@ -57,6 +58,7 @@ export default function App() {
     <SettingsProvider>
     <ToastProvider>
     <ConfirmProvider>
+    <UnsavedChangesProvider>
     <AuthProvider>
       <WatchPartyProvider>
         <TosGate />
@@ -80,6 +82,7 @@ export default function App() {
         </Routes>
       </WatchPartyProvider>
     </AuthProvider>
+    </UnsavedChangesProvider>
     </ConfirmProvider>
     </ToastProvider>
     </SettingsProvider>

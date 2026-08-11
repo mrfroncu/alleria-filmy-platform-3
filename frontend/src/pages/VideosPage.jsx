@@ -96,7 +96,7 @@ export default function VideosPage() {
     [continueWatching]
   );
 
-  // Card width is fixed (configurable in Dev Tools > Ustawienia — "Min. szerokość karty"),
+  // Card width is fixed (configurable in Zarządzanie > Ustawienia — "Min. szerokość karty"),
   // not derived from dividing the page — the sidebar (272px, see Layout.jsx) already eats into
   // the space available next to it, so a card-width guess that ignores it runs short of columns
   // on real laptop widths. "Kolumny siatki" is a MAX, not a divisor: on wide screens, extra

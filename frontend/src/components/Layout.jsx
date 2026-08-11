@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { useUnsavedGuard } from '../contexts/UnsavedChangesContext';
 import { api } from '../utils/api';
 import {
   Film, Shield, Menu, X, Wrench, ChevronRight, ChevronDown, LogOut,
@@ -23,7 +24,7 @@ const STATIC_PAGE_TITLES = {
   '/stats': 'Statystyki',
   '/manage': 'Zarządzanie',
   '/logs': 'Logi systemowe',
-  '/debug': 'Dev Tools',
+  '/debug': 'Narzędzia Developerskie',
   '/watch-party': 'Watch Party',
 };
 
@@ -39,7 +40,13 @@ function getPageTitle(pathname, categories) {
   return 'Alleria Filmy';
 }
 
-function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlug }) {
+function guardedNavClick(e, to, navigate, guardNav, after) {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; // let the browser handle new-tab clicks
+  e.preventDefault();
+  guardNav(() => { after?.(); navigate(to); });
+}
+
+function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlug, navigate, guardNav }) {
   const children = cats.filter(c => (c.parent_id || null) === parentId);
   if (children.length === 0) return null;
   return children.map(cat => {
@@ -62,7 +69,7 @@ function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlu
               <span className="font-semibold text-[13px] truncate">{cat.name}</span>
             </div>
           </div>
-          {hasKids && <CatTree cats={cats} parentId={cat.id} depth={depth + 1} location={location} setSidebarOpen={setSidebarOpen} activeCatSlug={activeCatSlug} />}
+          {hasKids && <CatTree cats={cats} parentId={cat.id} depth={depth + 1} location={location} setSidebarOpen={setSidebarOpen} activeCatSlug={activeCatSlug} navigate={navigate} guardNav={guardNav} />}
         </div>
       );
     }
@@ -71,7 +78,7 @@ function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlu
       <div key={cat.id}>
         <Link
           to={`/category/${cat.slug}`}
-          onClick={() => setSidebarOpen(false)}
+          onClick={(e) => guardedNavClick(e, `/category/${cat.slug}`, navigate, guardNav, () => setSidebarOpen(false))}
           className={`w-full flex items-center ${pl} pr-4 py-2 rounded-xl transition-all duration-300 group ${
             active
               ? 'bg-violet-500/10 text-violet-500 dark:text-violet-400'
@@ -84,7 +91,7 @@ function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlu
             <span className="text-[10px] text-zinc-400 shrink-0">{cat.videoCount || 0}</span>
           </div>
         </Link>
-        {hasKids && <CatTree cats={cats} parentId={cat.id} depth={depth + 1} location={location} setSidebarOpen={setSidebarOpen} activeCatSlug={activeCatSlug} />}
+        {hasKids && <CatTree cats={cats} parentId={cat.id} depth={depth + 1} location={location} setSidebarOpen={setSidebarOpen} activeCatSlug={activeCatSlug} navigate={navigate} guardNav={guardNav} />}
       </div>
     );
   });
@@ -95,6 +102,8 @@ export default function Layout({ children }) {
   const { config } = useSettings();
   const showTopBar = config.showTopBar;
   const location = useLocation();
+  const navigate = useNavigate();
+  const guardNav = useUnsavedGuard();
   const mainRef = useRef(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [categories, setCategories] = useState([]);
@@ -129,7 +138,7 @@ export default function Layout({ children }) {
   const NavLink = ({ to, icon: Icon, label, active, indent }) => (
     <Link
       to={to}
-      onClick={() => setSidebarOpen(false)}
+      onClick={(e) => guardedNavClick(e, to, navigate, guardNav, () => setSidebarOpen(false))}
       className={`sidebar-link w-full flex items-center justify-between ${indent ? 'pl-9 pr-4' : 'px-4'} py-2.5 rounded-xl group ${
         active
           ? indent ? 'active bg-violet-500/10 text-violet-500 dark:text-violet-400' : 'active bg-violet-500 text-white shadow-lg shadow-violet-500/20'
@@ -213,7 +222,7 @@ export default function Layout({ children }) {
                 </button>
                 {catsExpanded && (
                   <div className="space-y-0.5 animate-fade-in">
-                    <CatTree cats={categories} parentId={null} depth={0} location={location} setSidebarOpen={setSidebarOpen} activeCatSlug={activeCatSlug} />
+                    <CatTree cats={categories} parentId={null} depth={0} location={location} setSidebarOpen={setSidebarOpen} activeCatSlug={activeCatSlug} navigate={navigate} guardNav={guardNav} />
                   </div>
                 )}
               </>
@@ -231,7 +240,7 @@ export default function Layout({ children }) {
                 {isAdmin && <NavLink to="/stats" icon={BarChart3} label="Statystyki" active={isActive('/stats')} />}
                 {isDev && <NavLink to="/manage" icon={FolderOpen} label="Zarządzanie" active={isActive('/manage')} />}
                 {isDev && <NavLink to="/logs" icon={FileText} label="Logi systemowe" active={isActive('/logs')} />}
-                {isDev && <NavLink to="/debug" icon={Wrench} label="Dev Tools" active={isActive('/debug')} />}
+                {isDev && <NavLink to="/debug" icon={Wrench} label="Narzędzia Developerskie" active={isActive('/debug')} />}
               </nav>
             </>
           )}
@@ -244,7 +253,7 @@ export default function Layout({ children }) {
               className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white transition-all duration-300 font-semibold text-[13px]"
             >
               <MessageSquarePlus className="w-[18px] h-[18px] shrink-0" />
-              Report Issue / Request Feature
+              Zgłoś Błąd / Zaproponuj funkcjonalność
             </a>
           </div>
         </div>
@@ -254,7 +263,7 @@ export default function Layout({ children }) {
           <div className="px-4 relative z-10 shrink-0">
             <div className="p-3 bg-zinc-50 dark:bg-white/5 rounded-2xl border border-zinc-200 dark:border-white/10">
               <div className="flex items-center gap-3">
-                <Link to="/profile" className="flex items-center gap-3 flex-1 min-w-0 group">
+                <Link to="/profile" onClick={(e) => guardedNavClick(e, '/profile', navigate, guardNav)} className="flex items-center gap-3 flex-1 min-w-0 group">
                   <img src={user.avatar || `https://ui-avatars.com/api/?name=${user.display_name || 'U'}&background=6366f1&color=fff&size=80`} alt="" className="w-9 h-9 rounded-xl shadow-sm border border-zinc-200 dark:border-white/10 object-cover shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-bold text-zinc-900 dark:text-white truncate group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors">{user.display_name || user.username}</p>
@@ -264,7 +273,7 @@ export default function Layout({ children }) {
                     </p>
                   </div>
                 </Link>
-                <button onClick={logout} className="p-1.5 rounded-lg text-zinc-400 hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 transition-all duration-300 shrink-0" title="Wyloguj">
+                <button onClick={() => guardNav(logout)} className="p-1.5 rounded-lg text-zinc-400 hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 transition-all duration-300 shrink-0" title="Wyloguj">
                   <LogOut className="w-4 h-4" />
                 </button>
               </div>
@@ -304,7 +313,7 @@ export default function Layout({ children }) {
           </div>
         </div>
 
-        {/* Desktop top bar — page title, global search, profile menu (optional, Dev Tools > Ustawienia) */}
+        {/* Desktop top bar — page title, global search, profile menu (optional, Zarządzanie > Ustawienia) */}
         {showTopBar && (
           <div className="hidden lg:flex shrink-0 items-center gap-6 px-8 py-3 bg-gradient-to-r from-violet-100/50 via-white/60 to-fuchsia-100/40 dark:from-violet-500/10 dark:via-zinc-950/50 dark:to-fuchsia-500/10 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 dark:border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sticky top-0 z-30">
             <h1 className="text-zinc-900 dark:text-white font-bold text-lg font-display shrink-0 truncate max-w-[240px]">{pageTitle}</h1>

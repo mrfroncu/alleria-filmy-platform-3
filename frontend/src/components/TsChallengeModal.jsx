@@ -26,7 +26,7 @@ export default function TsChallengeModal({ challenge, code, onCodeChange, onSubm
         </p>
         {multipleCandidates && (
           <p className="text-xs text-amber-600 dark:text-amber-400 mb-4 -mt-2">
-            Wykryto kilku użytkowników na tym IP{count ? ` (${count})` : ''} — wysłaliśmy osobny kod do każdego. Wpisz TYLKO kod, który otrzymałeś Ty.
+            Wykryto kilku użytkowników na tym IP{count ? ` (${count})` : ''} - wysłaliśmy osobny kod do każdego. Wpisz TYLKO kod, który otrzymałeś Ty.
           </p>
         )}
         <input

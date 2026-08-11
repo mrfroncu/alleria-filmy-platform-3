@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Upload, Plus } from 'lucide-react';
 import { api } from '../utils/api';
 import { extractYoutubeId, buildCategoryTreeOptions } from '../utils/helpers';
 import DateTimePicker from './DateTimePicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 function SmartThumbnail({ ytId, customSrc, alt }) {
   const [src, setSrc] = useState('');
@@ -31,6 +32,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const isEdit = !!video;
   const { user: currentUser } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
   const [title, setTitle] = useState('');
   const [authorId, setAuthorId] = useState('');
   const [mainSource, setMainSource] = useState('');
@@ -148,8 +150,54 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     }
   }, [isOpen, video]);
 
+  // Dirty check for the "close without saving?" guard — compares against the video prop (or
+  // the empty/default shape for a new video), not against re-read state, so it's unaffected by
+  // React's setState batching timing inside the load effect above.
+  const baselineShape = useMemo(() => ({
+    title: video?.title || '',
+    authorId: video ? String(video.author_id || '') : (currentUser ? String(currentUser.id) : ''),
+    categoryId: video ? String(video.category_id || '') : (defaultCategoryId ? String(defaultCategoryId) : ''),
+    mainSource: video?.main_source || '',
+    mainSourceTitle: video?.main_source_title || '',
+    mirror1: { name: video?.mirror1_name || '', url: video?.mirror1_url || '', type: video?.mirror1_type || (video?.mirror1_is_embed ? 'embed' : 'link') },
+    mirror2: { name: video?.mirror2_name || '', url: video?.mirror2_url || '', type: video?.mirror2_type || (video?.mirror2_is_embed ? 'embed' : 'link') },
+    mirror3: { name: video?.mirror3_name || '', url: video?.mirror3_url || '', type: video?.mirror3_type || 'link' },
+    mirror4: { name: video?.mirror4_name || '', url: video?.mirror4_url || '', type: video?.mirror4_type || 'link' },
+    mirror5: { name: video?.mirror5_name || '', url: video?.mirror5_url || '', type: video?.mirror5_type || 'link' },
+    description: video?.description || '',
+    tags: (video?.tags || []).map(t => t.id ?? t.name).slice().sort(),
+    isSelfHosted: !!video?.stream_video_id,
+    drmEnhanced: !!video?.drm_enhanced,
+    accessMode: video?.access_mode || 'category',
+    hasThumbnailFile: false,
+    hasVideoFile: false,
+  }), [isOpen, video, currentUser, defaultCategoryId]);
+
+  const currentShape = {
+    title, authorId, categoryId,
+    mainSource, mainSourceTitle,
+    mirror1: { name: mirror1Name, url: mirror1Url, type: mirror1Type },
+    mirror2: { name: mirror2Name, url: mirror2Url, type: mirror2Type },
+    mirror3: { name: mirror3Name, url: mirror3Url, type: mirror3Type },
+    mirror4: { name: mirror4Name, url: mirror4Url, type: mirror4Type },
+    mirror5: { name: mirror5Name, url: mirror5Url, type: mirror5Type },
+    description,
+    tags: selectedTags.map(t => t.id ?? t.name).slice().sort(),
+    isSelfHosted, drmEnhanced, accessMode,
+    hasThumbnailFile: !!thumbnailFile,
+    hasVideoFile: !!videoFile,
+  };
+  const videoDirty = isOpen && JSON.stringify(currentShape) !== JSON.stringify(baselineShape);
+  const videoDirtyRef = useRef(videoDirty);
+  videoDirtyRef.current = videoDirty;
+
+  const guardedClose = async () => {
+    if (videoDirtyRef.current && !(await confirm('Masz niezapisane zmiany w tym filmie. Zamknąć bez zapisywania?', { danger: true, confirmLabel: 'Odrzuć zmiany' }))) return;
+    onClose();
+  };
+
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape' && isOpen) onClose(); };
+    const handler = (e) => { if (e.key === 'Escape' && isOpen) guardedClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [isOpen, onClose]);
@@ -313,7 +361,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
           const overallPct = Math.round(((i) / totalChunks) * 90);
           setUploadPercent(overallPct);
           setChunkPercent(0);
-          setUploadProgress(`Część ${i + 1}/${totalChunks} (${chunkMb} MB) — przesyłanie...`);
+          setUploadProgress(`Część ${i + 1}/${totalChunks} (${chunkMb} MB) - przesyłanie...`);
 
           // XHR for per-chunk progress
           await new Promise((resolve, reject) => {
@@ -421,14 +469,14 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
 
   return (
     <div className="modal-overlay">
-      <div className="modal-backdrop" onClick={onClose} />
+      <div className="modal-backdrop" onClick={guardedClose} />
       <div className="modal-content max-w-2xl" style={{ animation: 'slideUp 0.3s ease-out' }}>
         <div className="p-8 sm:p-10">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">
               {isEdit ? 'Edytuj film' : 'Dodaj film'}
             </h2>
-            <button onClick={onClose} className="btn-icon-zinc">
+            <button onClick={guardedClose} className="btn-icon-zinc">
               <X className="w-6 h-6" />
             </button>
           </div>
@@ -557,7 +605,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                       ) : (
                         <>
                           <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij, aby wybrać</span></p>
-                          <p className="text-[10px] text-zinc-400 mt-1">MP4, MKV, AVI, MOV, WebM — max 20 GB</p>
+                          <p className="text-[10px] text-zinc-400 mt-1">MP4, MKV, AVI, MOV, WebM - max 20 GB</p>
                         </>
                       )}
                     </div>
@@ -672,7 +720,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                       <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror1VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror1VideoRef.current?.click()}>
                         <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
                         {mirror1VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror1VideoFile.name} ({(mirror1VideoFile.size/1024/1024).toFixed(1)} MB)</p>
-                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> — max 20 GB</p>}
+                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> - max 20 GB</p>}
                         <input ref={mirror1VideoRef} type="file" accept="video/*" onChange={e => setMirror1VideoFile(e.target.files?.[0] || null)} className="hidden" />
                       </div>
                     )
@@ -708,7 +756,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                       <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror2VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror2VideoRef.current?.click()}>
                         <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
                         {mirror2VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror2VideoFile.name} ({(mirror2VideoFile.size/1024/1024).toFixed(1)} MB)</p>
-                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> — max 20 GB</p>}
+                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> - max 20 GB</p>}
                         <input ref={mirror2VideoRef} type="file" accept="video/*" onChange={e => setMirror2VideoFile(e.target.files?.[0] || null)} className="hidden" />
                       </div>
                     )
@@ -744,7 +792,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                       <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror3VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror3VideoRef.current?.click()}>
                         <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
                         {mirror3VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror3VideoFile.name} ({(mirror3VideoFile.size/1024/1024).toFixed(1)} MB)</p>
-                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> — max 20 GB</p>}
+                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> - max 20 GB</p>}
                         <input ref={mirror3VideoRef} type="file" accept="video/*" onChange={e => setMirror3VideoFile(e.target.files?.[0] || null)} className="hidden" />
                       </div>
                     )
@@ -780,7 +828,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                       <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror4VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror4VideoRef.current?.click()}>
                         <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
                         {mirror4VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror4VideoFile.name} ({(mirror4VideoFile.size/1024/1024).toFixed(1)} MB)</p>
-                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> — max 20 GB</p>}
+                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> - max 20 GB</p>}
                         <input ref={mirror4VideoRef} type="file" accept="video/*" onChange={e => setMirror4VideoFile(e.target.files?.[0] || null)} className="hidden" />
                       </div>
                     )
@@ -816,7 +864,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                       <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror5VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror5VideoRef.current?.click()}>
                         <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
                         {mirror5VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror5VideoFile.name} ({(mirror5VideoFile.size/1024/1024).toFixed(1)} MB)</p>
-                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> — max 20 GB</p>}
+                          : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> - max 20 GB</p>}
                         <input ref={mirror5VideoRef} type="file" accept="video/*" onChange={e => setMirror5VideoFile(e.target.files?.[0] || null)} className="hidden" />
                       </div>
                     )

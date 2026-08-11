@@ -84,7 +84,7 @@ export function parseTsError(msg, version) {
     return `Nie posiadasz wymaganej grupy serwerowej na ${version}.`;
   }
   if (m.includes('invalid_password') || m.includes('520') || m.includes('konfiguracji serwera')) {
-    return `Błąd konfiguracji — nieprawidłowe dane administracyjne ${version}. Skontaktuj się z administratorem.`;
+    return `Błąd konfiguracji - nieprawidłowe dane administracyjne ${version}. Skontaktuj się z administratorem.`;
   }
   if (m.includes('closed unexpectedly') || m.includes('socket')) {
     return `Połączenie z serwerem ${version} zostało przerwane. Spróbuj ponownie.`;

@@ -35,7 +35,7 @@ export default function FavoritesPage() {
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Ulubione</h1>
           </div>
         )}
-        <p className="text-zinc-500 dark:text-zinc-400">Twoje zapisane filmy — szybki dostęp do ulubionych materiałów.</p>
+        <p className="text-zinc-500 dark:text-zinc-400">Twoje zapisane filmy - szybki dostęp do ulubionych materiałów.</p>
       </div>
 
       {loading ? (

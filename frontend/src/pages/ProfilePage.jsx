@@ -6,6 +6,7 @@ import { roleBadgeClass } from '../utils/roleColors';
 import { useSettings } from '../contexts/SettingsContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useToast } from '../contexts/ToastContext';
+import { useUnsavedForm } from '../contexts/UnsavedChangesContext';
 import TsChallengeModal from '../components/TsChallengeModal';
 
 export default function ProfilePage() {
@@ -18,17 +19,18 @@ export default function ProfilePage() {
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [savingAvatarSource, setSavingAvatarSource] = useState(false);
   const [refreshingDiscord, setRefreshingDiscord] = useState(false);
-  const [refreshMsg, setRefreshMsg] = useState(null);
+  // Was an inline banner near the Discord-refresh button — now a floating toast, easier to
+  // notice regardless of scroll position. Success/error decided by the old "Błąd" prefix check.
+  const setRefreshMsg = (m) => { if (m) (m.startsWith('Błąd') ? toast.error : toast.success)(m); };
   const [config, setConfig] = useState({ limitDisplayName: 50, limitBio: 1000 });
   const [editEmail, setEditEmail] = useState('');
   const [editEmailNotifications, setEditEmailNotifications] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
 
   // Account linking
-  const [linkMsg, setLinkMsg] = useState(null); // { type: 'success'|'error', text }
+  const setLinkMsg = (m) => { if (m) (m.type === 'success' ? toast.success : toast.error)(m.text); };
   const [linkingTs, setLinkingTs] = useState(null); // 'teamspeak' | 'teamspeak3' | null
   const [tsLinkChallenge, setTsLinkChallenge] = useState(null); // { challengeId, method, nickname, version }
   const [tsLinkCode, setTsLinkCode] = useState('');
@@ -45,7 +47,7 @@ export default function ProfilePage() {
   // GDPR / RODO
   const [gdprRequests, setGdprRequests] = useState([]);
   const [gdprBusy, setGdprBusy] = useState(false);
-  const [gdprMsg, setGdprMsg] = useState(null);
+  const setGdprMsg = (m) => { if (m) (m.type === 'success' ? toast.success : toast.error)(m.text); };
 
   useEffect(() => { api.getConfig().then(c => setConfig(prev => ({ ...prev, ...c }))).catch(() => {}); }, []);
 
@@ -105,7 +107,7 @@ export default function ProfilePage() {
 
   const handleGdprDeletion = async () => {
     if (gdprBusy) return;
-    if (!(await confirm('Zażądać usunięcia konta?\n\nPo zatwierdzeniu przez administratora (maksymalnie do 30 dni) Twoje dane osobowe zostaną zanonimizowane, a konto wylogowane wszędzie. Komentarze i dodane filmy zostaną — bez powiązania z Twoją tożsamością. Tej operacji po zatwierdzeniu nie można cofnąć.', { danger: true, confirmLabel: 'Usuń konto' }))) return;
+    if (!(await confirm('Zażądać usunięcia konta?\n\nPo zatwierdzeniu przez administratora (maksymalnie do 30 dni) Twoje dane osobowe zostaną zanonimizowane, a konto wylogowane wszędzie. Komentarze i dodane filmy zostaną - bez powiązania z Twoją tożsamością. Tej operacji po zatwierdzeniu nie można cofnąć.', { danger: true, confirmLabel: 'Usuń konto' }))) return;
     setGdprBusy(true);
     setGdprMsg(null);
     try {
@@ -157,8 +159,7 @@ export default function ProfilePage() {
       await api.updateProfile({ display_name: editName, bio: editBio });
       setProfile(prev => ({ ...prev, display_name: editName, bio: editBio }));
       setEditing(false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      toast.success('Profil zaktualizowany pomyślnie.');
     } catch (err) {
       toast.error('Błąd: ' + err.message);
     }
@@ -191,16 +192,14 @@ export default function ProfilePage() {
 
   const handleRefreshDiscord = async () => {
     setRefreshingDiscord(true);
-    setRefreshMsg(null);
     try {
       const r = await api.refreshDiscordAvatar();
       await load();
-      setRefreshMsg(r.has_guild_avatar ? 'Wykryto avatar serwerowy — możesz go teraz wybrać.' : 'Odświeżono — brak avatara serwerowego na tym koncie.');
+      setRefreshMsg(r.has_guild_avatar ? 'Wykryto avatar serwerowy - możesz go teraz wybrać.' : 'Odświeżono - brak avatara serwerowego na tym koncie.');
     } catch (err) {
       setRefreshMsg('Błąd: ' + err.message);
     }
     setRefreshingDiscord(false);
-    setTimeout(() => setRefreshMsg(null), 4000);
   };
 
   const handleLinkDiscord = () => {
@@ -282,7 +281,7 @@ export default function ProfilePage() {
 
   const handleUnlink = async (method, label) => {
     if (unlinking) return;
-    if (!(await confirm(`Rozłączyć konto ${label}?\n\nBędziesz mógł zalogować się tą metodą ponownie — powstanie nowe, osobne konto, albo połączysz ją z innym kontem od nowa. Historia na TYM koncie (komentarze, obejrzane filmy, dodane przez Ciebie filmy jako redaktor) zostaje bez zmian.`))) return;
+    if (!(await confirm(`Rozłączyć konto ${label}?\n\nBędziesz mógł zalogować się tą metodą ponownie - powstanie nowe, osobne konto, albo połączysz ją z innym kontem od nowa. Historia na TYM koncie (komentarze, obejrzane filmy, dodane przez Ciebie filmy jako redaktor) zostaje bez zmian.`))) return;
     setUnlinking(method);
     try {
       await api.unlinkAccount(method);
@@ -293,6 +292,11 @@ export default function ProfilePage() {
     }
     setUnlinking(null);
   };
+
+  const nameDirty = !!profile && editing && (editName !== (profile.display_name || '') || editBio !== (profile.bio || ''));
+  const emailDirty = !!profile && (editEmail !== (profile.email || profile.discordEmail || '') || editEmailNotifications !== !!profile.emailNotifications);
+  useUnsavedForm('profile-name-bio', { dirty: nameDirty, save: handleSave, label: 'Profil (nazwa/bio)' });
+  useUnsavedForm('profile-email', { dirty: emailDirty, save: handleSaveEmail, label: 'Email i powiadomienia' });
 
   if (loading) {
     return (
@@ -319,23 +323,6 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
-
-      {saved && (
-        <div className="mb-6 p-4 rounded-2xl border bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-sm font-medium animate-slide-up flex items-center gap-2">
-          <Check className="w-4 h-4" /> Profil zaktualizowany pomyślnie.
-        </div>
-      )}
-
-      {linkMsg && (
-        <div className={`mb-6 p-4 rounded-2xl border text-sm font-medium animate-slide-up flex items-center gap-2 ${
-          linkMsg.type === 'success'
-            ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
-            : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-300'
-        }`}>
-          {linkMsg.type === 'success' ? <Check className="w-4 h-4 shrink-0" /> : <X className="w-4 h-4 shrink-0" />}
-          {linkMsg.text}
-        </div>
-      )}
 
       {/* Profile Card */}
       <div className="card p-8 mb-6">
@@ -412,9 +399,6 @@ export default function ProfilePage() {
               <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
                 Możesz wybrać źródło avatara, aby zmienić sam avatar musisz zrobić to na Discordzie.
               </p>
-              {refreshMsg && (
-                <p className={`text-xs font-medium mb-3 ${refreshMsg.startsWith('Błąd') ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>{refreshMsg}</p>
-              )}
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -432,7 +416,7 @@ export default function ProfilePage() {
                   type="button"
                   onClick={() => handleAvatarSourceChange('guild')}
                   disabled={savingAvatarSource || !profile.has_guild_avatar}
-                  title={!profile.has_guild_avatar ? 'Brak avatara serwerowego — wymaga Discord Nitro i ustawionego avatara na tym serwerze.' : undefined}
+                  title={!profile.has_guild_avatar ? 'Brak avatara serwerowego - wymaga Discord Nitro i ustawionego avatara na tym serwerze.' : undefined}
                   className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                     profile.avatar_source === 'guild'
                       ? 'bg-violet-500 text-white'
@@ -444,7 +428,7 @@ export default function ProfilePage() {
               </div>
               <p className="text-[11px] text-zinc-400 mt-3">
                 Avatar serwerowy (ustawiony osobno serwerze Discord społeczności) jest dostępny tylko dla użytkowników z Discord Nitro
-                {!profile.has_guild_avatar ? ' — obecnie nie masz ustawionego avatara serwerowego.' : '.'}
+                {!profile.has_guild_avatar ? ' - obecnie nie masz ustawionego avatara serwerowego.' : '.'}
               </p>
             </div>
           </div>
@@ -586,11 +570,11 @@ export default function ProfilePage() {
         {tsInfoOpen && (
           <div className="text-[11px] text-zinc-500 dark:text-zinc-400 space-y-1.5 pl-3 border-l-2 border-violet-500/30 pt-2">
             <p>• Musisz być <span className="font-semibold text-zinc-700 dark:text-zinc-300">aktywnie połączony</span> z serwerem TS w momencie łączenia.</p>
-            <p>• Weryfikacja działa przez <span className="font-semibold text-zinc-700 dark:text-zinc-300">dopasowanie IP</span> — nie używaj VPN.</p>
+            <p>• Weryfikacja działa przez <span className="font-semibold text-zinc-700 dark:text-zinc-300">dopasowanie IP</span> - nie używaj VPN.</p>
             <p>• Wymagana jest <span className="font-semibold text-zinc-700 dark:text-zinc-300">odpowiednia grupa serwerowa</span> na TS.</p>
-            <p>• Bot wyśle Ci na TeamSpeaku <span className="font-semibold text-zinc-700 dark:text-zinc-300">6-znakowy kod</span> — wpisz go, aby dokończyć łączenie.</p>
-            <p>• TS3 i TS6 to osobne serwery z osobnymi kontami — możesz połączyć oba niezależnie.</p>
-            <p>• Przycisk „Rozłącz" pojawia się, gdy masz połączoną więcej niż jedną metodę — nie można rozłączyć jedynego sposobu logowania.</p>
+            <p>• Bot wyśle Ci na TeamSpeaku <span className="font-semibold text-zinc-700 dark:text-zinc-300">6-znakowy kod</span> - wpisz go, aby dokończyć łączenie.</p>
+            <p>• TS3 i TS6 to osobne serwery z osobnymi kontami - możesz połączyć oba niezależnie.</p>
+            <p>• Przycisk „Rozłącz" pojawia się, gdy masz połączoną więcej niż jedną metodę - nie można rozłączyć jedynego sposobu logowania.</p>
           </div>
         )}
       </div>
@@ -647,22 +631,19 @@ export default function ProfilePage() {
         </div>
         <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
           {profile.discordEmail
-            ? 'Adres podpowiedziany z Twojego konta Discord — możesz go zmienić.'
-            : 'Twoje konto nie ma adresu e-mail z Discorda — podaj go ręcznie, jeśli chcesz otrzymywać powiadomienia lub odpowiedź na zgłoszenie RODO.'}
+            ? 'Adres podpowiedziany z Twojego konta Discord - możesz go zmienić.'
+            : 'Twoje konto nie ma adresu e-mail z Discorda - podaj go ręcznie, jeśli chcesz otrzymywać powiadomienia lub odpowiedź na zgłoszenie RODO.'}
         </p>
-        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <div className="mb-4">
           <input
             type="email"
             value={editEmail}
             onChange={e => setEditEmail(e.target.value)}
             placeholder="twoj@email.pl"
-            className="input-field !py-3 text-sm flex-1"
+            className="input-field !py-3 text-sm w-full"
           />
-          <button onClick={handleSaveEmail} disabled={savingEmail} className="btn-secondary text-sm shrink-0 disabled:opacity-50">
-            {savingEmail ? 'Zapisywanie...' : 'Zapisz'}
-          </button>
         </div>
-        <label className="flex items-center gap-3 cursor-pointer">
+        <label className="flex items-center gap-3 cursor-pointer mb-4">
           <input
             type="checkbox"
             checked={editEmailNotifications}
@@ -671,6 +652,9 @@ export default function ProfilePage() {
           />
           <span className="text-sm text-zinc-700 dark:text-zinc-300">Zezwalam na powiadomienia email (np. o nowych filmach)</span>
         </label>
+        <button onClick={handleSaveEmail} disabled={savingEmail} className="btn-secondary text-sm disabled:opacity-50">
+          {savingEmail ? 'Zapisywanie...' : 'Zapisz'}
+        </button>
       </div>
 
       {/* GDPR / RODO */}
@@ -681,19 +665,8 @@ export default function ProfilePage() {
             <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Twoje dane (RODO)</h3>
           </div>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
-            Możesz zażądać kopii swoich danych albo usunięcia konta. Zgłoszenia są weryfikowane ręcznie przez administratora — maksymalny ustawowy termin realizacji to 30 dni.
+            Możesz zażądać kopii swoich danych albo usunięcia konta. Zgłoszenia są weryfikowane ręcznie przez administratora - maksymalny ustawowy termin realizacji to 30 dni.
           </p>
-
-          {gdprMsg && (
-            <div className={`mb-4 p-3 rounded-xl border text-xs font-medium flex items-center gap-2 ${
-              gdprMsg.type === 'success'
-                ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
-                : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-300'
-            }`}>
-              {gdprMsg.type === 'success' ? <Check className="w-3.5 h-3.5 shrink-0" /> : <X className="w-3.5 h-3.5 shrink-0" />}
-              {gdprMsg.text}
-            </div>
-          )}
 
           <div className="flex flex-wrap gap-2.5 mb-4">
             <button onClick={handleGdprExport} disabled={gdprBusy} className="btn-secondary text-xs inline-flex items-center gap-1.5 disabled:opacity-50">
@@ -741,12 +714,12 @@ export default function ProfilePage() {
           <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800 leading-relaxed">
             Pozostałe uprawnienia wynikające z art. 15–21 RODO (m.in. dostęp do danych, sprostowanie, ograniczenie przetwarzania, przenoszalność, sprzeciw) możesz zrealizować, wysyłając wiadomość na{' '}
             <a
-              href={`mailto:kontakt@alleria.pl?subject=${encodeURIComponent(`RODO — konto #${profile.id}`)}&body=${encodeURIComponent(`Identyfikator konta: #${profile.id}`)}`}
+              href={`mailto:kontakt@alleria.pl?subject=${encodeURIComponent(`RODO - konto #${profile.id}`)}&body=${encodeURIComponent(`Identyfikator konta: #${profile.id}`)}`}
               className="text-violet-500 hover:text-violet-400 font-medium"
             >kontakt@alleria.pl</a>
-            {' '}— podaj w niej identyfikator swojego konta: <span className="font-mono font-bold text-zinc-600 dark:text-zinc-300">#{profile.id}</span>.
+            {' '}- podaj w niej identyfikator swojego konta: <span className="font-mono font-bold text-zinc-600 dark:text-zinc-300">#{profile.id}</span>.
             {profile.discordEmail && (
-              <> Najlepiej wyślij ją z adresu <span className="font-mono font-bold text-zinc-600 dark:text-zinc-300">{profile.discordEmail}</span> powiązanego z Twoim kontem Discord — ułatwi to weryfikację, że to Ty.</>
+              <> Najlepiej wyślij ją z adresu <span className="font-mono font-bold text-zinc-600 dark:text-zinc-300">{profile.discordEmail}</span> powiązanego z Twoim kontem Discord - ułatwi to weryfikację, że to Ty.</>
             )}
           </p>
         </div>

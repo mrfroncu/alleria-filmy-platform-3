@@ -49,7 +49,7 @@ export default function TosGate() {
         <div className="p-7 pt-4 border-t border-zinc-100 dark:border-zinc-800 shrink-0">
           <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mb-4">
             {user.tosPreviouslyAccepted
-              ? 'Regulamin został zaktualizowany — musisz zaakceptować go ponownie, aby korzystać z platformy.'
+              ? 'Regulamin został zaktualizowany - musisz zaakceptować go ponownie, aby korzystać z platformy.'
               : 'Musisz zaakceptować regulamin, aby korzystać z platformy.'}
           </p>
           <div className="flex gap-3">

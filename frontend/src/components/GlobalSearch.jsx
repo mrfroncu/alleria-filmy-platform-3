@@ -5,10 +5,11 @@ import {
   Search, Film, Loader2, Heart, Clock, Users, User, Tag as TagIcon,
   Shield, BarChart3, FolderOpen, FileText, Wrench, CornerDownLeft,
   Eye, LogIn, HardDrive, UserPlus, ShieldCheck, Settings, Download,
-  Upload, Trash2, AlertTriangle, Terminal,
+  Upload, Trash2, AlertTriangle, Terminal, Mail, Lock,
 } from 'lucide-react';
 import { api } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useUnsavedGuard } from '../contexts/UnsavedChangesContext';
 
 const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || navigator.userAgent || '');
 
@@ -26,7 +27,7 @@ const PAGES = [
   { label: 'Statystyki', to: '/stats', icon: BarChart3, adminOnly: true },
   { label: 'Zarządzanie', to: '/manage', icon: FolderOpen, devOnly: true },
   { label: 'Logi systemowe', to: '/logs', icon: FileText, devOnly: true },
-  { label: 'Dev Tools', to: '/debug', icon: Wrench, devOnly: true },
+  { label: 'Narzędzia Developerskie', to: '/debug', icon: Wrench, devOnly: true },
 ];
 
 const SHORTCUT_PATHS = ['/', '/favorites', '/history'];
@@ -42,19 +43,25 @@ const SEARCHABLE_ITEMS = [
   { label: 'Logi Watch Party', section: 'Logi systemowe', to: '/logs?tab=watchparty', icon: Users, devOnly: true },
   { label: 'Logi wyświetleń', section: 'Logi systemowe', to: '/logs?tab=watch', icon: Eye, devOnly: true },
   { label: 'Logi logowania', section: 'Logi systemowe', to: '/logs?tab=login', icon: LogIn, devOnly: true },
-  { label: 'Pliki streamera', section: 'Dev Tools', to: '/debug?tab=streaming', icon: HardDrive, devOnly: true },
-  { label: 'Czyszczenie streamingu', section: 'Dev Tools', to: '/debug?tab=streaming', icon: Trash2, devOnly: true },
-  { label: 'Aktywne Watch Parties', section: 'Dev Tools', to: '/debug?tab=admin', icon: Users, devOnly: true },
-  { label: 'Dodaj użytkownika', section: 'Dev Tools', to: '/debug?tab=admin', icon: UserPlus, devOnly: true },
-  { label: 'Sprawdź uprawnienia', section: 'Dev Tools', to: '/debug?tab=categories', icon: ShieldCheck, devOnly: true },
-  { label: 'Limity treści', section: 'Dev Tools', to: '/debug?tab=settings', icon: Settings, devOnly: true },
-  { label: 'Ograniczenie domen webhooków', section: 'Dev Tools', to: '/debug?tab=settings', icon: ShieldCheck, devOnly: true },
-  { label: 'Wysyłka kodu logowania (TS3)', section: 'Dev Tools', to: '/debug?tab=settings', icon: ShieldCheck, devOnly: true },
-  { label: 'Eksportuj bazę danych', section: 'Dev Tools', to: '/debug?tab=debug', icon: Download, devOnly: true },
-  { label: 'Importuj bazę danych', section: 'Dev Tools', to: '/debug?tab=debug', icon: Upload, devOnly: true },
-  { label: 'Czyszczenie logów', section: 'Dev Tools', to: '/debug?tab=debug', icon: Trash2, devOnly: true },
-  { label: 'Wyczyść bazę danych', section: 'Dev Tools', to: '/debug?tab=debug', icon: AlertTriangle, devOnly: true },
-  { label: 'Konsola SQL', section: 'Dev Tools', to: '/debug?tab=debug', icon: Terminal, devOnly: true },
+  { label: 'Pliki streamera', section: 'Narzędzia Developerskie', to: '/debug?tab=streaming', icon: HardDrive, devOnly: true },
+  { label: 'Czyszczenie streamingu', section: 'Narzędzia Developerskie', to: '/debug?tab=streaming', icon: Trash2, devOnly: true },
+  { label: 'Aktywne Watch Parties', section: 'Narzędzia Developerskie', to: '/debug?tab=admin', icon: Users, devOnly: true },
+  { label: 'Dodaj użytkownika', section: 'Narzędzia Developerskie', to: '/debug?tab=admin', icon: UserPlus, devOnly: true },
+  { label: 'Sprawdź uprawnienia', section: 'Narzędzia Developerskie', to: '/debug?tab=categories', icon: ShieldCheck, devOnly: true },
+  { label: 'Eksportuj bazę danych', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: Download, devOnly: true },
+  { label: 'Importuj bazę danych', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: Upload, devOnly: true },
+  { label: 'Czyszczenie logów', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: Trash2, devOnly: true },
+  { label: 'Wyczyść bazę danych', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: AlertTriangle, devOnly: true },
+  { label: 'Konsola SQL', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: Terminal, devOnly: true },
+  { label: 'Limity treści', section: 'Zarządzanie', to: '/manage?tab=settings', icon: Settings, devOnly: true },
+  { label: 'Ograniczenie domen webhooków', section: 'Zarządzanie', to: '/manage?tab=settings', icon: ShieldCheck, devOnly: true },
+  { label: 'Wysyłka kodu logowania (TS3)', section: 'Zarządzanie', to: '/manage?tab=settings', icon: ShieldCheck, devOnly: true },
+  { label: 'Regulamin (edycja)', section: 'Zarządzanie', to: '/manage?tab=tos', icon: FileText, devOnly: true },
+  { label: 'Ustawienia SMTP', section: 'Zarządzanie', to: '/manage?tab=settings', icon: Mail, devOnly: true },
+  { label: 'Region RODO / LGPD', section: 'Zarządzanie', to: '/manage?tab=settings', icon: ShieldCheck, devOnly: true },
+  { label: 'Zgłoszenia RODO (GDPR / LGPD)', section: 'Zarządzanie', to: '/manage?tab=gdpr', icon: Lock, devOnly: true },
+  { label: 'Adres e-mail i powiadomienia', section: 'Mój profil', to: '/profile', icon: Mail },
+  { label: 'Twoje dane (RODO)', section: 'Mój profil', to: '/profile', icon: Lock },
 ];
 
 // Strip dots/dashes/underscores/spaces so "R.E.P.O." and "REPO" compare equal —
@@ -130,6 +137,7 @@ export default function GlobalSearch({ compact = false }) {
   const debounceRef = useRef(null);
   const tagsLoadedRef = useRef(false);
   const navigate = useNavigate();
+  const guardNav = useUnsavedGuard();
 
   const trimmed = query.trim();
   const isSearching = trimmed.length > 0;
@@ -211,15 +219,17 @@ export default function GlobalSearch({ compact = false }) {
 
   const activate = (type, item) => {
     setOpen(false);
-    if (type === 'tag') navigate(`/tag/${item.id}`);
-    else if (type === 'video') navigate(`/video/${item.id}`);
-    else navigate(item.to);
+    guardNav(() => {
+      if (type === 'tag') navigate(`/tag/${item.id}`);
+      else if (type === 'video') navigate(`/video/${item.id}`);
+      else navigate(item.to);
+    });
   };
 
   const viewAllResults = () => {
     if (!trimmed) return;
     setOpen(false);
-    navigate(`/?search=${encodeURIComponent(trimmed)}`);
+    guardNav(() => navigate(`/?search=${encodeURIComponent(trimmed)}`));
   };
 
   const onInputKeyDown = (e) => {

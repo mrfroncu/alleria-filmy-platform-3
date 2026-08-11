@@ -526,7 +526,7 @@ export default function WatchPartyPage() {
             <div className="w-full h-full"><HtmlEmbed html={currentSrc.url} /></div>
           ) : currentSrc?.type === 'plex' ? (
             <div className="text-center space-y-3">
-              <p className="text-zinc-400 text-sm">Źródło Plex — otwórz w Plex, aby oglądać.</p>
+              <p className="text-zinc-400 text-sm">Źródło Plex - otwórz w Plex, aby oglądać.</p>
               <a href={currentSrc.url} target="_blank" rel="noopener noreferrer" className="inline-block px-4 py-2 bg-amber-400 text-zinc-900 font-bold rounded-xl text-sm hover:bg-amber-300 transition-all">
                 Otwórz w Plex
               </a>

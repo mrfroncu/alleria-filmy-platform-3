@@ -32,7 +32,7 @@ export default function HistoryPage() {
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">Historia</h1>
           </div>
         )}
-        <p className="text-zinc-500 dark:text-zinc-400">Ostatnio obejrzane filmy — Twoja osobista historia przeglądania.</p>
+        <p className="text-zinc-500 dark:text-zinc-400">Ostatnio obejrzane filmy - Twoja osobista historia przeglądania.</p>
       </div>
 
       {loading ? (

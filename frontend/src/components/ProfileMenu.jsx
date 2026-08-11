@@ -1,12 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronDown, User, LogOut } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useUnsavedGuard } from '../contexts/UnsavedChangesContext';
 import { roleBadgeClass, roleDotClass } from '../utils/roleColors';
 
 export default function ProfileMenu({ compact = false }) {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+  const guardNav = useUnsavedGuard();
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
 
@@ -63,13 +66,18 @@ export default function ProfileMenu({ compact = false }) {
           <div className="p-1.5">
             <Link
               to="/profile"
-              onClick={() => setOpen(false)}
+              onClick={(e) => {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+                e.preventDefault();
+                setOpen(false);
+                guardNav(() => navigate('/profile'));
+              }}
               className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white transition-colors"
             >
               <User className="w-4 h-4" /> Mój profil
             </Link>
             <button
-              onClick={logout}
+              onClick={() => { setOpen(false); guardNav(logout); }}
               className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-500/10 transition-colors"
             >
               <LogOut className="w-4 h-4" /> Wyloguj

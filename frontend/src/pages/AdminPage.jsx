@@ -350,7 +350,7 @@ export default function AdminPage() {
                               {tag.video_count} {tag.video_count === 1 ? 'film' : 'filmów'}
                               {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                             </button>
-                            <div className="w-7 h-7 flex items-center justify-center text-zinc-300 dark:text-zinc-600" title="Nie można usunąć — tag jest przypisany do filmów">
+                            <div className="w-7 h-7 flex items-center justify-center text-zinc-300 dark:text-zinc-600" title="Nie można usunąć - tag jest przypisany do filmów">
                               <Lock className="w-3.5 h-3.5" />
                             </div>
                           </>
@@ -362,7 +362,7 @@ export default function AdminPage() {
                       </div>
                       {isExpanded && (
                         <div className="mx-5 mb-3 p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl">
-                          <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider mb-2">Nie można usunąć — tag przypisany do filmów:</p>
+                          <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider mb-2">Nie można usunąć - tag przypisany do filmów:</p>
                           <div className="space-y-1">
                             {tag.videos.map(v => (
                               <p key={v.id} className="text-xs text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
