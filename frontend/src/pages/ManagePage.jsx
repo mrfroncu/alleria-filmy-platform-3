@@ -47,7 +47,7 @@ const EMPTY_CAT_BASELINE = {
   name: '', desc: '', order: '0', parentId: '',
   viewerMode: 'public', editorMode: 'none', viewerRoles: '', editorRoles: '',
   viewerRankIds: [], editorRankIds: [], viewerUserIds: [], editorUserIds: [],
-  webhookUrl: '', webhookTemplate: '', webhookEnabled: false, emailEnabled: false, emailTemplate: '', pushEnabled: false,
+  webhookUrl: '', webhookTemplate: '', webhookEnabled: false, emailEnabled: false, pushEnabled: false,
 };
 
 export default function ManagePage() {
@@ -91,7 +91,6 @@ export default function ManagePage() {
   const [catWebhookTemplate, setCatWebhookTemplate] = useState('');
   const [catWebhookEnabled, setCatWebhookEnabled] = useState(false);
   const [catEmailEnabled, setCatEmailEnabled] = useState(false);
-  const [catEmailTemplate, setCatEmailTemplate] = useState('');
   const [catPushEnabled, setCatPushEnabled] = useState(false);
   const [catBaseline, setCatBaseline] = useState(EMPTY_CAT_BASELINE);
 
@@ -183,6 +182,12 @@ export default function ManagePage() {
   const [gdprTemplate, setGdprTemplate] = useState('');
   const [gdprTemplateBaseline, setGdprTemplateBaseline] = useState('');
   const [savingGdprTemplate, setSavingGdprTemplate] = useState(false);
+  const [gdprResultExportTemplate, setGdprResultExportTemplate] = useState('');
+  const [gdprResultExportTemplateBaseline, setGdprResultExportTemplateBaseline] = useState('');
+  const [savingGdprResultExportTemplate, setSavingGdprResultExportTemplate] = useState(false);
+  const [gdprResultDeletionTemplate, setGdprResultDeletionTemplate] = useState('');
+  const [gdprResultDeletionTemplateBaseline, setGdprResultDeletionTemplateBaseline] = useState('');
+  const [savingGdprResultDeletionTemplate, setSavingGdprResultDeletionTemplate] = useState(false);
 
   useEffect(() => {
     api.getSettings().then(s => {
@@ -218,6 +223,10 @@ export default function ManagePage() {
       setNewVideoTemplate(nv); setNewVideoTemplateBaseline(nv);
       const gdpr = s.email_template_gdpr_notify || '';
       setGdprTemplate(gdpr); setGdprTemplateBaseline(gdpr);
+      const gdprExp = s.email_template_gdpr_result_export || '';
+      setGdprResultExportTemplate(gdprExp); setGdprResultExportTemplateBaseline(gdprExp);
+      const gdprDel = s.email_template_gdpr_result_deletion || '';
+      setGdprResultDeletionTemplate(gdprDel); setGdprResultDeletionTemplateBaseline(gdprDel);
     }).catch(() => {});
     api.envCheck().then(setEnvCheck).catch(() => {});
     api.categoryRoleOverview().then(setCategoryRoleOverview).catch(() => {});
@@ -578,6 +587,34 @@ export default function ManagePage() {
     setSavingGdprTemplate(false);
   };
 
+  const saveGdprResultExportTemplate = async () => {
+    setSavingGdprResultExportTemplate(true);
+    try {
+      const r = await api.setSettings({ email_template_gdpr_result_export: gdprResultExportTemplate });
+      setSettingsState(s => ({ ...s, ...r }));
+      const v = r.email_template_gdpr_result_export || '';
+      setGdprResultExportTemplate(v); setGdprResultExportTemplateBaseline(v);
+      setStatus({ type: 'success', msg: 'Szablon "Eksport gotowy" zapisany.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingGdprResultExportTemplate(false);
+  };
+
+  const saveGdprResultDeletionTemplate = async () => {
+    setSavingGdprResultDeletionTemplate(true);
+    try {
+      const r = await api.setSettings({ email_template_gdpr_result_deletion: gdprResultDeletionTemplate });
+      setSettingsState(s => ({ ...s, ...r }));
+      const v = r.email_template_gdpr_result_deletion || '';
+      setGdprResultDeletionTemplate(v); setGdprResultDeletionTemplateBaseline(v);
+      setStatus({ type: 'success', msg: 'Szablon "Konto usunięte" zapisany.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingGdprResultDeletionTemplate(false);
+  };
+
   const saveDiscordRoles = async () => {
     setSavingSettings(true);
     try {
@@ -623,7 +660,7 @@ export default function ManagePage() {
     setCatViewerRankIds([]); setCatEditorRankIds([]);
     setCatViewerUserIds([]); setCatEditorUserIds([]);
     setCatWebhookUrl(''); setCatWebhookTemplate(''); setCatWebhookEnabled(false);
-    setCatEmailEnabled(false); setCatEmailTemplate('');
+    setCatEmailEnabled(false);
     setCatPushEnabled(false);
     setEditingCat(null);
     setCatBaseline(EMPTY_CAT_BASELINE);
@@ -639,7 +676,7 @@ export default function ManagePage() {
       const data = {
         name: catName, description: catDesc, sort_order: parseInt(catOrder) || 0, parent_id: catParentId ? parseInt(catParentId) : null,
         webhook_url: catWebhookUrl, webhook_template: catWebhookTemplate, webhook_enabled: catWebhookEnabled,
-        email_enabled: catEmailEnabled, email_template: catEmailTemplate, push_enabled: catPushEnabled,
+        email_enabled: catEmailEnabled, push_enabled: catPushEnabled,
       };
       const accessPayload = {
         viewer_mode: catViewerMode,
@@ -677,7 +714,6 @@ export default function ManagePage() {
     setCatWebhookTemplate(cat.webhook_template || '');
     setCatWebhookEnabled(!!cat.webhook_enabled);
     setCatEmailEnabled(!!cat.email_enabled);
-    setCatEmailTemplate(cat.email_template || '');
     setCatPushEnabled(!!cat.push_enabled);
     const rawMode = cat.access_mode || 'public:none';
     const [vm, em] = rawMode.includes(':') ? rawMode.split(':')
@@ -709,7 +745,7 @@ export default function ManagePage() {
       name: cat.name, desc: cat.description || '', order: String(cat.sort_order || 0), parentId: String(cat.parent_id || ''),
       viewerMode: vm, editorMode: em, viewerRoles, editorRoles, viewerRankIds, editorRankIds, viewerUserIds, editorUserIds,
       webhookUrl: cat.webhook_url || '', webhookTemplate: cat.webhook_template || '', webhookEnabled: !!cat.webhook_enabled,
-      emailEnabled: !!cat.email_enabled, emailTemplate: cat.email_template || '', pushEnabled: !!cat.push_enabled,
+      emailEnabled: !!cat.email_enabled, pushEnabled: !!cat.push_enabled,
     });
     setTab('categories');
   };
@@ -764,7 +800,7 @@ export default function ManagePage() {
     viewerRankIds: sortIds(catViewerRankIds), editorRankIds: sortIds(catEditorRankIds),
     viewerUserIds: sortIds(catViewerUserIds), editorUserIds: sortIds(catEditorUserIds),
     webhookUrl: catWebhookUrl, webhookTemplate: catWebhookTemplate, webhookEnabled: catWebhookEnabled,
-    emailEnabled: catEmailEnabled, emailTemplate: catEmailTemplate, pushEnabled: catPushEnabled,
+    emailEnabled: catEmailEnabled, pushEnabled: catPushEnabled,
   };
   const catBaselineShape = {
     ...catBaseline, viewerRankIds: sortIds(catBaseline.viewerRankIds), editorRankIds: sortIds(catBaseline.editorRankIds),
@@ -795,6 +831,8 @@ export default function ManagePage() {
   useUnsavedForm('manage-smtp', { dirty: JSON.stringify(smtpForm) !== JSON.stringify(smtpBaseline), save: saveSmtpSettings, label: 'SMTP' });
   useUnsavedForm('manage-email-template-new-video', { dirty: newVideoTemplate !== newVideoTemplateBaseline, save: saveNewVideoTemplate, label: 'Szablon e-mail: Nowy film' });
   useUnsavedForm('manage-email-template-gdpr', { dirty: gdprTemplate !== gdprTemplateBaseline, save: saveGdprTemplate, label: 'Szablon e-mail: RODO' });
+  useUnsavedForm('manage-email-template-gdpr-result-export', { dirty: gdprResultExportTemplate !== gdprResultExportTemplateBaseline, save: saveGdprResultExportTemplate, label: 'Szablon e-mail: Eksport gotowy' });
+  useUnsavedForm('manage-email-template-gdpr-result-deletion', { dirty: gdprResultDeletionTemplate !== gdprResultDeletionTemplateBaseline, save: saveGdprResultDeletionTemplate, label: 'Szablon e-mail: Konto usunięte' });
   useUnsavedForm('manage-tos', { dirty: tosContent !== tosBaseline, save: saveTos, label: 'Regulamin' });
 
   const guardNav = useUnsavedGuard();
@@ -965,14 +1003,12 @@ export default function ManagePage() {
               </label>
 
               <div>
-                <label className="label-field">Szablon wiadomości email (opcjonalnie)</label>
-                <textarea value={catEmailTemplate} onChange={e => setCatEmailTemplate(e.target.value)} className="input-field font-mono resize-y h-36 min-h-[6rem]" placeholder={'Nowy film: {title}\nAutor: {author}\nKategoria: {category}\n{url}'} />
-                <p className="text-[9px] text-zinc-400 mt-1">Placeholdery: {'{title}'} {'{author}'} {'{category}'} {'{description}'} {'{date}'} {'{id}'} {'{url}'} {'{thumbnail}'}</p>
+                <label className="flex items-center gap-3 cursor-pointer p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                  <input type="checkbox" checked={catEmailEnabled} onChange={e => setCatEmailEnabled(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500" />
+                  <span className="text-sm text-zinc-900 dark:text-white font-bold">Wysyłaj powiadomienia email dla tej kategorii</span>
+                </label>
+                <p className="text-[9px] text-zinc-400 mt-1">Treść wiadomości: Ustawienia → Ustawienia serwera E-mail → Szablony e-mail.</p>
               </div>
-              <label className="flex items-center gap-3 cursor-pointer p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                <input type="checkbox" checked={catEmailEnabled} onChange={e => setCatEmailEnabled(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500" />
-                <span className="text-sm text-zinc-900 dark:text-white font-bold">Wysyłaj powiadomienia email dla tej kategorii</span>
-              </label>
 
               <label className="flex items-center gap-3 cursor-pointer p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800">
                 <input type="checkbox" checked={catPushEnabled} onChange={e => setCatPushEnabled(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500" />
@@ -1773,7 +1809,7 @@ export default function ManagePage() {
               <div className="flex-1">
                 <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Szablony e-mail</h3>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                  Treść wiadomości wysyłanych z platformy. Wygląd wiadomości (nagłówek, kolory, stopka z podpisem) jest predefiniowany i jednakowy dla wszystkich e-maili — poniżej edytujesz wyłącznie tekst i dostępne znaczniki <code className="font-mono text-xs">{'{tagi}'}</code>.
+                  Zmień format wysyłanych wiadomości z platformy. Nnagłówek, kolory, stopka są predefiniowane i jednakowe dla wszystkich e-maili. <code className="font-mono text-xs">{'{tagi}'}</code>.
                 </p>
                 <button type="button" onClick={() => setShowEmailTemplates(v => !v)} className="btn-secondary text-sm">
                   {showEmailTemplates ? 'Ukryj szablony e-mail' : 'Zarządzaj szablonami e-mail'}
@@ -1784,7 +1820,7 @@ export default function ManagePage() {
                     <div className="border-t border-zinc-100 dark:border-zinc-800 pt-6">
                       <h4 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-1">Nowy film w kategorii</h4>
                       <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
-                        Domyślna treść powiadomienia o nowym filmie — używana, gdy kategoria nie ma własnego szablonu (do ustawienia w edycji kategorii).
+                        Treść powiadomienia o nowym filmie.
                       </p>
                       <textarea value={newVideoTemplate} onChange={e => setNewVideoTemplate(e.target.value)} className="input-field font-mono resize-y h-32 min-h-[6rem]" />
                       <p className="text-[9px] text-zinc-400 mt-1">Znaczniki: {'{title}'} {'{author}'} {'{category}'} {'{description}'} {'{date}'} {'{id}'} {'{url}'} {'{thumbnail}'}</p>
@@ -1801,7 +1837,7 @@ export default function ManagePage() {
                     <div className="border-t border-zinc-100 dark:border-zinc-800 pt-6">
                       <h4 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-1">Zgłoszenie RODO (do administracji)</h4>
                       <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
-                        Wysyłane do kont z rolą Developer, gdy użytkownik złoży zgłoszenie eksportu danych lub usunięcia konta.
+                        Wysyłane do kont z rolą Developer, gdy użytkownik złoży zgłoszenie RODO/GDPR.
                       </p>
                       <textarea value={gdprTemplate} onChange={e => setGdprTemplate(e.target.value)} className="input-field font-mono resize-y h-24 min-h-[5rem]" />
                       <p className="text-[9px] text-zinc-400 mt-1">Znaczniki: {'{user}'} {'{type}'} {'{url}'}</p>
@@ -1810,6 +1846,38 @@ export default function ManagePage() {
                           {savingGdprTemplate ? 'Zapisywanie...' : 'Zapisz'}
                         </button>
                         <button type="button" onClick={() => window.open(api.emailTemplatePreviewUrl('gdpr_notify', gdprTemplate), '_blank')} className="btn-secondary text-sm">
+                          Podgląd
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-zinc-100 dark:border-zinc-800 pt-6">
+                      <h4 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-1">RODO — eksport gotowy</h4>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+                        Wysyłane do użytkownika, gdy administrator zatwierdzi jego zgłoszenie eksportu danych.
+                      </p>
+                      <textarea value={gdprResultExportTemplate} onChange={e => setGdprResultExportTemplate(e.target.value)} className="input-field font-mono resize-y h-24 min-h-[5rem]" />
+                      <div className="flex gap-2 mt-3">
+                        <button onClick={saveGdprResultExportTemplate} disabled={savingGdprResultExportTemplate} className="btn-primary text-sm disabled:opacity-50">
+                          {savingGdprResultExportTemplate ? 'Zapisywanie...' : 'Zapisz'}
+                        </button>
+                        <button type="button" onClick={() => window.open(api.emailTemplatePreviewUrl('gdpr_result_export', gdprResultExportTemplate), '_blank')} className="btn-secondary text-sm">
+                          Podgląd
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-zinc-100 dark:border-zinc-800 pt-6">
+                      <h4 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-1">RODO — konto usunięte</h4>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+                        Wysyłane do użytkownika, gdy administrator zatwierdzi jego zgłoszenie usunięcia konta (przed anonimizacją).
+                      </p>
+                      <textarea value={gdprResultDeletionTemplate} onChange={e => setGdprResultDeletionTemplate(e.target.value)} className="input-field font-mono resize-y h-24 min-h-[5rem]" />
+                      <div className="flex gap-2 mt-3">
+                        <button onClick={saveGdprResultDeletionTemplate} disabled={savingGdprResultDeletionTemplate} className="btn-primary text-sm disabled:opacity-50">
+                          {savingGdprResultDeletionTemplate ? 'Zapisywanie...' : 'Zapisz'}
+                        </button>
+                        <button type="button" onClick={() => window.open(api.emailTemplatePreviewUrl('gdpr_result_deletion', gdprResultDeletionTemplate), '_blank')} className="btn-secondary text-sm">
                           Podgląd
                         </button>
                       </div>

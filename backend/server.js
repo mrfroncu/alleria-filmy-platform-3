@@ -1736,7 +1736,7 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
       if (pubDate.getTime() <= Date.now()) {
         const videoFull = db.prepare(`
           SELECT v.*, c.name AS category_name, c.webhook_url, c.webhook_template,
-          c.webhook_enabled, c.email_enabled, c.email_template, c.push_enabled,
+          c.webhook_enabled, c.email_enabled, c.push_enabled,
           u.display_name AS author_name FROM videos v
           LEFT JOIN categories c ON v.category_id = c.id
           LEFT JOIN users u ON v.author_id = u.id WHERE v.id = ?
@@ -2003,11 +2003,11 @@ app.get('/api/categories', requireAuth, (req, res) => {
 // Create category (dev only)
 app.post('/api/categories', requireDev, (req, res) => {
   try {
-    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, email_template, push_enabled } = req.body;
+    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, push_enabled } = req.body;
     if (!name) return res.status(400).json({ error: 'Name required' });
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    const result = db.prepare('INSERT INTO categories (name, slug, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, email_template, push_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', webhook_enabled ? 1 : 0, email_enabled ? 1 : 0, email_template || '', push_enabled ? 1 : 0);
+    const result = db.prepare('INSERT INTO categories (name, slug, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, push_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', webhook_enabled ? 1 : 0, email_enabled ? 1 : 0, push_enabled ? 1 : 0);
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(result.lastInsertRowid);
     audit(req.session.user.id, "create", "category", cat.id, name);
     res.json({ success: true, category: cat });
@@ -2017,10 +2017,10 @@ app.post('/api/categories', requireDev, (req, res) => {
 // Update category (dev only)
 app.put('/api/categories/:id', requireDev, (req, res) => {
   try {
-    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, email_template, push_enabled } = req.body;
+    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, push_enabled } = req.body;
     const slug = name ? name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : undefined;
-    if (name) db.prepare('UPDATE categories SET name=?, slug=?, description=?, icon=?, sort_order=?, parent_id=?, webhook_url=?, webhook_template=?, webhook_enabled=?, email_enabled=?, email_template=?, push_enabled=? WHERE id=?')
-      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', webhook_enabled ? 1 : 0, email_enabled ? 1 : 0, email_template || '', push_enabled ? 1 : 0, req.params.id);
+    if (name) db.prepare('UPDATE categories SET name=?, slug=?, description=?, icon=?, sort_order=?, parent_id=?, webhook_url=?, webhook_template=?, webhook_enabled=?, email_enabled=?, push_enabled=? WHERE id=?')
+      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', webhook_enabled ? 1 : 0, email_enabled ? 1 : 0, push_enabled ? 1 : 0, req.params.id);
     audit(req.session.user.id, "edit", "category", parseInt(req.params.id), name || "");
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2707,6 +2707,25 @@ async function notifyDevsOfGdprRequest(type, requestingUser) {
   }
 }
 
+// Fire-and-forget — called right after an admin approves a request. For 'deletion' the caller
+// must pass the user's contact info fetched BEFORE anonymizeUser() wipes it.
+async function notifyUserOfGdprResult(type, user) {
+  const to = user.email || user.discord_email;
+  if (!to) return;
+  const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
+  if (type === 'export') {
+    const template = getSetting('email_template_gdpr_result_export', EMAIL_TEMPLATE_DEFAULTS.gdpr_result_export);
+    const bodyHtml = renderTemplateParagraphs(template, {});
+    const html = wrapEmailHtml({ bodyHtml, ctaUrl: `${baseUrl}/profile`, ctaLabel: 'Przejdź do profilu' });
+    await sendEmail({ to, subject: 'Twój eksport danych jest gotowy', html });
+  } else {
+    const template = getSetting('email_template_gdpr_result_deletion', EMAIL_TEMPLATE_DEFAULTS.gdpr_result_deletion);
+    const bodyHtml = renderTemplateParagraphs(template, {});
+    const html = wrapEmailHtml({ bodyHtml });
+    await sendEmail({ to, subject: 'Twoje konto zostało usunięte', html });
+  }
+}
+
 app.post('/api/profile/gdpr/export', requireAuth, (req, res) => {
   if (!gdprEnabled()) return res.status(403).json({ error: 'Funkcja RODO nie jest włączona.' });
   const userId = req.session.user.id;
@@ -2984,6 +3003,8 @@ function settingsPayload() {
     // Sitewide default email templates (content only — see wrapEmailHtml for the fixed design).
     email_template_new_video: getSetting('email_template_new_video', EMAIL_TEMPLATE_DEFAULTS.new_video),
     email_template_gdpr_notify: getSetting('email_template_gdpr_notify', EMAIL_TEMPLATE_DEFAULTS.gdpr_notify),
+    email_template_gdpr_result_export: getSetting('email_template_gdpr_result_export', EMAIL_TEMPLATE_DEFAULTS.gdpr_result_export),
+    email_template_gdpr_result_deletion: getSetting('email_template_gdpr_result_deletion', EMAIL_TEMPLATE_DEFAULTS.gdpr_result_deletion),
 
     // Login config — source flags are .env-only (boot-time, no panel override; see tsConfigSource/
     // discordRolesConfigSource). The fields below always report the *effective* value, whichever
@@ -3075,7 +3096,7 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
     audit(req.session.user.id, 'edit', 'settings', null, `smtp_secure → ${req.body.smtp_secure ? 'ON' : 'OFF'}`);
   }
   // Sitewide default email templates — content only, see wrapEmailHtml for the fixed design.
-  for (const key of ['email_template_new_video', 'email_template_gdpr_notify']) {
+  for (const key of ['email_template_new_video', 'email_template_gdpr_notify', 'email_template_gdpr_result_export', 'email_template_gdpr_result_deletion']) {
     if (req.body[key] !== undefined) {
       setSetting(key, String(req.body[key]));
       audit(req.session.user.id, 'edit', 'settings', null, `${key} → (zmieniono)`);
@@ -3199,6 +3220,16 @@ app.get('/api/debug/settings/email-preview/:type', requireDev, (req, res) => {
     const bodyHtml = renderTemplateParagraphs(template, replacements);
     return res.type('html').send(wrapEmailHtml({ bodyHtml, ctaUrl: replacements['{url}'], ctaLabel: 'Przejdź do zgłoszeń RODO' }));
   }
+  if (type === 'gdpr_result_export') {
+    const template = req.query.template !== undefined ? String(req.query.template) : getSetting('email_template_gdpr_result_export', EMAIL_TEMPLATE_DEFAULTS.gdpr_result_export);
+    const bodyHtml = renderTemplateParagraphs(template, {});
+    return res.type('html').send(wrapEmailHtml({ bodyHtml, ctaUrl: `${baseUrl}/profile`, ctaLabel: 'Przejdź do profilu' }));
+  }
+  if (type === 'gdpr_result_deletion') {
+    const template = req.query.template !== undefined ? String(req.query.template) : getSetting('email_template_gdpr_result_deletion', EMAIL_TEMPLATE_DEFAULTS.gdpr_result_deletion);
+    const bodyHtml = renderTemplateParagraphs(template, {});
+    return res.type('html').send(wrapEmailHtml({ bodyHtml }));
+  }
   res.status(404).send('Nieznany typ szablonu.');
 });
 
@@ -3250,10 +3281,13 @@ app.post('/api/debug/gdpr/requests/:id/approve', requireDev, (req, res) => {
   if (!reqRow) return res.status(404).json({ error: 'Nie znaleziono zgłoszenia.' });
   if (reqRow.status !== 'pending') return res.status(400).json({ error: 'Zgłoszenie zostało już rozpatrzone.' });
   try {
+    // Fetched before anonymizeUser() below, which wipes email/discord_email for deletions.
+    const user = db.prepare('SELECT email, discord_email FROM users WHERE id = ?').get(reqRow.user_id);
     if (reqRow.type === 'deletion') anonymizeUser(reqRow.user_id);
     db.prepare("UPDATE gdpr_requests SET status = 'approved', processed_by = ?, processed_at = datetime('now') WHERE id = ?")
       .run(req.session.user.id, reqRow.id);
     audit(req.session.user.id, 'gdpr_approve', 'user', reqRow.user_id, reqRow.type);
+    if (user) notifyUserOfGdprResult(reqRow.type, user).catch(e => console.error('[EMAIL] GDPR result notify failed:', e.message));
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -4272,7 +4306,7 @@ if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
     try {
       const needsWebhook = db.prepare(`
         SELECT v.*, c.name AS category_name, c.webhook_url, c.webhook_template,
-        c.webhook_enabled, c.email_enabled, c.email_template, c.push_enabled,
+        c.webhook_enabled, c.email_enabled, c.push_enabled,
         u.display_name AS author_name
         FROM videos v
         LEFT JOIN categories c ON v.category_id = c.id
@@ -4390,6 +4424,8 @@ async function sendDiscordWebhook(video) {
 const EMAIL_TEMPLATE_DEFAULTS = {
   new_video: 'Cześć!\nW kategorii {category} pojawił się nowy film:\n\n{title}\nAutor: {author}',
   gdpr_notify: 'Użytkownik {user} złożył zgłoszenie: {type}.',
+  gdpr_result_export: 'Twoja prośba o eksport danych została zatwierdzona. Plik jest już gotowy do pobrania w Twoim profilu.',
+  gdpr_result_deletion: 'Twoja prośba o usunięcie konta została zatwierdzona. Twoje dane osobowe zostały zanonimizowane, a konto wylogowane. Ta operacja jest nieodwracalna.',
 };
 
 function escapeHtml(str) {
@@ -4427,7 +4463,7 @@ function wrapEmailHtml({ bodyHtml, ctaUrl, ctaLabel }) {
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px; background-color:#ffffff; border-radius:16px; overflow:hidden;">
         <tr><td style="background-color:#7c3aed; padding:26px 32px;">
           <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-            <td style="padding-right:10px;"><img src="https://alleria.pl/image/logo-clr.png" alt="" width="28" height="28" style="display:block; border-radius:6px;"></td>
+            <td style="padding-right:10px;"><img src="https://alleria.pl/image/favicon.png" alt="" width="28" height="28" style="display:block; border-radius:6px;"></td>
             <td style="font-size:19px; font-weight:700; color:#ffffff;">Alleria Filmy</td>
           </tr></table>
         </td></tr>
@@ -4436,7 +4472,7 @@ function wrapEmailHtml({ bodyHtml, ctaUrl, ctaLabel }) {
         </td></tr>
         <tr><td style="padding:22px 32px; background-color:#fafafa; border-top:1px solid #ececec;">
           <p style="margin:0; font-size:13px; color:#71717a;">Pozdrawiamy,<br><strong style="color:#3f3f46;">Zespół Alleria.pl</strong></p>
-          <p style="margin:10px 0 0; font-size:11px; color:#a1a1aa;">Ta wiadomość została wysłana automatycznie — nie odpowiadaj na nią.</p>
+          <p style="margin:10px 0 0; font-size:11px; color:#a1a1aa;">Ta wiadomość została wysłana automatycznie - nie odpowiadaj na nią.</p>
         </td></tr>
       </table>
     </td></tr>
@@ -4473,9 +4509,9 @@ async function sendEmail({ to, subject, html }) {
 async function sendCategoryEmailNotifications(video) {
   if (!video.email_enabled) return;
 
-  // Category-level template (set in the category's own editor) wins; otherwise fall back to the
-  // sitewide default template configured in Ustawienia > Powiadomienia email > Szablony e-mail.
-  const template = video.email_template || getSetting('email_template_new_video', EMAIL_TEMPLATE_DEFAULTS.new_video);
+  // Sitewide template — categories only get a per-category on/off checkbox now (Ustawienia >
+  // Ustawienia serwera E-mail > Szablony e-mail owns the actual content, for every category).
+  const template = getSetting('email_template_new_video', EMAIL_TEMPLATE_DEFAULTS.new_video);
 
   const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
   const replacements = {
