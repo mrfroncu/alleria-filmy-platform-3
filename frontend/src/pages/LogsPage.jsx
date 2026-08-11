@@ -36,10 +36,19 @@ export default function LogsPage() {
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState(LOGS_TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'audit');
 
+  // Users list, shared by the per-tab user filters below.
+  const [allUsers, setAllUsers] = useState([]);
+  useEffect(() => { api.getAllUsers().then(setAllUsers).catch(() => {}); }, []);
+  const userLabel = (u) => u.display_name || u.username;
+
   const [watchLogs, setWatchLogs] = useState([]);
   const [watchMeta, setWatchMeta] = useState({ total: 0, page: 1, totalPages: 1 });
+  const [watchUserFilter, setWatchUserFilter] = useState('');
+  const [watchVideoFilter, setWatchVideoFilter] = useState('');
+  const [watchVideos, setWatchVideos] = useState([]);
   const [loginLogs, setLoginLogs] = useState([]);
   const [loginMeta, setLoginMeta] = useState({ total: 0, page: 1, totalPages: 1 });
+  const [loginUserFilter, setLoginUserFilter] = useState('');
 
   // Audit
   const [auditLogs, setAuditLogs] = useState([]);
@@ -48,6 +57,7 @@ export default function LogsPage() {
   const [auditPages, setAuditPages] = useState(1);
   const [auditType, setAuditType] = useState('');
   const [auditAction, setAuditAction] = useState('');
+  const [auditUserFilter, setAuditUserFilter] = useState('');
 
   // Watch Party logs
   const [wpLogs, setWpLogs] = useState([]);
@@ -55,14 +65,25 @@ export default function LogsPage() {
   const [wpAction, setWpAction] = useState('');
   const [wpCodeFilter, setWpCodeFilter] = useState('');
   const [wpCodeInput, setWpCodeInput] = useState('');
+  const [wpUserFilter, setWpUserFilter] = useState('');
 
-  const loadWatch = (p) => api.getWatchLogs(p).then(r => { setWatchLogs(r.logs || []); setWatchMeta({ total: r.total, page: r.page, totalPages: r.totalPages }); }).catch(() => {});
-  const loadLogin = (p) => api.getLoginLogs(p).then(r => { setLoginLogs(r.logs || []); setLoginMeta({ total: r.total, page: r.page, totalPages: r.totalPages }); }).catch(() => {});
+  const loadWatch = (p = 1, userId = watchUserFilter, videoId = watchVideoFilter) => {
+    const params = { page: p };
+    if (userId) params.user_id = userId;
+    if (videoId) params.video_id = videoId;
+    api.getWatchLogs(params).then(r => { setWatchLogs(r.logs || []); setWatchMeta({ total: r.total, page: r.page, totalPages: r.totalPages }); }).catch(() => {});
+  };
+  const loadLogin = (p = 1, userId = loginUserFilter) => {
+    const params = { page: p };
+    if (userId) params.user_id = userId;
+    api.getLoginLogs(params).then(r => { setLoginLogs(r.logs || []); setLoginMeta({ total: r.total, page: r.page, totalPages: r.totalPages }); }).catch(() => {});
+  };
 
-  const loadWpLogs = (p = 1, code = wpCodeFilter, action = wpAction) => {
+  const loadWpLogs = (p = 1, code = wpCodeFilter, action = wpAction, userId = wpUserFilter) => {
     const params = { page: p };
     if (code) params.code = code;
     if (action) params.action = action;
+    if (userId) params.user_id = userId;
     api.getWatchPartyLogs(params).then(r => {
       setWpLogs(r.logs || []);
       setWpMeta({ total: r.total || 0, page: r.page || 1, totalPages: r.totalPages || 1 });
@@ -70,9 +91,9 @@ export default function LogsPage() {
   };
 
   useEffect(() => {
-    if (tab === 'watch') loadWatch(1);
-    else if (tab === 'login') loadLogin(1);
-    else if (tab === 'watchparty') loadWpLogs(1, '', '');
+    if (tab === 'watch') { loadWatch(1, '', ''); setWatchUserFilter(''); setWatchVideoFilter(''); api.getWatchLogVideos().then(setWatchVideos).catch(() => {}); }
+    else if (tab === 'login') { loadLogin(1, ''); setLoginUserFilter(''); }
+    else if (tab === 'watchparty') loadWpLogs(1, '', '', '');
   }, [tab]);
 
   useEffect(() => {
@@ -80,10 +101,11 @@ export default function LogsPage() {
     const params = { page: auditPage };
     if (auditType) params.type = auditType;
     if (auditAction) params.action = auditAction;
+    if (auditUserFilter) params.user_id = auditUserFilter;
     api.getAuditLogs(params).then(r => {
       setAuditLogs(r.logs || []); setAuditTotal(r.total || 0); setAuditPages(r.totalPages || 1);
     }).catch(() => {});
-  }, [tab, auditPage, auditType, auditAction]);
+  }, [tab, auditPage, auditType, auditAction, auditUserFilter]);
 
   const entityColors = { video: 'bg-violet-100 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300', comment: 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300', category: 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', tag: 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' };
   const actionColors = { create: 'text-emerald-600', edit: 'text-amber-600', delete: 'text-red-600' };
@@ -143,8 +165,17 @@ export default function LogsPage() {
                 {a || 'Wszystkie akcje'}
               </button>
             ))}
+            <span className="text-zinc-300 dark:text-zinc-700 self-center">|</span>
+            <select
+              value={auditUserFilter}
+              onChange={e => { setAuditUserFilter(e.target.value); setAuditPage(1); }}
+              className="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-xs font-bold px-3 py-1.5 rounded-xl focus:outline-none cursor-pointer"
+            >
+              <option value="">Wszyscy użytkownicy</option>
+              {allUsers.map(u => <option key={u.id} value={u.id}>{userLabel(u)}</option>)}
+            </select>
           </div>
-          <p className="text-xs text-zinc-500 mb-3">{auditTotal} wpisów{auditType ? ` · typ: ${auditType}` : ''}{auditAction ? ` · akcja: ${auditAction}` : ''}</p>
+          <p className="text-xs text-zinc-500 mb-3">{auditTotal} wpisów{auditType ? ` · typ: ${auditType}` : ''}{auditAction ? ` · akcja: ${auditAction}` : ''}{auditUserFilter ? ` · użytkownik: ${userLabel(allUsers.find(u => u.id === parseInt(auditUserFilter)) || {})}` : ''}</p>
           <div className="space-y-2">
             {auditLogs.length === 0 ? <div className="card p-8 text-center"><p className="text-zinc-400 text-sm">Brak logów</p></div> : auditLogs.map(l => (
               <div key={l.id} className="card p-4 hover:shadow-md transition-all">
@@ -227,6 +258,17 @@ export default function LogsPage() {
               </select>
             </div>
 
+            <span className="text-zinc-300 dark:text-zinc-700 self-center">|</span>
+
+            <select
+              value={wpUserFilter}
+              onChange={e => { setWpUserFilter(e.target.value); loadWpLogs(1, wpCodeFilter, wpAction, e.target.value); }}
+              className="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-[11px] px-2.5 py-1.5 rounded-xl focus:outline-none cursor-pointer"
+            >
+              <option value="">Wszyscy użytkownicy</option>
+              {allUsers.map(u => <option key={u.id} value={u.id}>{userLabel(u)}</option>)}
+            </select>
+
             <div className="ml-auto">
               <button
                 onClick={async () => { if (!(await confirm('Wyczyścić logi Watch Party?', { danger: true, confirmLabel: 'Wyczyść' }))) return; api.clearWatchPartyLogs(wpCodeFilter).then(() => loadWpLogs(1)); }}
@@ -239,7 +281,7 @@ export default function LogsPage() {
           </div>
 
           {/* Summary */}
-          <p className="text-xs text-zinc-500">{wpMeta.total} rekordów{wpCodeFilter ? ` dla party ${wpCodeFilter}` : ''}{wpAction ? ` · akcja: ${actionMeta(wpAction).label}` : ''}</p>
+          <p className="text-xs text-zinc-500">{wpMeta.total} rekordów{wpCodeFilter ? ` dla party ${wpCodeFilter}` : ''}{wpAction ? ` · akcja: ${actionMeta(wpAction).label}` : ''}{wpUserFilter ? ` · użytkownik: ${userLabel(allUsers.find(u => u.id === parseInt(wpUserFilter)) || {})}` : ''}</p>
 
           {/* Log entries */}
           <div className="card overflow-hidden">
@@ -294,7 +336,26 @@ export default function LogsPage() {
 
       {/* ─── WATCH ─── */}
       {tab === 'watch' && (
-        <div className="card overflow-hidden">
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2 items-center">
+            <select
+              value={watchUserFilter}
+              onChange={e => { setWatchUserFilter(e.target.value); loadWatch(1, e.target.value, watchVideoFilter); }}
+              className="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-xs font-bold px-3 py-1.5 rounded-xl focus:outline-none cursor-pointer"
+            >
+              <option value="">Wszyscy użytkownicy</option>
+              {allUsers.map(u => <option key={u.id} value={u.id}>{userLabel(u)}</option>)}
+            </select>
+            <select
+              value={watchVideoFilter}
+              onChange={e => { setWatchVideoFilter(e.target.value); loadWatch(1, watchUserFilter, e.target.value); }}
+              className="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-xs font-bold px-3 py-1.5 rounded-xl focus:outline-none cursor-pointer max-w-[220px]"
+            >
+              <option value="">Wszystkie filmy</option>
+              {watchVideos.map(v => <option key={v.id} value={v.id}>{v.title}</option>)}
+            </select>
+          </div>
+          <div className="card overflow-hidden">
           <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
             <div className="w-9 h-9 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center shrink-0">
               <Eye className="w-4 h-4 text-violet-500" />
@@ -322,12 +383,24 @@ export default function LogsPage() {
             </table>
           </div>
           <Pagination meta={watchMeta} onPage={loadWatch} />
+          </div>
         </div>
       )}
 
       {/* ─── LOGIN ─── */}
       {tab === 'login' && (
-        <div className="card overflow-hidden">
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2 items-center">
+            <select
+              value={loginUserFilter}
+              onChange={e => { setLoginUserFilter(e.target.value); loadLogin(1, e.target.value); }}
+              className="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-xs font-bold px-3 py-1.5 rounded-xl focus:outline-none cursor-pointer"
+            >
+              <option value="">Wszyscy użytkownicy</option>
+              {allUsers.map(u => <option key={u.id} value={u.id}>{userLabel(u)}</option>)}
+            </select>
+          </div>
+          <div className="card overflow-hidden">
           <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
             <div className="w-9 h-9 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center shrink-0">
               <LogIn className="w-4 h-4 text-violet-500" />
@@ -359,6 +432,7 @@ export default function LogsPage() {
             </table>
           </div>
           <Pagination meta={loginMeta} onPage={loadLogin} />
+          </div>
         </div>
       )}
     </div>

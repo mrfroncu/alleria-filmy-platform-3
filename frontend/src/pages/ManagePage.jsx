@@ -11,12 +11,6 @@ import { useUnsavedForm, useUnsavedGuard } from '../contexts/UnsavedChangesConte
 import { renderMarkdown } from '../utils/markdown';
 
 const MANAGE_TAB_IDS = ['categories', 'ranks', 'users', 'gdpr', 'tos', 'settings'];
-const SETTINGS_SUBTABS = [
-  ['display', 'Wygląd i treść', LayoutGrid],
-  ['security', 'Bezpieczeństwo i prywatność', ShieldCheck],
-  ['email', 'Powiadomienia email', Mail],
-  ['login', 'Logowanie', LogIn],
-];
 
 // Standard on/off slider switch — used for the boolean settings toggles in the Ustawienia tab.
 function ToggleSwitch({ checked, onChange, disabled, label }) {
@@ -37,6 +31,18 @@ function ToggleSwitch({ checked, onChange, disabled, label }) {
   );
 }
 
+// Section divider used to group the settings page into "Wygląd i treść" / "Bezpieczeństwo i prywatność" /
+// "Powiadomienia email" / "Logowanie" without splitting them into separate sub-tabs.
+function SettingsSectionHeader({ id, icon: Icon, label, first }) {
+  return (
+    <div id={id} className={`flex items-center gap-3 mb-4 scroll-mt-24 ${first ? '' : 'mt-12'}`}>
+      <Icon className="w-5 h-5 text-violet-500 shrink-0" />
+      <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display whitespace-nowrap">{label}</h2>
+      <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800" />
+    </div>
+  );
+}
+
 const EMPTY_CAT_BASELINE = {
   name: '', desc: '', order: '0', parentId: '',
   viewerMode: 'public', editorMode: 'none', viewerRoles: '', editorRoles: '',
@@ -50,7 +56,15 @@ export default function ManagePage() {
   const toast = useToast();
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState(MANAGE_TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'categories');
-  const [settingsSubTab, setSettingsSubTab] = useState(["display","security","email","login"].includes(searchParams.get('subtab')) ? searchParams.get('subtab') : 'display');
+  // Deep-links (e.g. from GlobalSearch) point at a settings section via ?subtab=; since all
+  // sections now live on one scrollable page, this just scrolls to the section on arrival.
+  const settingsScrollTarget = ["display","security","email","login"].includes(searchParams.get('subtab')) ? searchParams.get('subtab') : null;
+  useEffect(() => {
+    if (tab === 'settings' && settingsScrollTarget) {
+      document.getElementById(`settings-section-${settingsScrollTarget}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   // Category state
   const [cats, setCats] = useState([]);
@@ -1379,28 +1393,9 @@ export default function ManagePage() {
           </div>
         )}
 
-        {/* Settings sub-navigation */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          {SETTINGS_SUBTABS.map(([key, label, Icon]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setSettingsSubTab(key)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                settingsSubTab === key
-                  ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20'
-                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {label}
-            </button>
-          ))}
-        </div>
-
         {/* ============ WYGLĄD I TREŚĆ ============ */}
-        {settingsSubTab === 'display' && (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-fade-in">
+        <SettingsSectionHeader id="settings-section-display" icon={LayoutGrid} label="Wygląd i treść" first />
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {/* Content length limits */}
           <div className="card p-8 h-full flex flex-col xl:col-span-2">
             <div className="flex items-start gap-4">
@@ -1543,11 +1538,10 @@ export default function ManagePage() {
             </div>
           </div>
           </div>
-        )}
 
         {/* ============ BEZPIECZEŃSTWO I PRYWATNOŚĆ ============ */}
-        {settingsSubTab === 'security' && (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-fade-in">
+        <SettingsSectionHeader id="settings-section-security" icon={ShieldCheck} label="Bezpieczeństwo i prywatność" />
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {/* Webhook domain restriction */}
           <div className="card p-8 h-full flex flex-col">
             <div className="flex items-start gap-4">
@@ -1652,11 +1646,10 @@ export default function ManagePage() {
             </div>
           </div>
           </div>
-        )}
 
         {/* ============ POWIADOMIENIA EMAIL ============ */}
-        {settingsSubTab === 'email' && (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-fade-in">
+        <SettingsSectionHeader id="settings-section-email" icon={Mail} label="Powiadomienia email" />
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {/* SMTP / Email */}
           <div className="card p-8 h-full flex flex-col xl:col-span-2">
             <div className="flex items-start gap-4">
@@ -1716,11 +1709,10 @@ export default function ManagePage() {
             </div>
           </div>
           </div>
-        )}
 
         {/* ============ LOGOWANIE ============ */}
-        {settingsSubTab === 'login' && (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-fade-in">
+        <SettingsSectionHeader id="settings-section-login" icon={LogIn} label="Logowanie" />
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <div className="card p-6 xl:col-span-2 !border-blue-200 dark:!border-blue-500/20 bg-blue-50/50 dark:bg-blue-500/[0.06]">
             <div className="flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
@@ -1910,7 +1902,6 @@ export default function ManagePage() {
             </div>
           </div>
           </div>
-        )}
       </div>
       )}
     </div>

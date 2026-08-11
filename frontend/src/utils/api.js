@@ -120,8 +120,15 @@ export const api = {
   deleteRank: (id) => request(`/ranks/${id}`, { method: 'DELETE' }),
 
   // Logs (paginated)
-  getWatchLogs: (page = 1) => request(`/logs/watch?page=${page}`),
-  getLoginLogs: (page = 1) => request(`/logs/login?page=${page}`),
+  getWatchLogs: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/logs/watch${q ? `?${q}` : ''}`);
+  },
+  getWatchLogVideos: () => request('/logs/watch/videos'),
+  getLoginLogs: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/logs/login${q ? `?${q}` : ''}`);
+  },
   clearWatchLogs: () => request('/logs/watch/clear', { method: 'DELETE' }),
   clearLoginLogs: () => request('/logs/login/clear', { method: 'DELETE' }),
 
