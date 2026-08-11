@@ -13,6 +13,7 @@ const cors = require('cors');
 const fetch = require('node-fetch');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
+const webpush = require('web-push');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -1735,7 +1736,7 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
       if (pubDate.getTime() <= Date.now()) {
         const videoFull = db.prepare(`
           SELECT v.*, c.name AS category_name, c.webhook_url, c.webhook_template,
-          c.webhook_enabled, c.email_enabled, c.email_template,
+          c.webhook_enabled, c.email_enabled, c.email_template, c.push_enabled,
           u.display_name AS author_name FROM videos v
           LEFT JOIN categories c ON v.category_id = c.id
           LEFT JOIN users u ON v.author_id = u.id WHERE v.id = ?
@@ -1750,6 +1751,9 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
           }
           if (videoFull.email_enabled) {
             sendCategoryEmailNotifications(videoFull).catch(e => console.error('[EMAIL] Error:', e.message));
+          }
+          if (videoFull.push_enabled) {
+            sendCategoryPushNotifications(videoFull).catch(e => console.error('[PUSH] Error:', e.message));
           }
         }
       } else {
@@ -1999,11 +2003,11 @@ app.get('/api/categories', requireAuth, (req, res) => {
 // Create category (dev only)
 app.post('/api/categories', requireDev, (req, res) => {
   try {
-    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, email_template } = req.body;
+    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, email_template, push_enabled } = req.body;
     if (!name) return res.status(400).json({ error: 'Name required' });
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    const result = db.prepare('INSERT INTO categories (name, slug, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, email_template) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', webhook_enabled ? 1 : 0, email_enabled ? 1 : 0, email_template || '');
+    const result = db.prepare('INSERT INTO categories (name, slug, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, email_template, push_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', webhook_enabled ? 1 : 0, email_enabled ? 1 : 0, email_template || '', push_enabled ? 1 : 0);
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(result.lastInsertRowid);
     audit(req.session.user.id, "create", "category", cat.id, name);
     res.json({ success: true, category: cat });
@@ -2013,10 +2017,10 @@ app.post('/api/categories', requireDev, (req, res) => {
 // Update category (dev only)
 app.put('/api/categories/:id', requireDev, (req, res) => {
   try {
-    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, email_template } = req.body;
+    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, email_template, push_enabled } = req.body;
     const slug = name ? name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : undefined;
-    if (name) db.prepare('UPDATE categories SET name=?, slug=?, description=?, icon=?, sort_order=?, parent_id=?, webhook_url=?, webhook_template=?, webhook_enabled=?, email_enabled=?, email_template=? WHERE id=?')
-      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', webhook_enabled ? 1 : 0, email_enabled ? 1 : 0, email_template || '', req.params.id);
+    if (name) db.prepare('UPDATE categories SET name=?, slug=?, description=?, icon=?, sort_order=?, parent_id=?, webhook_url=?, webhook_template=?, webhook_enabled=?, email_enabled=?, email_template=?, push_enabled=? WHERE id=?')
+      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', webhook_enabled ? 1 : 0, email_enabled ? 1 : 0, email_template || '', push_enabled ? 1 : 0, req.params.id);
     audit(req.session.user.id, "edit", "category", parseInt(req.params.id), name || "");
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2511,6 +2515,32 @@ app.put('/api/profile', requireAuth, (req, res) => {
       req.session.user.avatar = newAvatarUrl;
     }
     req.session.save(() => {});
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============ WEB PUSH SUBSCRIPTIONS ============
+app.get('/api/push/vapid-public-key', requireAuth, (req, res) => {
+  res.json({ publicKey: getVapidKeys().publicKey });
+});
+
+app.post('/api/push/subscribe', requireAuth, (req, res) => {
+  try {
+    const { endpoint, keys } = req.body?.subscription || req.body || {};
+    if (!endpoint || !keys?.p256dh || !keys?.auth) return res.status(400).json({ error: 'Nieprawidłowa subskrypcja push.' });
+    db.prepare(`
+      INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) VALUES (?, ?, ?, ?)
+      ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth
+    `).run(req.session.user.id, endpoint, keys.p256dh, keys.auth);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/push/unsubscribe', requireAuth, (req, res) => {
+  try {
+    const { endpoint } = req.body || {};
+    if (!endpoint) return res.status(400).json({ error: 'Brak endpoint.' });
+    db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').run(endpoint, req.session.user.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3951,6 +3981,76 @@ function isWebhookUrlAllowed(url) {
   } catch (_) { return false; }
 }
 
+// ============ WEB PUSH ============
+// VAPID keypair is generated once and persisted like any other panel-managed secret
+// (see smtp_* / ts6_* above) — no manual .env setup required to use browser push.
+function getVapidKeys() {
+  let publicKey = getSetting('vapid_public_key', '');
+  let privateKey = getSetting('vapid_private_key', '');
+  if (!publicKey || !privateKey) {
+    const keys = webpush.generateVAPIDKeys();
+    publicKey = keys.publicKey;
+    privateKey = keys.privateKey;
+    setSetting('vapid_public_key', publicKey);
+    setSetting('vapid_private_key', privateKey);
+  }
+  webpush.setVapidDetails('mailto:push@alleria.local', publicKey, privateKey);
+  return { publicKey, privateKey };
+}
+
+// Users allowed to view a video — same rules as GET /api/debug/access/video/:id — used to
+// scope push delivery to people who actually have access instead of every subscriber.
+function getVideoViewerUserIds(video) {
+  const dbUsers = db.prepare('SELECT id, role, discord_roles FROM users').all();
+  if (video.access_mode === 'custom') {
+    const allowed = new Set(db.prepare('SELECT user_id FROM video_access WHERE video_id = ?').all(video.id).map(r => r.user_id));
+    return dbUsers.filter(u => u.role === 'dev' || allowed.has(u.id)).map(u => u.id);
+  }
+  if (!video.category_id) return dbUsers.map(u => u.id);
+  const cat = db.prepare('SELECT access_mode FROM categories WHERE id = ?').get(video.category_id);
+  if (!cat) return [];
+  return dbUsers.filter(u => {
+    if (u.role === 'dev') return true;
+    const dr = JSON.parse(u.discord_roles || '[]');
+    const ur = getUserRankIds(u.id);
+    return checkCatAccess(video.category_id, cat.access_mode, u.id, dr, ur).canView;
+  }).map(u => u.id);
+}
+
+// Never throws — same fire-and-forget philosophy as sendDiscordWebhook/sendCategoryEmailNotifications.
+async function sendCategoryPushNotifications(video) {
+  if (!video.push_enabled) return;
+  try {
+    getVapidKeys();
+    const viewerIds = new Set(getVideoViewerUserIds(video));
+    if (viewerIds.size === 0) return;
+    const subs = db.prepare('SELECT * FROM push_subscriptions').all().filter(s => viewerIds.has(s.user_id));
+    if (subs.length === 0) return;
+
+    const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
+    const payload = JSON.stringify({
+      title: 'Nowy film',
+      body: video.category_name ? `${video.title} • ${video.category_name}` : video.title,
+      url: `${baseUrl}/video/${video.id}`,
+    });
+
+    for (const sub of subs) {
+      try {
+        await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload);
+      } catch (e) {
+        // Gone/Not Found — the subscription no longer exists on the browser's end, clean it up.
+        if (e.statusCode === 404 || e.statusCode === 410) {
+          db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(sub.id);
+        } else {
+          console.error(`[PUSH] Send failed (sub ${sub.id}): ${e.message}`);
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[PUSH] Error:', e.message);
+  }
+}
+
 // ============ WATCH PROGRESS ============
 app.put('/api/progress/:videoId', requireAuth, (req, res) => {
   const user = req.session.user;
@@ -4133,7 +4233,7 @@ if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
     try {
       const needsWebhook = db.prepare(`
         SELECT v.*, c.name AS category_name, c.webhook_url, c.webhook_template,
-        c.webhook_enabled, c.email_enabled, c.email_template,
+        c.webhook_enabled, c.email_enabled, c.email_template, c.push_enabled,
         u.display_name AS author_name
         FROM videos v
         LEFT JOIN categories c ON v.category_id = c.id
@@ -4166,6 +4266,16 @@ if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
             console.log(`[EMAIL] ✅ Sent for "${video.title}" (ID: ${video.id})`);
           } catch (e) {
             console.error(`[EMAIL] ❌ Failed for "${video.title}": ${e.message}`);
+          }
+        }
+
+        // Browser push notification is independent of the webhook/email
+        if (video.push_enabled) {
+          try {
+            await sendCategoryPushNotifications(video);
+            console.log(`[PUSH] ✅ Sent for "${video.title}" (ID: ${video.id})`);
+          } catch (e) {
+            console.error(`[PUSH] ❌ Failed for "${video.title}": ${e.message}`);
           }
         }
       }

@@ -336,6 +336,19 @@ function initDB() {
   try { db.exec(`ALTER TABLE users ADD COLUMN email TEXT`); } catch (e) {}
   try { db.exec(`ALTER TABLE users ADD COLUMN email_notifications INTEGER DEFAULT 0`); } catch (e) {}
 
+  // Browser push notifications — category toggle mirrors webhook_enabled/email_enabled above.
+  // Subscriptions live per-device (a user can have one per browser/device they enabled it on).
+  try { db.exec(`ALTER TABLE categories ADD COLUMN push_enabled INTEGER DEFAULT 0`); } catch (e) {}
+  db.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`);
+
   return db;
 }
 

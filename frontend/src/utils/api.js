@@ -187,6 +187,15 @@ export const api = {
   }),
   refreshDiscordAvatar: () => request('/profile/refresh-discord', { method: 'POST' }),
 
+  // Browser push notifications
+  getVapidPublicKey: () => request('/push/vapid-public-key'),
+  subscribePush: (subscription) => request('/push/subscribe', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription }),
+  }),
+  unsubscribePush: (endpoint) => request('/push/unsubscribe', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint }),
+  }),
+
   // Account linking / merge
   getPendingMerge: (mergeId) => request(`/profile/merge/${mergeId}`),
   confirmMerge: (mergeId) => request(`/profile/merge/${mergeId}/confirm`, { method: 'POST' }),

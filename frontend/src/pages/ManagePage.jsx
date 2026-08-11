@@ -47,7 +47,7 @@ const EMPTY_CAT_BASELINE = {
   name: '', desc: '', order: '0', parentId: '',
   viewerMode: 'public', editorMode: 'none', viewerRoles: '', editorRoles: '',
   viewerRankIds: [], editorRankIds: [], viewerUserIds: [], editorUserIds: [],
-  webhookUrl: '', webhookTemplate: '', webhookEnabled: false, emailEnabled: false, emailTemplate: '',
+  webhookUrl: '', webhookTemplate: '', webhookEnabled: false, emailEnabled: false, emailTemplate: '', pushEnabled: false,
 };
 
 export default function ManagePage() {
@@ -92,6 +92,7 @@ export default function ManagePage() {
   const [catWebhookEnabled, setCatWebhookEnabled] = useState(false);
   const [catEmailEnabled, setCatEmailEnabled] = useState(false);
   const [catEmailTemplate, setCatEmailTemplate] = useState('');
+  const [catPushEnabled, setCatPushEnabled] = useState(false);
   const [catBaseline, setCatBaseline] = useState(EMPTY_CAT_BASELINE);
 
   // Rank form state
@@ -582,6 +583,7 @@ export default function ManagePage() {
     setCatViewerUserIds([]); setCatEditorUserIds([]);
     setCatWebhookUrl(''); setCatWebhookTemplate(''); setCatWebhookEnabled(false);
     setCatEmailEnabled(false); setCatEmailTemplate('');
+    setCatPushEnabled(false);
     setEditingCat(null);
     setCatBaseline(EMPTY_CAT_BASELINE);
   };
@@ -596,7 +598,7 @@ export default function ManagePage() {
       const data = {
         name: catName, description: catDesc, sort_order: parseInt(catOrder) || 0, parent_id: catParentId ? parseInt(catParentId) : null,
         webhook_url: catWebhookUrl, webhook_template: catWebhookTemplate, webhook_enabled: catWebhookEnabled,
-        email_enabled: catEmailEnabled, email_template: catEmailTemplate,
+        email_enabled: catEmailEnabled, email_template: catEmailTemplate, push_enabled: catPushEnabled,
       };
       const accessPayload = {
         viewer_mode: catViewerMode,
@@ -635,6 +637,7 @@ export default function ManagePage() {
     setCatWebhookEnabled(!!cat.webhook_enabled);
     setCatEmailEnabled(!!cat.email_enabled);
     setCatEmailTemplate(cat.email_template || '');
+    setCatPushEnabled(!!cat.push_enabled);
     const rawMode = cat.access_mode || 'public:none';
     const [vm, em] = rawMode.includes(':') ? rawMode.split(':')
       : rawMode === 'custom' ? ['custom', 'none']
@@ -665,7 +668,7 @@ export default function ManagePage() {
       name: cat.name, desc: cat.description || '', order: String(cat.sort_order || 0), parentId: String(cat.parent_id || ''),
       viewerMode: vm, editorMode: em, viewerRoles, editorRoles, viewerRankIds, editorRankIds, viewerUserIds, editorUserIds,
       webhookUrl: cat.webhook_url || '', webhookTemplate: cat.webhook_template || '', webhookEnabled: !!cat.webhook_enabled,
-      emailEnabled: !!cat.email_enabled, emailTemplate: cat.email_template || '',
+      emailEnabled: !!cat.email_enabled, emailTemplate: cat.email_template || '', pushEnabled: !!cat.push_enabled,
     });
     setTab('categories');
   };
@@ -720,7 +723,7 @@ export default function ManagePage() {
     viewerRankIds: sortIds(catViewerRankIds), editorRankIds: sortIds(catEditorRankIds),
     viewerUserIds: sortIds(catViewerUserIds), editorUserIds: sortIds(catEditorUserIds),
     webhookUrl: catWebhookUrl, webhookTemplate: catWebhookTemplate, webhookEnabled: catWebhookEnabled,
-    emailEnabled: catEmailEnabled, emailTemplate: catEmailTemplate,
+    emailEnabled: catEmailEnabled, emailTemplate: catEmailTemplate, pushEnabled: catPushEnabled,
   };
   const catBaselineShape = {
     ...catBaseline, viewerRankIds: sortIds(catBaseline.viewerRankIds), editorRankIds: sortIds(catBaseline.editorRankIds),
@@ -924,6 +927,11 @@ export default function ManagePage() {
               <label className="flex items-center gap-3 cursor-pointer p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800">
                 <input type="checkbox" checked={catEmailEnabled} onChange={e => setCatEmailEnabled(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500" />
                 <span className="text-sm text-zinc-900 dark:text-white font-bold">Wysyłaj powiadomienia email dla tej kategorii</span>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                <input type="checkbox" checked={catPushEnabled} onChange={e => setCatPushEnabled(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500" />
+                <span className="text-sm text-zinc-900 dark:text-white font-bold">Wysyłaj powiadomienia przeglądarkowe dla tej kategorii</span>
               </label>
 
               <button onClick={saveCategory} className="btn-primary text-sm">{editingCat ? 'Zapisz zmiany' : 'Dodaj kategorię'}</button>
@@ -1354,7 +1362,7 @@ export default function ManagePage() {
       <div className="animate-fade-in">
         {/* .env sanity check warning */}
         {envCheck && (envCheck.deprecated?.length > 0 || envCheck.suspicious?.length > 0) && (
-          <div className="card p-8 h-full flex flex-col xl:col-span-2 !border-amber-300 dark:!border-amber-500/30 bg-amber-50/50 dark:bg-amber-500/[0.06]">
+          <div className="card p-8 h-full flex flex-col xl:col-span-2 !border-amber-300 dark:!border-amber-500/30 bg-amber-50/50 dark:bg-amber-500/[0.06] mb-8">
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 bg-amber-100 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-6 h-6 text-amber-500" />

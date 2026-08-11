@@ -68,6 +68,17 @@ export function getCurrentYear() {
   return new Date().getFullYear();
 }
 
+// VAPID public key comes from the server as URL-safe base64 — PushManager.subscribe()
+// requires it as a raw Uint8Array instead.
+export function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
 // Turns a raw TS3/TS6 backend error message into a friendly, actionable one. Shared by
 // LoginPage (plain login) and ProfilePage (account linking) so both surfaces explain TS
 // failures the same way instead of showing raw fetch/ServerQuery error text.

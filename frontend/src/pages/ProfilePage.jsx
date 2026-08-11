@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink, Download, Trash2, Clock, ShieldCheck, Mail } from 'lucide-react';
+import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink, Download, Trash2, Clock, ShieldCheck, Mail, Bell } from 'lucide-react';
 import { api } from '../utils/api';
-import { formatDate, parseTsError } from '../utils/helpers';
+import { formatDate, parseTsError, urlBase64ToUint8Array } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
 import { useSettings } from '../contexts/SettingsContext';
 import { useConfirm } from '../contexts/ConfirmContext';
@@ -29,6 +29,13 @@ export default function ProfilePage() {
   const [editEmailNotifications, setEditEmailNotifications] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
 
+  // Browser push notifications — subscription state lives per-browser (that's what
+  // Notification permission is scoped to), not on the profile/server record.
+  const [pushSupported, setPushSupported] = useState(true);
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushDenied, setPushDenied] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+
   // Account linking
   const setLinkMsg = (m) => { if (m) (m.type === 'success' ? toast.success : toast.error)(m.text); };
   const [linkingTs, setLinkingTs] = useState(null); // 'teamspeak' | 'teamspeak3' | null
@@ -50,6 +57,18 @@ export default function ProfilePage() {
   const setGdprMsg = (m) => { if (m) (m.type === 'success' ? toast.success : toast.error)(m.text); };
 
   useEffect(() => { api.getConfig().then(c => setConfig(prev => ({ ...prev, ...c }))).catch(() => {}); }, []);
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      setPushSupported(false);
+      return;
+    }
+    setPushDenied(Notification.permission === 'denied');
+    navigator.serviceWorker.ready
+      .then(reg => reg.pushManager.getSubscription())
+      .then(sub => setPushSubscribed(!!sub))
+      .catch(() => {});
+  }, []);
 
   // Discord link redirect lands back here with ?linked=discord / ?error=... / ?mergeId=...
   useEffect(() => {
@@ -190,6 +209,42 @@ export default function ProfilePage() {
     setSavingEmail(false);
   };
 
+  const handleTogglePush = async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (pushSubscribed) {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          await api.unsubscribePush(sub.endpoint);
+          await sub.unsubscribe();
+        }
+        setPushSubscribed(false);
+        toast.success('Powiadomienia przeglądarkowe wyłączone.');
+      } else {
+        const permission = await Notification.requestPermission();
+        setPushDenied(permission === 'denied');
+        if (permission !== 'granted') {
+          if (permission === 'denied') toast.error('Zablokowano powiadomienia dla tej strony w ustawieniach przeglądarki.');
+          setPushBusy(false);
+          return;
+        }
+        const { publicKey } = await api.getVapidPublicKey();
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+        await api.subscribePush(sub.toJSON());
+        setPushSubscribed(true);
+        toast.success('Powiadomienia przeglądarkowe włączone.');
+      }
+    } catch (err) {
+      toast.error('Błąd: ' + err.message);
+    }
+    setPushBusy(false);
+  };
+
   const handleRefreshDiscord = async () => {
     setRefreshingDiscord(true);
     try {
@@ -296,7 +351,7 @@ export default function ProfilePage() {
   const nameDirty = !!profile && editing && (editName !== (profile.display_name || '') || editBio !== (profile.bio || ''));
   const emailDirty = !!profile && (editEmail !== (profile.email || profile.discordEmail || '') || editEmailNotifications !== !!profile.emailNotifications);
   useUnsavedForm('profile-name-bio', { dirty: nameDirty, save: handleSave, label: 'Profil (nazwa/bio)' });
-  useUnsavedForm('profile-email', { dirty: emailDirty, save: handleSaveEmail, label: 'Email i powiadomienia' });
+  useUnsavedForm('profile-email', { dirty: emailDirty, save: handleSaveEmail, label: 'Powiadomienia email' });
 
   if (loading) {
     return (
@@ -623,13 +678,22 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Email i powiadomienia */}
+      {/* Powiadomienia */}
       <div className="card p-6 mt-6">
         <div className="flex items-center gap-2 mb-1">
-          <Mail className="w-4 h-4 text-violet-500" />
-          <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Adres e-mail i powiadomienia</h3>
+          <Bell className="w-4 h-4 text-violet-500" />
+          <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Powiadomienia</h3>
         </div>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-5">
+          Otrzymuj informacje o nowych filmach w kategoriach, do których masz dostęp.
+        </p>
+
+        {/* Email */}
+        <div className="flex items-center gap-1.5 mb-2">
+          <Mail className="w-3.5 h-3.5 text-zinc-400" />
+          <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Email</h4>
+        </div>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
           {profile.discordEmail
             ? 'Adres podpowiedziany z Twojego konta Discord - możesz go zmienić.'
             : 'Twoje konto nie ma adresu e-mail z Discorda - podaj go ręcznie, jeśli chcesz otrzymywać powiadomienia lub odpowiedź na zgłoszenie RODO.'}
@@ -655,6 +719,36 @@ export default function ProfilePage() {
         <button onClick={handleSaveEmail} disabled={savingEmail} className="btn-secondary text-sm disabled:opacity-50">
           {savingEmail ? 'Zapisywanie...' : 'Zapisz'}
         </button>
+
+        <div className="border-t border-zinc-100 dark:border-zinc-800 my-5" />
+
+        {/* Przeglądarka */}
+        <div className="flex items-center gap-1.5 mb-2">
+          <Bell className="w-3.5 h-3.5 text-zinc-400" />
+          <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Przeglądarka</h4>
+        </div>
+        {!pushSupported ? (
+          <p className="text-xs text-zinc-400">Twoja przeglądarka nie obsługuje powiadomień push.</p>
+        ) : (
+          <>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+              Wyświetla powiadomienie w przeglądarce, gdy pojawi się nowy film w kategorii, do której masz dostęp. Włączenie poprosi o zgodę na powiadomienia dla tej strony.
+            </p>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={pushSubscribed}
+                onChange={handleTogglePush}
+                disabled={pushBusy || (pushDenied && !pushSubscribed)}
+                className="w-4 h-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500 disabled:opacity-50"
+              />
+              <span className="text-sm text-zinc-700 dark:text-zinc-300">Zezwalam na powiadomienia przeglądarkowe (np. o nowych filmach)</span>
+            </label>
+            {pushDenied && !pushSubscribed && (
+              <p className="text-xs text-amber-500 mt-2">Zablokowano powiadomienia dla tej strony — odblokuj je ręcznie w ustawieniach przeglądarki, aby włączyć tę funkcję.</p>
+            )}
+          </>
+        )}
       </div>
 
       {/* GDPR / RODO */}
