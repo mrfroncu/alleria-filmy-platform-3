@@ -2377,6 +2377,7 @@ app.get('/api/stats', requireAuth, (req, res) => {
     const totalUsers = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
     const totalViews = db.prepare('SELECT COUNT(*) AS c FROM watch_logs').get().c;
     const totalTags = db.prepare('SELECT COUNT(*) AS c FROM tags').get().c;
+    const totalCategories = db.prepare('SELECT COUNT(*) AS c FROM categories').get().c;
 
     const mostWatched = db.prepare(`
       SELECT v.id, v.title, v.thumbnail, COUNT(wl.id) AS views, u.display_name AS author_display_name
@@ -2414,7 +2415,7 @@ app.get('/api/stats', requireAuth, (req, res) => {
     };
 
     const isAdminUser = req.session.user.role === 'admin' || req.session.user.role === 'dev';
-    res.json({ totalVideos, totalUsers, totalViews, totalTags, mostWatched, ...(isAdminUser ? { topViewers } : {}), recentActivity, tagCloud, topAuthors, myStats });
+    res.json({ totalVideos, totalUsers, totalViews, totalTags, totalCategories, mostWatched, ...(isAdminUser ? { topViewers } : {}), recentActivity, tagCloud, topAuthors, myStats });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -2632,6 +2633,22 @@ function anonymizeUser(userId) {
   invalidateUserSessions(userId);
 }
 
+// Fire-and-forget, same philosophy as sendCategoryEmailNotifications — a bad send should
+// never block the user's request from going through.
+async function notifyDevsOfGdprRequest(type, requestingUser) {
+  const devs = db.prepare(`SELECT email, discord_email FROM users WHERE role = 'dev'`).all();
+  if (devs.length === 0) return;
+  const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
+  const typeLabel = type === 'export' ? 'eksportu danych' : 'usunięcia konta';
+  const who = `${requestingUser.display_name || requestingUser.username} (@${requestingUser.username})`;
+  const html = `<p>Użytkownik <strong>${who}</strong> złożył zgłoszenie ${typeLabel}.</p><p><a href="${baseUrl}/manage?tab=gdpr">Przejdź do zgłoszeń RODO</a></p>`;
+  for (const d of devs) {
+    const to = d.email || d.discord_email;
+    if (!to) continue;
+    await sendEmail({ to, subject: `Nowe zgłoszenie RODO: ${typeLabel}`, html });
+  }
+}
+
 app.post('/api/profile/gdpr/export', requireAuth, (req, res) => {
   if (!gdprEnabled()) return res.status(403).json({ error: 'Funkcja RODO nie jest włączona.' });
   const userId = req.session.user.id;
@@ -2644,6 +2661,7 @@ app.post('/api/profile/gdpr/export', requireAuth, (req, res) => {
     fs.writeFileSync(path.join(gdprDir, filename), JSON.stringify(buildUserDataExport(userId), null, 2));
     db.prepare('UPDATE gdpr_requests SET export_file = ? WHERE id = ?').run(filename, requestId);
     audit(userId, 'gdpr_request', 'user', userId, 'export');
+    notifyDevsOfGdprRequest('export', req.session.user).catch(e => console.error('[EMAIL] GDPR notify error:', e.message));
     res.json(db.prepare('SELECT * FROM gdpr_requests WHERE id = ?').get(requestId));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2656,6 +2674,7 @@ app.post('/api/profile/gdpr/deletion', requireAuth, (req, res) => {
   try {
     const info = db.prepare("INSERT INTO gdpr_requests (user_id, type, due_at) VALUES (?, 'deletion', datetime('now', '+30 days'))").run(userId);
     audit(userId, 'gdpr_request', 'user', userId, 'deletion');
+    notifyDevsOfGdprRequest('deletion', req.session.user).catch(e => console.error('[EMAIL] GDPR notify error:', e.message));
     res.json(db.prepare('SELECT * FROM gdpr_requests WHERE id = ?').get(info.lastInsertRowid));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3091,6 +3110,11 @@ app.post('/api/debug/settings/test-email', requireDev, async (req, res) => {
 
 // ============ GDPR / RODO (admin review) ============
 const gdprUpload = multer({ dest: gdprDir, limits: { fileSize: 20 * 1024 * 1024 } });
+
+app.get('/api/debug/gdpr/pending-count', requireDev, (req, res) => {
+  const { count } = db.prepare(`SELECT COUNT(*) AS count FROM gdpr_requests WHERE status = 'pending'`).get();
+  res.json({ count });
+});
 
 app.get('/api/debug/gdpr/requests', requireDev, (req, res) => {
   const rows = db.prepare(`

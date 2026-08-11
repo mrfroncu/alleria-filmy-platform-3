@@ -75,7 +75,7 @@ export default function StatsPage() {
               {stats.totalVideos}
             </p>
             <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-3">filmów w bazie społeczności</p>
-            <div className="grid grid-cols-3 gap-4 mt-8 pt-6 border-t border-zinc-100 dark:border-zinc-800">
+            <div className="grid grid-cols-4 gap-4 mt-8 pt-6 border-t border-zinc-100 dark:border-zinc-800">
               <div>
                 <p className="text-xl font-bold text-zinc-900 dark:text-white font-display">{stats.totalViews}</p>
                 <p className="text-[10px] text-zinc-500 font-medium mt-0.5">wyświetleń</p>
@@ -83,6 +83,10 @@ export default function StatsPage() {
               <div>
                 <p className="text-xl font-bold text-zinc-900 dark:text-white font-display">{stats.totalUsers}</p>
                 <p className="text-[10px] text-zinc-500 font-medium mt-0.5">użytkowników</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-zinc-900 dark:text-white font-display">{stats.totalCategories}</p>
+                <p className="text-[10px] text-zinc-500 font-medium mt-0.5">kategorii</p>
               </div>
               <div>
                 <p className="text-xl font-bold text-zinc-900 dark:text-white font-display">{stats.totalTags}</p>

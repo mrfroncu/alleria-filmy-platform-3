@@ -197,6 +197,7 @@ export const api = {
   cancelGdprRequest: (id) => request(`/profile/gdpr/requests/${id}`, { method: 'DELETE' }),
   downloadGdprExport: (id) => request(`/profile/gdpr/export/${id}/download`),
   adminGetGdprRequests: () => request('/debug/gdpr/requests'),
+  adminGetGdprPendingCount: () => request('/debug/gdpr/pending-count'),
   adminDownloadGdprFile: (id) => request(`/debug/gdpr/requests/${id}/file`),
   adminReplaceGdprFile: (id, file) => {
     const formData = new FormData();

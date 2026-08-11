@@ -10,7 +10,13 @@ import { useToast } from '../contexts/ToastContext';
 import { useUnsavedForm, useUnsavedGuard } from '../contexts/UnsavedChangesContext';
 import { renderMarkdown } from '../utils/markdown';
 
-const MANAGE_TAB_IDS = ['categories', 'users', 'gdpr', 'tos', 'settings'];
+const MANAGE_TAB_IDS = ['categories', 'ranks', 'users', 'gdpr', 'tos', 'settings'];
+const SETTINGS_SUBTABS = [
+  ['display', 'Wygląd i treść', LayoutGrid],
+  ['security', 'Bezpieczeństwo i prywatność', ShieldCheck],
+  ['email', 'Powiadomienia email', Mail],
+  ['login', 'Logowanie', LogIn],
+];
 
 // Standard on/off slider switch — used for the boolean settings toggles in the Ustawienia tab.
 function ToggleSwitch({ checked, onChange, disabled, label }) {
@@ -44,6 +50,7 @@ export default function ManagePage() {
   const toast = useToast();
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState(MANAGE_TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'categories');
+  const [settingsSubTab, setSettingsSubTab] = useState(["display","security","email","login"].includes(searchParams.get('subtab')) ? searchParams.get('subtab') : 'display');
 
   // Category state
   const [cats, setCats] = useState([]);
@@ -253,6 +260,14 @@ export default function ManagePage() {
   };
   useEffect(() => { if (tab === 'gdpr') loadGdprAdmin(); }, [tab]);
 
+  // Pending-count badge on the RODO tab button — needs to be known before the tab is ever opened.
+  const [gdprPendingCount, setGdprPendingCount] = useState(0);
+  const loadGdprPendingCount = () => api.adminGetGdprPendingCount().then(r => setGdprPendingCount(r.count || 0)).catch(() => {});
+  useEffect(() => {
+    if (!(settings?.gdpr_region && settings.gdpr_region !== 'off')) { setGdprPendingCount(0); return; }
+    loadGdprPendingCount();
+  }, [settings?.gdpr_region]);
+
   const handleGdprDownloadFile = async (r) => {
     try {
       const data = await api.adminDownloadGdprFile(r.id);
@@ -300,6 +315,7 @@ export default function ManagePage() {
       await api.adminApproveGdpr(id);
       setStatus({ type: 'success', msg: 'Zgłoszenie zatwierdzone.' });
       loadGdprAdmin();
+      loadGdprPendingCount();
     } catch (err) {
       setStatus({ type: 'error', msg: 'Błąd: ' + err.message });
     }
@@ -311,6 +327,7 @@ export default function ManagePage() {
     try {
       await api.adminRejectGdpr(id, rejectReason);
       setStatus({ type: 'success', msg: 'Zgłoszenie odrzucone.' });
+      loadGdprPendingCount();
       setRejectingId(null);
       setRejectReason('');
       loadGdprAdmin();
@@ -724,33 +741,14 @@ export default function ManagePage() {
     <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
       <div className="mb-8">
         {!config.showTopBar && <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">Zarządzanie</h1>}
-        <p className="text-zinc-500 dark:text-zinc-400">Zarządzaj kategoriami, uprawnieniami i użytkownikami.</p>
-      </div>
-
-      {/* Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <div className="card p-5 text-center">
-          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{cats.length}</p>
-          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Kategorii</p>
-        </div>
-        <div className="card p-5 text-center">
-          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{users.length}</p>
-          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Użytkowników</p>
-        </div>
-        <div className="card p-5 text-center">
-          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{ranks.length}</p>
-          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Rang</p>
-        </div>
-        <div className="card p-5 text-center">
-          <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{cats.filter(c => (c.access_mode || '').includes('custom')).length}</p>
-          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Niestandardowy dostęp</p>
-        </div>
+        <p className="text-zinc-500 dark:text-zinc-400">Zarządzaj kategoriami, rangami, użytkownikami oraz ustawieniami platformy.</p>
       </div>
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 mb-6 border-b border-zinc-200 dark:border-zinc-800">
         {[
           ['categories', 'Kategorie', FolderOpen],
+          ['ranks', 'Rangi', Shield],
           ['users', 'Użytkownicy', Users],
           ...(settings?.gdpr_region && settings.gdpr_region !== 'off' ? [['gdpr', 'RODO', Lock]] : []),
           ['tos', 'Regulamin', FileText],
@@ -764,6 +762,11 @@ export default function ManagePage() {
             }`}>
             <Icon className="w-4 h-4" />
             {label}
+            {key === 'gdpr' && gdprPendingCount > 0 && (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] font-bold">
+                {gdprPendingCount > 99 ? '99+' : gdprPendingCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -966,8 +969,12 @@ export default function ManagePage() {
               </div>
             )}
           </div>
+        </>
+      )}
 
-          {/* Rank management */}
+      {/* === RANKS TAB === */}
+      {tab === 'ranks' && (
+        <div className="animate-fade-in">
           <div className="card p-8 mb-8">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center">
@@ -1005,7 +1012,7 @@ export default function ManagePage() {
               </div>
             )}
           </div>
-        </>
+        </div>
       )}
 
       {/* === USERS TAB === */}
@@ -1256,20 +1263,25 @@ export default function ManagePage() {
             )}
           </div>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-            Treść po lewej, podgląd po prawej. Zapisanie ustawia nową datę aktualizacji - każde konto, które zaakceptowało regulamin wcześniej, będzie musiało zaakceptować go ponownie.
-            Ściągawka ze składnią formatowania znajduje się na dole tej strony.
+            Zapisanie ustawia nową datę aktualizacji - każde konto, które zaakceptowało regulamin wcześniej, będzie musiało zaakceptować go ponownie.
           </p>
           {tosLoading ? (
             <div className="h-96 skeleton rounded-2xl" />
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              <textarea
-                value={tosContent}
-                onChange={e => setTosContent(e.target.value)}
-                className="input-field font-mono text-xs resize-y h-[32rem]"
-              />
-              <div className="border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 h-[32rem] overflow-y-auto text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed bg-zinc-50 dark:bg-zinc-950">
-                {renderMarkdown(tosContent)}
+              <div>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mb-2 font-display">Treść (Markdown)</p>
+                <textarea
+                  value={tosContent}
+                  onChange={e => setTosContent(e.target.value)}
+                  className="input-field font-mono text-xs resize-y h-[32rem]"
+                />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mb-2 font-display">Podgląd</p>
+                <div className="border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 h-[32rem] overflow-y-auto text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed bg-zinc-50 dark:bg-zinc-950">
+                  {renderMarkdown(tosContent)}
+                </div>
               </div>
             </div>
           )}
@@ -1280,8 +1292,7 @@ export default function ManagePage() {
 
         {/* Markdown cheat sheet */}
         <div className="card p-6 mt-4">
-          <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-1">Ściągawka formatowania (markdown)</h3>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Jak zapisać dany efekt w treści regulaminu powyżej - po lewej co wpisać, po prawej jaki to da rezultat.</p>
+          <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-4">Ściągawka formatowania (markdown)</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -1326,7 +1337,7 @@ export default function ManagePage() {
 
       {/* ============ USTAWIENIA ============ */}
       {tab === 'settings' && (
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-fade-in">
+      <div className="animate-fade-in">
         {/* .env sanity check warning */}
         {envCheck && (envCheck.deprecated?.length > 0 || envCheck.suspicious?.length > 0) && (
           <div className="card p-8 h-full flex flex-col xl:col-span-2 !border-amber-300 dark:!border-amber-500/30 bg-amber-50/50 dark:bg-amber-500/[0.06]">
@@ -1368,526 +1379,540 @@ export default function ManagePage() {
           </div>
         )}
 
+        {/* Settings sub-navigation */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          {SETTINGS_SUBTABS.map(([key, label, Icon]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setSettingsSubTab(key)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                settingsSubTab === key
+                  ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20'
+                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* ============ WYGLĄD I TREŚĆ ============ */}
-        <div className="xl:col-span-2 flex items-center gap-3 mt-2 mb-1">
-          <LayoutGrid className="w-5 h-5 text-zinc-400" />
-          <h2 className="text-sm font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Wygląd i treść</h2>
-        </div>
-
-        {/* Content length limits */}
-        <div className="card p-8 h-full flex flex-col xl:col-span-2">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <Settings className="w-6 h-6 text-violet-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Limity treści</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Maksymalna długość pól (w znakach). Egzekwowane po stronie serwera.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl">
-                <div>
-                  <label className="label-field">Nazwa wyświetlana</label>
-                  <input type="number" min="1" max="100000" value={limitForm.limit_display_name}
-                    onChange={e => setLimitForm(f => ({ ...f, limit_display_name: e.target.value }))}
-                    className="input-field !py-3 text-sm" />
-                </div>
-                <div>
-                  <label className="label-field">Bio</label>
-                  <input type="number" min="1" max="100000" value={limitForm.limit_bio}
-                    onChange={e => setLimitForm(f => ({ ...f, limit_bio: e.target.value }))}
-                    className="input-field !py-3 text-sm" />
-                </div>
-                <div>
-                  <label className="label-field">Komentarz</label>
-                  <input type="number" min="1" max="100000" value={limitForm.limit_comment}
-                    onChange={e => setLimitForm(f => ({ ...f, limit_comment: e.target.value }))}
-                    className="input-field !py-3 text-sm" />
-                </div>
+        {settingsSubTab === 'display' && (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-fade-in">
+          {/* Content length limits */}
+          <div className="card p-8 h-full flex flex-col xl:col-span-2">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <Settings className="w-6 h-6 text-violet-500" />
               </div>
-              <button onClick={saveLimits} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
-                {savingSettings ? 'Zapisywanie...' : 'Zapisz limity'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Videos per page + grid columns */}
-        <div className="card p-8 h-full flex flex-col">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <LayoutGrid className="w-6 h-6 text-emerald-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Wyświetlanie filmów</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Liczba filmów na stronę, maksymalna liczba kolumn siatki i minimalna szerokość karty filmu (px) w widoku bazy filmów. Na szerokich ekranach dokłada się kolejna kolumna zamiast ściskać istniejące karty poniżej tej szerokości, aż do limitu kolumn; na węższych ekranach nadal redukuje się jak dotychczas. Jeśli po tej zmianie liczba kolumn na Twoim ekranie nadal nie zgadza się z oczekiwaniami, zmniejsz minimalną szerokość karty.
-              </p>
-              <div className="grid grid-cols-2 gap-4 max-w-xs">
-                <div>
-                  <label className="label-field">Filmów na stronę</label>
-                  <input type="number" min="1" max="500" value={displayForm.videos_per_page}
-                    onChange={e => setDisplayForm(f => ({ ...f, videos_per_page: e.target.value }))}
-                    className="input-field !py-3 text-sm" />
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Limity treści</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Maksymalna długość pól (w znakach). Egzekwowane po stronie serwera.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl">
+                  <div>
+                    <label className="label-field">Nazwa wyświetlana</label>
+                    <input type="number" min="1" max="100000" value={limitForm.limit_display_name}
+                      onChange={e => setLimitForm(f => ({ ...f, limit_display_name: e.target.value }))}
+                      className="input-field !py-3 text-sm" />
+                  </div>
+                  <div>
+                    <label className="label-field">Bio</label>
+                    <input type="number" min="1" max="100000" value={limitForm.limit_bio}
+                      onChange={e => setLimitForm(f => ({ ...f, limit_bio: e.target.value }))}
+                      className="input-field !py-3 text-sm" />
+                  </div>
+                  <div>
+                    <label className="label-field">Komentarz</label>
+                    <input type="number" min="1" max="100000" value={limitForm.limit_comment}
+                      onChange={e => setLimitForm(f => ({ ...f, limit_comment: e.target.value }))}
+                      className="input-field !py-3 text-sm" />
+                  </div>
                 </div>
-                <div>
-                  <label className="label-field">Maks. kolumn siatki</label>
-                  <input type="number" min="1" max="12" value={displayForm.grid_columns}
-                    onChange={e => setDisplayForm(f => ({ ...f, grid_columns: e.target.value }))}
-                    className="input-field !py-3 text-sm" />
-                </div>
-                <div className="col-span-2">
-                  <label className="label-field">Min. szerokość karty (px)</label>
-                  <input type="number" min="150" max="800" value={displayForm.grid_card_min_width}
-                    onChange={e => setDisplayForm(f => ({ ...f, grid_card_min_width: e.target.value }))}
-                    className="input-field !py-3 text-sm" />
-                </div>
-              </div>
-              <button onClick={saveDisplaySettings} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
-                {savingSettings ? 'Zapisywanie...' : 'Zapisz'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Top bar visibility */}
-        <div className="card p-8 h-full flex flex-col">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-pink-50 dark:bg-pink-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <PanelTop className="w-6 h-6 text-pink-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Górny pasek</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Gdy włączony: tytuł strony, wyszukiwarka i profil użytkownika w górnym pasku. Gdy wyłączony: profil wraca do lewego dolnego rogu, a każda strona pokazuje własny tytuł.
-              </p>
-              <ToggleSwitch
-                checked={!!settings?.show_top_bar}
-                onChange={toggleTopBar}
-                disabled={!settings || savingSettings}
-                label={settings == null ? 'Ładowanie...' : (settings.show_top_bar ? 'Górny pasek: WŁĄCZONY' : 'Górny pasek: WYŁĄCZONY')}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Custom YouTube player overlay */}
-        <div className="card p-8 h-full flex flex-col">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-red-50 dark:bg-red-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <Play className="w-6 h-6 text-red-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Odtwarzacz YouTube</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Gdy włączony: filmy z YouTube odtwarzają się w naszej nakładce sterującej (spójny wygląd z resztą platformy) zamiast domyślnych kontrolek YouTube. Sterowanie jakością nie jest dostępne - YouTube nie pozwala na to embedom od kilku lat, więc ten przycisk celowo nie istnieje w nakładce. Gdy wyłączony: zwykły embed YouTube, tak jak dotychczas.
-              </p>
-              <ToggleSwitch
-                checked={!!settings?.youtube_custom_player}
-                onChange={toggleYoutubePlayer}
-                disabled={!settings || savingSettings}
-                label={settings == null ? 'Ładowanie...' : (settings.youtube_custom_player ? 'Własna nakładka: WŁĄCZONA' : 'Własna nakładka: WYŁĄCZONA')}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Logs per page */}
-        <div className="card p-8 h-full flex flex-col">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <FileText className="w-6 h-6 text-amber-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Logi</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Liczba wpisów na stronę w logach oglądania, logowania i watch party.
-              </p>
-              <div className="max-w-[140px]">
-                <label className="label-field">Logów na stronę</label>
-                <input type="number" min="1" max="500" value={logsForm.logs_per_page}
-                  onChange={e => setLogsForm(f => ({ ...f, logs_per_page: e.target.value }))}
-                  className="input-field !py-3 text-sm" />
-              </div>
-              <button onClick={saveLogsSettings} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
-                {savingSettings ? 'Zapisywanie...' : 'Zapisz'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* ============ BEZPIECZEŃSTWO I PRYWATNOŚĆ ============ */}
-        <div className="xl:col-span-2 flex items-center gap-3 mt-4 mb-1">
-          <ShieldCheck className="w-5 h-5 text-zinc-400" />
-          <h2 className="text-sm font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Bezpieczeństwo i prywatność</h2>
-        </div>
-
-        {/* Webhook domain restriction */}
-        <div className="card p-8 h-full flex flex-col">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-6 h-6 text-blue-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Ograniczenie domen webhooków</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Gdy włączone, serwer wysyła powiadomienia tylko do domen Discord
-                ({settings?.webhook_allowed_hosts?.join(', ') || 'discord.com, discordapp.com'}).
-                Chroni przed SSRF.
-              </p>
-              <ToggleSwitch
-                checked={!!settings?.webhook_domain_restriction}
-                onChange={toggleWebhookRestriction}
-                disabled={!settings || savingSettings}
-                label={settings == null ? 'Ładowanie...' : (settings.webhook_domain_restriction ? 'Ograniczenie domen: WŁĄCZONE' : 'Ograniczenie domen: WYŁĄCZONE')}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* GDPR / RODO region */}
-        <div className="card p-8 h-full flex flex-col">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-6 h-6 text-violet-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Region RODO / LGPD</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Włącza sekcję "Twoje dane" w profilu (eksport danych, usunięcie konta) oraz zakładkę RODO w tym panelu.
-              </p>
-              <div className="flex rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 w-full max-w-xs">
-                {[['off', 'Wyłączone'], ['eu', 'UE'], ['brazil', 'Brazylia']].map(([val, label]) => (
-                  <button
-                    key={val}
-                    type="button"
-                    onClick={() => setGdprRegion(val)}
-                    disabled={!settings || savingSettings}
-                    className={`flex-1 px-3 py-2.5 text-xs font-bold transition-colors disabled:opacity-50 ${
-                      settings?.gdpr_region === val
-                        ? 'bg-violet-500 text-white'
-                        : 'bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Iframe embedding */}
-        <div className="card p-8 h-full flex flex-col xl:col-span-2">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <Frame className="w-6 h-6 text-blue-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Osadzanie w iframe</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Lista domen platformy - zabezpieczenie przed dostępem do playera z innych domen. (CSP <code className="font-mono text-xs">frame-ancestors</code>).
-              </p>
-              <ToggleSwitch
-                checked={!!settings?.iframe_embed_enabled}
-                onChange={toggleIframeEmbed}
-                disabled={!settings || savingSettings}
-                label={settings == null ? 'Ładowanie...' : (settings.iframe_embed_enabled ? 'Osadzanie: WŁĄCZONE' : 'Osadzanie: WYŁĄCZONE')}
-              />
-
-              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-5 mb-2 font-display">Dozwolone domeny</p>
-              <div className="flex gap-2 max-w-md">
-                <input
-                  type="text"
-                  value={originInput}
-                  onChange={e => setOriginInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addOrigin(); } }}
-                  placeholder="https://alleria.pl"
-                  className="input-field !py-2.5 text-sm font-mono flex-1"
-                />
-                <button type="button" onClick={addOrigin} className="btn-ghost-primary shrink-0">Dodaj</button>
-              </div>
-              {originsForm.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-3">
-                  {originsForm.map(origin => (
-                    <span key={origin} className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-xs font-mono">
-                      {origin}
-                      <button type="button" onClick={() => removeOrigin(origin)} className="p-0.5 rounded hover:bg-red-500/10 hover:text-red-500 transition-colors" title="Usuń">
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              <button onClick={saveOrigins} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
-                {savingSettings ? 'Zapisywanie...' : 'Zapisz domeny'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* ============ POWIADOMIENIA EMAIL ============ */}
-        <div className="xl:col-span-2 flex items-center gap-3 mt-4 mb-1">
-          <Mail className="w-5 h-5 text-zinc-400" />
-          <h2 className="text-sm font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Powiadomienia email</h2>
-        </div>
-
-        {/* SMTP / Email */}
-        <div className="card p-8 h-full flex flex-col xl:col-span-2">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <Mail className="w-6 h-6 text-blue-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">SMTP (wysyłka e-mail)</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Konfiguracja serwera SMTP używanego do powiadomień email o nowych filmach oraz eksportu danych RODO.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="label-field">Host</label>
-                  <input type="text" value={smtpForm.host} onChange={e => setSmtpForm(f => ({ ...f, host: e.target.value }))} className="input-field !py-3 text-sm font-mono" placeholder="smtp.example.com" />
-                </div>
-                <div>
-                  <label className="label-field">Port</label>
-                  <input type="text" value={smtpForm.port} onChange={e => setSmtpForm(f => ({ ...f, port: e.target.value }))} className="input-field !py-3 text-sm font-mono" placeholder="587" />
-                </div>
-                <div>
-                  <label className="label-field">Użytkownik</label>
-                  <input type="text" value={smtpForm.user} onChange={e => setSmtpForm(f => ({ ...f, user: e.target.value }))} className="input-field !py-3 text-sm font-mono" />
-                </div>
-                <div>
-                  <label className="label-field">Hasło</label>
-                  <input type="password" value={smtpForm.password} onChange={e => setSmtpForm(f => ({ ...f, password: e.target.value }))} className="input-field !py-3 text-sm font-mono" />
-                </div>
-                <div>
-                  <label className="label-field">Nadawca (From)</label>
-                  <input type="text" value={smtpForm.from} onChange={e => setSmtpForm(f => ({ ...f, from: e.target.value }))} className="input-field !py-3 text-sm font-mono" placeholder="Alleria Filmy <no-reply@alleria.pl>" />
-                </div>
-                <div className="flex items-end">
-                  <ToggleSwitch
-                    checked={smtpForm.secure}
-                    onChange={() => setSmtpForm(f => ({ ...f, secure: !f.secure }))}
-                    label={smtpForm.secure ? 'SSL/TLS: WŁĄCZONE' : 'SSL/TLS: WYŁĄCZONE'}
-                  />
-                </div>
-              </div>
-              <button onClick={saveSmtpSettings} disabled={savingSettings} className="btn-primary text-sm mb-4 disabled:opacity-50">
-                {savingSettings ? 'Zapisywanie...' : 'Zapisz SMTP'}
-              </button>
-              <div className="flex items-center gap-2 pt-4 border-t border-zinc-100 dark:border-zinc-800">
-                <input
-                  type="email"
-                  value={testEmailTo}
-                  onChange={e => setTestEmailTo(e.target.value)}
-                  placeholder="adres@testowy.pl (puste = Twój zapisany e-mail)"
-                  className="input-field !py-2.5 text-sm flex-1"
-                />
-                <button onClick={sendTestEmail} disabled={testingEmail} className="btn-secondary text-sm shrink-0 disabled:opacity-50">
-                  {testingEmail ? 'Wysyłanie...' : 'Wyślij testowy e-mail'}
+                <button onClick={saveLimits} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
+                  {savingSettings ? 'Zapisywanie...' : 'Zapisz limity'}
                 </button>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* ============ LOGOWANIE ============ */}
-        <div className="xl:col-span-2 flex items-center gap-3 mt-4 mb-1">
-          <LogIn className="w-5 h-5 text-zinc-400" />
-          <h2 className="text-sm font-bold text-zinc-500 uppercase tracking-[0.2em] font-display">Logowanie</h2>
-        </div>
-
-        <div className="card p-6 xl:col-span-2 !border-blue-200 dark:!border-blue-500/20 bg-blue-50/50 dark:bg-blue-500/[0.06]">
-          <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-            <p className="text-sm text-zinc-600 dark:text-zinc-300">
-              Z poziomu panelu można zdefiniować połączenie z TeamSpeak 3/6 (host, port, dane logowania, grupy) oraz - dla Discorda - wyłącznie ID roli <strong>Member</strong> i ogólnego <strong>Redaktora</strong>. Wymaga to ustawienia odpowiedniej flagi
-              (<code className="font-mono text-xs">TS_CONFIG_SOURCE</code> / <code className="font-mono text-xs">DISCORD_ROLES_CONFIG_SOURCE</code>) na <code className="font-mono text-xs">panel</code> w <code className="font-mono text-xs">.env</code> i restartu kontenera.
-              Pozostała konfiguracja Discord (Client ID/Secret, Bot Token, Guild ID, Redirect URI, rola Developera) jest zawsze wyłącznie w <code className="font-mono text-xs">.env</code> - bez możliwości podglądu ani edycji tutaj.
-            </p>
-          </div>
-        </div>
-
-        {/* Bot nickname (shared TS3/TS6) */}
-        <div className="card p-6 xl:col-span-2">
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center shrink-0">
-              <Bot className="w-5 h-5 text-violet-500" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Nazwa bota ServerQuery</h3>
-                <span className="text-[11px] text-zinc-400 font-normal">(wspólna dla TS3 i TS6)</span>
-                <span className={sourceBadgeClass(tsLocked)}>{tsLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
+          {/* Videos per page + grid columns */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <LayoutGrid className="w-6 h-6 text-emerald-500" />
               </div>
-              {tsLocked && (
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">Sterowane przez <code className="font-mono">.env</code> (<code className="font-mono">TS_CONFIG_SOURCE=env</code>, domyślnie).</p>
-              )}
-              <div className="flex gap-2 max-w-md">
-                <input type="text" disabled={tsLocked} value={botNickname} onChange={e => setBotNickname(e.target.value)}
-                  className="input-field !py-2.5 text-sm flex-1 disabled:opacity-50" placeholder="ALLERIA VIDEOS PLATFORM" />
-                <button onClick={saveBotNickname} disabled={tsLocked || savingSettings || settings == null} className="btn-primary text-sm shrink-0 disabled:opacity-50">Zapisz</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* TeamSpeak 6 */}
-        <div className="card p-8 h-full flex flex-col">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <Headphones className="w-6 h-6 text-blue-500" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">TeamSpeak 6</h3>
-                <span className={sourceBadgeClass(tsLocked)}>{tsLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
-              </div>
-              {tsLocked && (
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">TS_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2"><label className="label-field">Host</label><input type="text" disabled={tsLocked} value={ts6Form.host} onChange={e => setTs6Form(f => ({ ...f, host: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                <div><label className="label-field">Port</label><input type="text" disabled={tsLocked} value={ts6Form.port} onChange={e => setTs6Form(f => ({ ...f, port: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                <div><label className="label-field">Server ID</label><input type="text" disabled={tsLocked} value={ts6Form.server_id} onChange={e => setTs6Form(f => ({ ...f, server_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                <div><label className="label-field">Użytkownik</label><input type="text" disabled={tsLocked} value={ts6Form.username} onChange={e => setTs6Form(f => ({ ...f, username: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                <div><label className="label-field">Hasło</label><input type="password" disabled={tsLocked} value={ts6Form.password} onChange={e => setTs6Form(f => ({ ...f, password: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                <div className="col-span-2"><label className="label-field">Klucz API</label><input type="password" disabled={tsLocked} value={ts6Form.api_key} onChange={e => setTs6Form(f => ({ ...f, api_key: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                <div><label className="label-field">ID grupy Member</label><input type="text" disabled={tsLocked} value={ts6Form.member_group_id} onChange={e => setTs6Form(f => ({ ...f, member_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                <div><label className="label-field">ID grupy Admin</label><input type="text" disabled={tsLocked} value={ts6Form.admin_group_id} onChange={e => setTs6Form(f => ({ ...f, admin_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-              </div>
-              <button onClick={saveTs6Settings} disabled={tsLocked || savingSettings || settings == null} className="btn-primary text-sm mt-4 disabled:opacity-50">
-                {savingSettings ? 'Zapisywanie...' : 'Zapisz TeamSpeak 6'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* TeamSpeak 3 */}
-        <div className="card p-8 h-full flex flex-col">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <Radio className="w-6 h-6 text-indigo-500" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">TeamSpeak 3</h3>
-                <span className={sourceBadgeClass(tsLocked)}>{tsLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
-              </div>
-              {tsLocked && (
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">TS_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2"><label className="label-field">Host</label><input type="text" disabled={tsLocked} value={ts3Form.host} onChange={e => setTs3Form(f => ({ ...f, host: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                <div><label className="label-field">Port</label><input type="text" disabled={tsLocked} value={ts3Form.port} onChange={e => setTs3Form(f => ({ ...f, port: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                <div><label className="label-field">Server ID</label><input type="text" disabled={tsLocked} value={ts3Form.server_id} onChange={e => setTs3Form(f => ({ ...f, server_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                <div><label className="label-field">Użytkownik</label><input type="text" disabled={tsLocked} value={ts3Form.username} onChange={e => setTs3Form(f => ({ ...f, username: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                <div><label className="label-field">Hasło</label><input type="password" disabled={tsLocked} value={ts3Form.password} onChange={e => setTs3Form(f => ({ ...f, password: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                <div><label className="label-field">ID grupy Member</label><input type="text" disabled={tsLocked} value={ts3Form.member_group_id} onChange={e => setTs3Form(f => ({ ...f, member_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-                <div><label className="label-field">ID grupy Admin</label><input type="text" disabled={tsLocked} value={ts3Form.admin_group_id} onChange={e => setTs3Form(f => ({ ...f, admin_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
-              </div>
-              <button onClick={saveTs3Settings} disabled={tsLocked || savingSettings || settings == null} className="btn-primary text-sm mt-4 disabled:opacity-50">
-                {savingSettings ? 'Zapisywanie...' : 'Zapisz TeamSpeak 3'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* TS3 login code delivery */}
-        <div className="card p-8 h-full flex flex-col">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-6 h-6 text-violet-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Wysyłka kodu logowania (TS3)</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                Jak bot ServerQuery dostarcza 6-znakowy kod logowania na TeamSpeak 3.
-              </p>
-              <div className="flex rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 w-full max-w-xs">
-                {[['pm', 'Wiadomość'], ['poke', 'Poke'], ['both', 'Oba']].map(([val, label]) => (
-                  <button
-                    key={val}
-                    type="button"
-                    onClick={() => setTs3Delivery(val)}
-                    disabled={!settings || savingSettings}
-                    className={`flex-1 px-3 py-2.5 text-xs font-bold transition-colors disabled:opacity-50 ${
-                      settings?.ts3_code_delivery === val
-                        ? 'bg-violet-500 text-white'
-                        : 'bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Discord — member/redaktor role IDs + category role overview */}
-        <div className="card p-8 h-full flex flex-col xl:col-span-2">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center shrink-0">
-              <MessageSquare className="w-6 h-6 text-indigo-500" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Discord - role Member / Redaktor</h3>
-                <span className={sourceBadgeClass(discordRolesLocked)}>{discordRolesLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
-              </div>
-              {discordRolesLocked && (
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">DISCORD_ROLES_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
-                <div>
-                  <label className="label-field">ID roli Member</label>
-                  <input type="text" disabled={discordRolesLocked} value={discordRolesForm.member_role_id}
-                    onChange={e => setDiscordRolesForm(f => ({ ...f, member_role_id: e.target.value }))}
-                    className="input-field !py-2.5 text-sm font-mono disabled:opacity-50" placeholder="123456789012345678" />
-                </div>
-                <div>
-                  <label className="label-field">ID roli Redaktor (Admin)</label>
-                  <input type="text" disabled={discordRolesLocked} value={discordRolesForm.admin_role_id}
-                    onChange={e => setDiscordRolesForm(f => ({ ...f, admin_role_id: e.target.value }))}
-                    className="input-field !py-2.5 text-sm font-mono disabled:opacity-50" placeholder="123456789012345679" />
-                </div>
-              </div>
-              <button onClick={saveDiscordRoles} disabled={discordRolesLocked || savingSettings || settings == null} className="btn-primary text-sm mt-4 disabled:opacity-50">
-                {savingSettings ? 'Zapisywanie...' : 'Zapisz role Discord'}
-              </button>
-
-              {categoryRoleOverview.length > 0 && (
-                <div className="mt-6 pt-6 border-t border-zinc-100 dark:border-zinc-800">
-                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mb-3 font-display">
-                    Kategorie z niestandardowymi rolami/użytkownikami Discord ({categoryRoleOverview.length})
-                  </p>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {categoryRoleOverview.map(c => (
-                      <div key={c.id} className="flex flex-wrap items-center gap-1.5 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
-                        <span className="text-sm font-bold text-zinc-900 dark:text-white mr-1">{c.name}</span>
-                        {c.discord_roles.map((r, i) => (
-                          <span key={`r-${i}`} className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${r.access_type === 'editor' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300'}`}
-                            title={r.role_name ? undefined : 'Nie udało się pobrać nazwy roli z Discorda - pokazano surowe ID'}>
-                            {r.access_type === 'editor' ? '✏️' : '👁️'} {r.role_name || <span className="font-mono">{r.role_id}</span>}
-                          </span>
-                        ))}
-                        {c.custom_users.map((u, i) => (
-                          <span key={`u-${i}`} className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300">
-                            {u.access_type === 'editor' ? '✏️' : '👁️'} {u.display_name}
-                          </span>
-                        ))}
-                      </div>
-                    ))}
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Wyświetlanie filmów</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Liczba filmów na stronę, maksymalna liczba kolumn siatki i minimalna szerokość karty filmu (px) w widoku bazy filmów. Na szerokich ekranach dokłada się kolejna kolumna zamiast ściskać istniejące karty poniżej tej szerokości, aż do limitu kolumn; na węższych ekranach nadal redukuje się jak dotychczas. Jeśli po tej zmianie liczba kolumn na Twoim ekranie nadal nie zgadza się z oczekiwaniami, zmniejsz minimalną szerokość karty.
+                </p>
+                <div className="grid grid-cols-2 gap-4 max-w-xs">
+                  <div>
+                    <label className="label-field">Filmów na stronę</label>
+                    <input type="number" min="1" max="500" value={displayForm.videos_per_page}
+                      onChange={e => setDisplayForm(f => ({ ...f, videos_per_page: e.target.value }))}
+                      className="input-field !py-3 text-sm" />
+                  </div>
+                  <div>
+                    <label className="label-field">Maks. kolumn siatki</label>
+                    <input type="number" min="1" max="12" value={displayForm.grid_columns}
+                      onChange={e => setDisplayForm(f => ({ ...f, grid_columns: e.target.value }))}
+                      className="input-field !py-3 text-sm" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="label-field">Min. szerokość karty (px)</label>
+                    <input type="number" min="150" max="800" value={displayForm.grid_card_min_width}
+                      onChange={e => setDisplayForm(f => ({ ...f, grid_card_min_width: e.target.value }))}
+                      className="input-field !py-3 text-sm" />
                   </div>
                 </div>
-              )}
+                <button onClick={saveDisplaySettings} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
+                  {savingSettings ? 'Zapisywanie...' : 'Zapisz'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      )}
+          {/* Top bar visibility */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-pink-50 dark:bg-pink-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <PanelTop className="w-6 h-6 text-pink-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Górny pasek</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Gdy włączony: tytuł strony, wyszukiwarka i profil użytkownika w górnym pasku. Gdy wyłączony: profil wraca do lewego dolnego rogu, a każda strona pokazuje własny tytuł.
+                </p>
+                <ToggleSwitch
+                  checked={!!settings?.show_top_bar}
+                  onChange={toggleTopBar}
+                  disabled={!settings || savingSettings}
+                  label={settings == null ? 'Ładowanie...' : (settings.show_top_bar ? 'Górny pasek: WŁĄCZONY' : 'Górny pasek: WYŁĄCZONY')}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Custom YouTube player overlay */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-red-50 dark:bg-red-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <Play className="w-6 h-6 text-red-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Odtwarzacz YouTube</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Gdy włączony: filmy z YouTube odtwarzają się w naszej nakładce sterującej (spójny wygląd z resztą platformy) zamiast domyślnych kontrolek YouTube. Sterowanie jakością nie jest dostępne - YouTube nie pozwala na to embedom od kilku lat, więc ten przycisk celowo nie istnieje w nakładce. Gdy wyłączony: zwykły embed YouTube, tak jak dotychczas.
+                </p>
+                <ToggleSwitch
+                  checked={!!settings?.youtube_custom_player}
+                  onChange={toggleYoutubePlayer}
+                  disabled={!settings || savingSettings}
+                  label={settings == null ? 'Ładowanie...' : (settings.youtube_custom_player ? 'Własna nakładka: WŁĄCZONA' : 'Własna nakładka: WYŁĄCZONA')}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Logs per page */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <FileText className="w-6 h-6 text-amber-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Logi</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Liczba wpisów na stronę w logach oglądania, logowania i watch party.
+                </p>
+                <div className="max-w-[140px]">
+                  <label className="label-field">Logów na stronę</label>
+                  <input type="number" min="1" max="500" value={logsForm.logs_per_page}
+                    onChange={e => setLogsForm(f => ({ ...f, logs_per_page: e.target.value }))}
+                    className="input-field !py-3 text-sm" />
+                </div>
+                <button onClick={saveLogsSettings} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
+                  {savingSettings ? 'Zapisywanie...' : 'Zapisz'}
+                </button>
+              </div>
+            </div>
+          </div>
+          </div>
+        )}
+
+        {/* ============ BEZPIECZEŃSTWO I PRYWATNOŚĆ ============ */}
+        {settingsSubTab === 'security' && (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-fade-in">
+          {/* Webhook domain restriction */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-6 h-6 text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Ograniczenie domen webhooków</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Gdy włączone, serwer wysyła powiadomienia tylko do domen Discord
+                  ({settings?.webhook_allowed_hosts?.join(', ') || 'discord.com, discordapp.com'}).
+                  Chroni przed SSRF.
+                </p>
+                <ToggleSwitch
+                  checked={!!settings?.webhook_domain_restriction}
+                  onChange={toggleWebhookRestriction}
+                  disabled={!settings || savingSettings}
+                  label={settings == null ? 'Ładowanie...' : (settings.webhook_domain_restriction ? 'Ograniczenie domen: WŁĄCZONE' : 'Ograniczenie domen: WYŁĄCZONE')}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* GDPR / RODO region */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-6 h-6 text-violet-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Region RODO / LGPD</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Włącza sekcję "Twoje dane" w profilu (eksport danych, usunięcie konta) oraz zakładkę RODO w tym panelu.
+                </p>
+                <div className="flex rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 w-full max-w-xs">
+                  {[['off', 'Wyłączone'], ['eu', 'UE'], ['brazil', 'Brazylia']].map(([val, label]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setGdprRegion(val)}
+                      disabled={!settings || savingSettings}
+                      className={`flex-1 px-3 py-2.5 text-xs font-bold transition-colors disabled:opacity-50 ${
+                        settings?.gdpr_region === val
+                          ? 'bg-violet-500 text-white'
+                          : 'bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Iframe embedding */}
+          <div className="card p-8 h-full flex flex-col xl:col-span-2">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <Frame className="w-6 h-6 text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Osadzanie w iframe</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Lista domen platformy - zabezpieczenie przed dostępem do playera z innych domen. (CSP <code className="font-mono text-xs">frame-ancestors</code>).
+                </p>
+                <ToggleSwitch
+                  checked={!!settings?.iframe_embed_enabled}
+                  onChange={toggleIframeEmbed}
+                  disabled={!settings || savingSettings}
+                  label={settings == null ? 'Ładowanie...' : (settings.iframe_embed_enabled ? 'Osadzanie: WŁĄCZONE' : 'Osadzanie: WYŁĄCZONE')}
+                />
+
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-5 mb-2 font-display">Dozwolone domeny</p>
+                <div className="flex gap-2 max-w-md">
+                  <input
+                    type="text"
+                    value={originInput}
+                    onChange={e => setOriginInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addOrigin(); } }}
+                    placeholder="https://alleria.pl"
+                    className="input-field !py-2.5 text-sm font-mono flex-1"
+                  />
+                  <button type="button" onClick={addOrigin} className="btn-ghost-primary shrink-0">Dodaj</button>
+                </div>
+                {originsForm.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-3">
+                    {originsForm.map(origin => (
+                      <span key={origin} className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-xs font-mono">
+                        {origin}
+                        <button type="button" onClick={() => removeOrigin(origin)} className="p-0.5 rounded hover:bg-red-500/10 hover:text-red-500 transition-colors" title="Usuń">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <button onClick={saveOrigins} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
+                  {savingSettings ? 'Zapisywanie...' : 'Zapisz domeny'}
+                </button>
+              </div>
+            </div>
+          </div>
+          </div>
+        )}
+
+        {/* ============ POWIADOMIENIA EMAIL ============ */}
+        {settingsSubTab === 'email' && (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-fade-in">
+          {/* SMTP / Email */}
+          <div className="card p-8 h-full flex flex-col xl:col-span-2">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <Mail className="w-6 h-6 text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">SMTP (wysyłka e-mail)</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Konfiguracja serwera SMTP używanego do powiadomień email o nowych filmach oraz eksportu danych RODO.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="label-field">Host</label>
+                    <input type="text" value={smtpForm.host} onChange={e => setSmtpForm(f => ({ ...f, host: e.target.value }))} className="input-field !py-3 text-sm font-mono" placeholder="smtp.example.com" />
+                  </div>
+                  <div>
+                    <label className="label-field">Port</label>
+                    <input type="text" value={smtpForm.port} onChange={e => setSmtpForm(f => ({ ...f, port: e.target.value }))} className="input-field !py-3 text-sm font-mono" placeholder="587" />
+                  </div>
+                  <div>
+                    <label className="label-field">Użytkownik</label>
+                    <input type="text" value={smtpForm.user} onChange={e => setSmtpForm(f => ({ ...f, user: e.target.value }))} className="input-field !py-3 text-sm font-mono" />
+                  </div>
+                  <div>
+                    <label className="label-field">Hasło</label>
+                    <input type="password" value={smtpForm.password} onChange={e => setSmtpForm(f => ({ ...f, password: e.target.value }))} className="input-field !py-3 text-sm font-mono" />
+                  </div>
+                  <div>
+                    <label className="label-field">Nadawca (From)</label>
+                    <input type="text" value={smtpForm.from} onChange={e => setSmtpForm(f => ({ ...f, from: e.target.value }))} className="input-field !py-3 text-sm font-mono" placeholder="Alleria Filmy <no-reply@alleria.pl>" />
+                  </div>
+                  <div className="flex items-end">
+                    <ToggleSwitch
+                      checked={smtpForm.secure}
+                      onChange={() => setSmtpForm(f => ({ ...f, secure: !f.secure }))}
+                      label={smtpForm.secure ? 'SSL/TLS: WŁĄCZONE' : 'SSL/TLS: WYŁĄCZONE'}
+                    />
+                  </div>
+                </div>
+                <button onClick={saveSmtpSettings} disabled={savingSettings} className="btn-primary text-sm mb-4 disabled:opacity-50">
+                  {savingSettings ? 'Zapisywanie...' : 'Zapisz SMTP'}
+                </button>
+                <div className="flex items-center gap-2 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                  <input
+                    type="email"
+                    value={testEmailTo}
+                    onChange={e => setTestEmailTo(e.target.value)}
+                    placeholder="adres@testowy.pl (puste = Twój zapisany e-mail)"
+                    className="input-field !py-2.5 text-sm flex-1"
+                  />
+                  <button onClick={sendTestEmail} disabled={testingEmail} className="btn-secondary text-sm shrink-0 disabled:opacity-50">
+                    {testingEmail ? 'Wysyłanie...' : 'Wyślij testowy e-mail'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          </div>
+        )}
+
+        {/* ============ LOGOWANIE ============ */}
+        {settingsSubTab === 'login' && (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-fade-in">
+          <div className="card p-6 xl:col-span-2 !border-blue-200 dark:!border-blue-500/20 bg-blue-50/50 dark:bg-blue-500/[0.06]">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+              <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                Z poziomu panelu można zdefiniować połączenie z TeamSpeak 3/6 (host, port, dane logowania, grupy) oraz - dla Discorda - wyłącznie ID roli <strong>Member</strong> i ogólnego <strong>Redaktora</strong>. Wymaga to ustawienia odpowiedniej flagi
+                (<code className="font-mono text-xs">TS_CONFIG_SOURCE</code> / <code className="font-mono text-xs">DISCORD_ROLES_CONFIG_SOURCE</code>) na <code className="font-mono text-xs">panel</code> w <code className="font-mono text-xs">.env</code> i restartu kontenera.
+                Pozostała konfiguracja Discord (Client ID/Secret, Bot Token, Guild ID, Redirect URI, rola Developera) jest zawsze wyłącznie w <code className="font-mono text-xs">.env</code> - bez możliwości podglądu ani edycji tutaj.
+              </p>
+            </div>
+          </div>
+
+          {/* Bot nickname (shared TS3/TS6) */}
+          <div className="card p-6 xl:col-span-2">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 bg-violet-50 dark:bg-violet-500/10 rounded-xl flex items-center justify-center shrink-0">
+                <Bot className="w-5 h-5 text-violet-500" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Nazwa bota ServerQuery</h3>
+                  <span className="text-[11px] text-zinc-400 font-normal">(wspólna dla TS3 i TS6)</span>
+                  <span className={sourceBadgeClass(tsLocked)}>{tsLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
+                </div>
+                {tsLocked && (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">Sterowane przez <code className="font-mono">.env</code> (<code className="font-mono">TS_CONFIG_SOURCE=env</code>, domyślnie).</p>
+                )}
+                <div className="flex gap-2 max-w-md">
+                  <input type="text" disabled={tsLocked} value={botNickname} onChange={e => setBotNickname(e.target.value)}
+                    className="input-field !py-2.5 text-sm flex-1 disabled:opacity-50" placeholder="ALLERIA VIDEOS PLATFORM" />
+                  <button onClick={saveBotNickname} disabled={tsLocked || savingSettings || settings == null} className="btn-primary text-sm shrink-0 disabled:opacity-50">Zapisz</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* TeamSpeak 6 */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <Headphones className="w-6 h-6 text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">TeamSpeak 6</h3>
+                  <span className={sourceBadgeClass(tsLocked)}>{tsLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
+                </div>
+                {tsLocked && (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">TS_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2"><label className="label-field">Host</label><input type="text" disabled={tsLocked} value={ts6Form.host} onChange={e => setTs6Form(f => ({ ...f, host: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Port</label><input type="text" disabled={tsLocked} value={ts6Form.port} onChange={e => setTs6Form(f => ({ ...f, port: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Server ID</label><input type="text" disabled={tsLocked} value={ts6Form.server_id} onChange={e => setTs6Form(f => ({ ...f, server_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Użytkownik</label><input type="text" disabled={tsLocked} value={ts6Form.username} onChange={e => setTs6Form(f => ({ ...f, username: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Hasło</label><input type="password" disabled={tsLocked} value={ts6Form.password} onChange={e => setTs6Form(f => ({ ...f, password: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div className="col-span-2"><label className="label-field">Klucz API</label><input type="password" disabled={tsLocked} value={ts6Form.api_key} onChange={e => setTs6Form(f => ({ ...f, api_key: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">ID grupy Member</label><input type="text" disabled={tsLocked} value={ts6Form.member_group_id} onChange={e => setTs6Form(f => ({ ...f, member_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">ID grupy Admin</label><input type="text" disabled={tsLocked} value={ts6Form.admin_group_id} onChange={e => setTs6Form(f => ({ ...f, admin_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                </div>
+                <button onClick={saveTs6Settings} disabled={tsLocked || savingSettings || settings == null} className="btn-primary text-sm mt-4 disabled:opacity-50">
+                  {savingSettings ? 'Zapisywanie...' : 'Zapisz TeamSpeak 6'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* TeamSpeak 3 */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <Radio className="w-6 h-6 text-indigo-500" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">TeamSpeak 3</h3>
+                  <span className={sourceBadgeClass(tsLocked)}>{tsLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
+                </div>
+                {tsLocked && (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">TS_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2"><label className="label-field">Host</label><input type="text" disabled={tsLocked} value={ts3Form.host} onChange={e => setTs3Form(f => ({ ...f, host: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Port</label><input type="text" disabled={tsLocked} value={ts3Form.port} onChange={e => setTs3Form(f => ({ ...f, port: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Server ID</label><input type="text" disabled={tsLocked} value={ts3Form.server_id} onChange={e => setTs3Form(f => ({ ...f, server_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Użytkownik</label><input type="text" disabled={tsLocked} value={ts3Form.username} onChange={e => setTs3Form(f => ({ ...f, username: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">Hasło</label><input type="password" disabled={tsLocked} value={ts3Form.password} onChange={e => setTs3Form(f => ({ ...f, password: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">ID grupy Member</label><input type="text" disabled={tsLocked} value={ts3Form.member_group_id} onChange={e => setTs3Form(f => ({ ...f, member_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                  <div><label className="label-field">ID grupy Admin</label><input type="text" disabled={tsLocked} value={ts3Form.admin_group_id} onChange={e => setTs3Form(f => ({ ...f, admin_group_id: e.target.value }))} className="input-field !py-2.5 text-sm disabled:opacity-50" /></div>
+                </div>
+                <button onClick={saveTs3Settings} disabled={tsLocked || savingSettings || settings == null} className="btn-primary text-sm mt-4 disabled:opacity-50">
+                  {savingSettings ? 'Zapisywanie...' : 'Zapisz TeamSpeak 3'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* TS3 login code delivery */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-6 h-6 text-violet-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Wysyłka kodu logowania (TS3)</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Jak bot ServerQuery dostarcza 6-znakowy kod logowania na TeamSpeak 3.
+                </p>
+                <div className="flex rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 w-full max-w-xs">
+                  {[['pm', 'Wiadomość'], ['poke', 'Poke'], ['both', 'Oba']].map(([val, label]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setTs3Delivery(val)}
+                      disabled={!settings || savingSettings}
+                      className={`flex-1 px-3 py-2.5 text-xs font-bold transition-colors disabled:opacity-50 ${
+                        settings?.ts3_code_delivery === val
+                          ? 'bg-violet-500 text-white'
+                          : 'bg-white dark:bg-zinc-900 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Discord — member/redaktor role IDs + category role overview */}
+          <div className="card p-8 h-full flex flex-col xl:col-span-2">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <MessageSquare className="w-6 h-6 text-indigo-500" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Discord - role Member / Redaktor</h3>
+                  <span className={sourceBadgeClass(discordRolesLocked)}>{discordRolesLocked ? 'Źródło: .env' : 'Źródło: panel'}</span>
+                </div>
+                {discordRolesLocked && (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">Sterowane przez <code className="font-mono">.env</code>. Ustaw <code className="font-mono">DISCORD_ROLES_CONFIG_SOURCE=panel</code> i zrestartuj, aby edytować tutaj.</p>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
+                  <div>
+                    <label className="label-field">ID roli Member</label>
+                    <input type="text" disabled={discordRolesLocked} value={discordRolesForm.member_role_id}
+                      onChange={e => setDiscordRolesForm(f => ({ ...f, member_role_id: e.target.value }))}
+                      className="input-field !py-2.5 text-sm font-mono disabled:opacity-50" placeholder="123456789012345678" />
+                  </div>
+                  <div>
+                    <label className="label-field">ID roli Redaktor (Admin)</label>
+                    <input type="text" disabled={discordRolesLocked} value={discordRolesForm.admin_role_id}
+                      onChange={e => setDiscordRolesForm(f => ({ ...f, admin_role_id: e.target.value }))}
+                      className="input-field !py-2.5 text-sm font-mono disabled:opacity-50" placeholder="123456789012345679" />
+                  </div>
+                </div>
+                <button onClick={saveDiscordRoles} disabled={discordRolesLocked || savingSettings || settings == null} className="btn-primary text-sm mt-4 disabled:opacity-50">
+                  {savingSettings ? 'Zapisywanie...' : 'Zapisz role Discord'}
+                </button>
+
+                {categoryRoleOverview.length > 0 && (
+                  <div className="mt-6 pt-6 border-t border-zinc-100 dark:border-zinc-800">
+                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mb-3 font-display">
+                      Kategorie z niestandardowymi rolami/użytkownikami Discord ({categoryRoleOverview.length})
+                    </p>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {categoryRoleOverview.map(c => (
+                        <div key={c.id} className="flex flex-wrap items-center gap-1.5 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
+                          <span className="text-sm font-bold text-zinc-900 dark:text-white mr-1">{c.name}</span>
+                          {c.discord_roles.map((r, i) => (
+                            <span key={`r-${i}`} className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${r.access_type === 'editor' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300'}`}
+                              title={r.role_name ? undefined : 'Nie udało się pobrać nazwy roli z Discorda - pokazano surowe ID'}>
+                              {r.access_type === 'editor' ? '✏️' : '👁️'} {r.role_name || <span className="font-mono">{r.role_id}</span>}
+                            </span>
+                          ))}
+                          {c.custom_users.map((u, i) => (
+                            <span key={`u-${i}`} className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300">
+                              {u.access_type === 'editor' ? '✏️' : '👁️'} {u.display_name}
+                            </span>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          </div>
+        )}
+      </div>
+      )}
     </div>
   );
 }

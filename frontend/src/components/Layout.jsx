@@ -109,6 +109,7 @@ export default function Layout({ children }) {
   const [categories, setCategories] = useState([]);
   const [catsExpanded, setCatsExpanded] = useState(true);
   const [versions, setVersions] = useState({ panel: '', stream: '', streamStatus: '' });
+  const [gdprPendingCount, setGdprPendingCount] = useState(0);
 
   // Scroll main content to top on route change
   useEffect(() => {
@@ -130,12 +131,22 @@ export default function Layout({ children }) {
     });
   }, []);
 
+  // Poll pending GDPR request count for the sidebar badge — dev-only, and only meaningful
+  // once RODO handling is actually turned on.
+  useEffect(() => {
+    if (!isDev || config.gdprRegion === 'off') { setGdprPendingCount(0); return; }
+    const load = () => api.adminGetGdprPendingCount().then(r => setGdprPendingCount(r.count || 0)).catch(() => {});
+    load();
+    const interval = setInterval(load, 60000);
+    return () => clearInterval(interval);
+  }, [isDev, config.gdprRegion]);
+
   const isActive = (path, prefixes) => {
     if (prefixes) return prefixes.some(p => location.pathname.startsWith(p)) || location.pathname === path;
     return location.pathname === path;
   };
 
-  const NavLink = ({ to, icon: Icon, label, active, indent }) => (
+  const NavLink = ({ to, icon: Icon, label, active, indent, badge }) => (
     <Link
       to={to}
       onClick={(e) => guardedNavClick(e, to, navigate, guardNav, () => setSidebarOpen(false))}
@@ -150,7 +161,16 @@ export default function Layout({ children }) {
         {!Icon && indent && <div className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-violet-500' : 'bg-zinc-400 dark:bg-zinc-600'}`} />}
         <span className="font-semibold text-[13px] truncate">{label}</span>
       </div>
-      {active && !indent && <ChevronRight className="w-3.5 h-3.5 opacity-70" />}
+      <div className="flex items-center gap-1.5">
+        {!!badge && (
+          <span className={`min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold ${
+            active ? 'bg-white text-violet-600' : 'bg-red-500 text-white'
+          }`}>
+            {badge > 99 ? '99+' : badge}
+          </span>
+        )}
+        {active && !indent && <ChevronRight className="w-3.5 h-3.5 opacity-70" />}
+      </div>
     </Link>
   );
 
@@ -238,7 +258,7 @@ export default function Layout({ children }) {
               <nav className="space-y-0.5">
                 {isAdmin && <NavLink to="/admin" icon={Shield} label="Panel Redaktora" active={isActive('/admin')} />}
                 {isAdmin && <NavLink to="/stats" icon={BarChart3} label="Statystyki" active={isActive('/stats')} />}
-                {isDev && <NavLink to="/manage" icon={FolderOpen} label="Zarządzanie" active={isActive('/manage')} />}
+                {isDev && <NavLink to="/manage" icon={FolderOpen} label="Zarządzanie" active={isActive('/manage')} badge={gdprPendingCount} />}
                 {isDev && <NavLink to="/logs" icon={FileText} label="Logi systemowe" active={isActive('/logs')} />}
                 {isDev && <NavLink to="/debug" icon={Wrench} label="Narzędzia Developerskie" active={isActive('/debug')} />}
               </nav>
