@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, RotateCcw, Users, TrendingUp, X } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '../utils/api';
@@ -101,16 +101,70 @@ function HeatmapStrip({ label, color, values, duration }) {
   );
 }
 
-function ResetModal({ videoId, viewers, onClose, onDone }) {
+const DAY_MS = 86400000;
+
+// SQLite's own datetime('now') columns are "YYYY-MM-DD HH:MM:SS" (space, no 'T') — comparing a
+// bare "YYYY-MM-DD" string against that lexicographically still works (same separators, and a
+// shorter date-only string sorts before any same-day timestamp), which is exactly why this stays
+// plain padded digits instead of toISOString() (whose 'T' would break that comparison — the
+// backend hit this same class of bug before with datetime(...) normalization elsewhere).
+function toSqliteDate(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// Two overlapping <input type="range"> on one track (see .range-slider-thumb in index.css) —
+// dayFrom/dayTo are integer day offsets from minDate, always spanning [0, totalDays].
+function DateRangeSlider({ minDate, totalDays, dayFrom, dayTo, onChange }) {
+  const fmt = (day) => new Date(minDate.getTime() + day * DAY_MS).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const pctFrom = (dayFrom / totalDays) * 100;
+  const pctTo = (dayTo / totalDays) * 100;
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs font-semibold text-zinc-600 dark:text-zinc-300 mb-3">
+        <span>{fmt(dayFrom)}</span>
+        <span>{fmt(dayTo)}</span>
+      </div>
+      <div className="relative h-4 flex items-center">
+        <div className="absolute inset-x-0 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
+        <div className="absolute h-1.5 bg-violet-500 rounded-full" style={{ left: `${pctFrom}%`, right: `${100 - pctTo}%` }} />
+        <input
+          type="range" min={0} max={totalDays} value={dayFrom}
+          onChange={e => onChange(Math.min(Number(e.target.value), dayTo), dayTo)}
+          className="range-slider-thumb absolute inset-x-0 w-full h-4"
+        />
+        <input
+          type="range" min={0} max={totalDays} value={dayTo}
+          onChange={e => onChange(dayFrom, Math.max(Number(e.target.value), dayFrom))}
+          className="range-slider-thumb absolute inset-x-0 w-full h-4"
+        />
+      </div>
+    </div>
+  );
+}
+
+function ResetModal({ videoId, viewers, oldestActivity, onClose, onDone }) {
   const confirm = useConfirm();
   const toast = useToast();
-  const [after, setAfter] = useState('');
-  const [before, setBefore] = useState('');
+
+  // Slider spans from the earliest recorded activity (or 90 days back if there's none yet) to
+  // today — recomputed only once per modal open, not on every render.
+  const [{ minDate, totalDays }] = useState(() => {
+    const min = oldestActivity ? new Date(oldestActivity.replace(' ', 'T')) : new Date(Date.now() - 90 * DAY_MS);
+    min.setHours(0, 0, 0, 0);
+    const max = new Date();
+    max.setHours(0, 0, 0, 0);
+    return { minDate: min, totalDays: Math.max(1, Math.round((max - min) / DAY_MS)) };
+  });
+  const [dayFrom, setDayFrom] = useState(0);
+  const [dayTo, setDayTo] = useState(totalDays);
   const [userId, setUserId] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const rangeNarrowed = dayFrom > 0 || dayTo < totalDays;
+
   const handleSubmit = async () => {
-    const scoped = userId || after || before;
+    const scoped = userId || rangeNarrowed;
     const msg = scoped
       ? 'Usunąć wybrany zakres danych analitycznych? Tej operacji nie można cofnąć.'
       : 'Usunąć WSZYSTKIE dane analityczne tego filmu (cały wykres oglądalności i heatmapa)? Tej operacji nie można cofnąć.';
@@ -118,8 +172,8 @@ function ResetModal({ videoId, viewers, onClose, onDone }) {
     setBusy(true);
     try {
       const r = await api.resetVideoAnalytics(videoId, {
-        after: after || undefined,
-        before: before ? `${before} 23:59:59` : undefined,
+        after: dayFrom > 0 ? toSqliteDate(new Date(minDate.getTime() + dayFrom * DAY_MS)) : undefined,
+        before: dayTo < totalDays ? `${toSqliteDate(new Date(minDate.getTime() + dayTo * DAY_MS))} 23:59:59` : undefined,
         userId: userId || undefined,
       });
       toast.success(`Usunięto ${r.deletedEvents} zdarzeń i ${r.deletedViews} wyświetleń.`);
@@ -138,18 +192,12 @@ function ResetModal({ videoId, viewers, onClose, onDone }) {
             <button onClick={onClose} className="btn-icon-zinc"><X className="w-4 h-4" /></button>
           </div>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-5">
-            Zostaw pola puste, by usunąć wszystko, albo zawęź do okresu i/lub jednej osoby. Nie dotyka zapamiętanej pozycji "Kontynuuj oglądanie".
+            Przeciągnij suwak, by zawęzić do okresu, i/lub wybierz jedną osobę. Pełny zakres = usuwa wszystko. Nie dotyka zapamiętanej pozycji "Kontynuuj oglądanie".
           </p>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label-field">Od dnia</label>
-                <input type="date" value={after} onChange={e => setAfter(e.target.value)} className="input-field" />
-              </div>
-              <div>
-                <label className="label-field">Do dnia</label>
-                <input type="date" value={before} onChange={e => setBefore(e.target.value)} className="input-field" />
-              </div>
+          <div className="space-y-5">
+            <div>
+              <label className="label-field">Zakres dat</label>
+              <DateRangeSlider minDate={minDate} totalDays={totalDays} dayFrom={dayFrom} dayTo={dayTo} onChange={(f, t) => { setDayFrom(f); setDayTo(t); }} />
             </div>
             <div>
               <label className="label-field">Osoba</label>
@@ -175,6 +223,8 @@ function ResetModal({ videoId, viewers, onClose, onDone }) {
 
 export default function VideoAnalyticsPage() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const fromAdmin = searchParams.get('from') === 'admin';
   const [video, setVideo] = useState(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -212,8 +262,8 @@ export default function VideoAnalyticsPage() {
 
   return (
     <div className="p-6 sm:p-10 max-w-5xl mx-auto page-enter">
-      <Link to={`/video/${id}`} className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white font-medium text-sm mb-6 hover:gap-3 transition-all">
-        <ArrowLeft className="w-4 h-4" /> Wróć do filmu
+      <Link to={fromAdmin ? '/admin' : `/video/${id}`} className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white font-medium text-sm mb-6 hover:gap-3 transition-all">
+        <ArrowLeft className="w-4 h-4" /> {fromAdmin ? 'Wróć do panelu redaktora' : 'Wróć do filmu'}
       </Link>
 
       <div className="mb-6">
@@ -327,6 +377,7 @@ export default function VideoAnalyticsPage() {
         <ResetModal
           videoId={id}
           viewers={viewers}
+          oldestActivity={data?.oldestActivity}
           onClose={() => setShowReset(false)}
           onDone={() => { setShowReset(false); loadAnalytics(); }}
         />

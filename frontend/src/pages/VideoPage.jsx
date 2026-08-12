@@ -109,10 +109,21 @@ function YouTubeTrackingPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek,
             if (controlRef) controlRef.current = { seek: (pos) => player.seekTo(pos, true) };
           },
           onStateChange: ({ data }) => {
-            if (data === window.YT.PlayerState.PLAYING) { startPoll(); onPlayRef.current?.(player.getCurrentTime?.() ?? 0); }
-            else {
+            // A real seek routes through BUFFERING (YouTube re-buffers at the new position)
+            // before PLAYING fires again — stopping the poll there (as this used to) reset
+            // lastPollTime/lastCt on every seek, which erased the exact jump the seek detector
+            // needs to compare against, so no seek/rewind ever registered. Only a deliberate
+            // PAUSED/ENDED should reset that baseline; BUFFERING just rides through untouched,
+            // and PLAYING only (re)starts the poll if it isn't already running, so a
+            // BUFFERING → PLAYING bounce mid-seek never resets it either.
+            if (data === window.YT.PlayerState.PLAYING) {
+              if (!pollId) startPoll();
+              onPlayRef.current?.(player.getCurrentTime?.() ?? 0);
+            } else if (data === window.YT.PlayerState.PAUSED) {
               stopPoll();
-              if (data === window.YT.PlayerState.PAUSED) onPauseRef.current?.(player.getCurrentTime?.() ?? 0);
+              onPauseRef.current?.(player.getCurrentTime?.() ?? 0);
+            } else if (data === window.YT.PlayerState.ENDED) {
+              stopPoll();
             }
           },
         },
@@ -214,11 +225,20 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, c
           },
           onStateChange: ({ data }) => {
             if (destroyed) return;
+            // See the sibling YouTubeTrackingPlayer for why BUFFERING must not stop the poll or
+            // reset its jump-detection baseline — same fix here, `playing` visuals unaffected.
             if (data === window.YT.PlayerState.PLAYING) {
-              setPlaying(true); startPoll(); onPlayRef.current?.(player.getCurrentTime?.() ?? 0);
+              setPlaying(true);
+              if (!pollId) startPoll();
+              onPlayRef.current?.(player.getCurrentTime?.() ?? 0);
             } else {
-              setPlaying(false); stopPoll();
-              if (data === window.YT.PlayerState.PAUSED) onPauseRef.current?.(player.getCurrentTime?.() ?? 0);
+              setPlaying(false);
+              if (data === window.YT.PlayerState.PAUSED) {
+                stopPoll();
+                onPauseRef.current?.(player.getCurrentTime?.() ?? 0);
+              } else if (data === window.YT.PlayerState.ENDED) {
+                stopPoll();
+              }
             }
           },
         },

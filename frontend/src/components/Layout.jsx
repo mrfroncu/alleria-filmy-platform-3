@@ -6,7 +6,7 @@ import { useUnsavedGuard } from '../contexts/UnsavedChangesContext';
 import { api } from '../utils/api';
 import {
   Film, Shield, Menu, X, Wrench, ChevronRight, ChevronDown, LogOut,
-  Heart, Clock, BarChart3, FolderOpen, FileText, MessageSquarePlus, Lock
+  Heart, Clock, BarChart3, FolderOpen, FileText, MessageSquarePlus, Lock, Clapperboard
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
 import WatchPartyTab from './WatchPartyTab';
@@ -91,7 +91,11 @@ function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlu
           }`}
         >
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-violet-500' : hasKids ? 'bg-zinc-400 dark:bg-zinc-500' : 'bg-zinc-300 dark:bg-zinc-600'}`} />
+            {cat.is_shorts_category ? (
+              <Clapperboard className={`w-3 h-3 shrink-0 ${active ? 'text-violet-500' : 'text-zinc-400 dark:text-zinc-500'}`} title="Kategoria Shortów" />
+            ) : (
+              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-violet-500' : hasKids ? 'bg-zinc-400 dark:bg-zinc-500' : 'bg-zinc-300 dark:bg-zinc-600'}`} />
+            )}
             <span className="font-semibold text-[13px] truncate">{cat.name}</span>
             <span className="text-[10px] text-zinc-400 shrink-0">{cat.videoCount || 0}</span>
           </div>

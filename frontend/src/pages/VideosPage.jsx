@@ -154,7 +154,7 @@ export default function VideosPage() {
             {categorySlug ? (currentCategory?.name || categorySlug) : 'Baza Filmów'}
           </h1>
         )}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <p className="text-zinc-500 dark:text-zinc-400 text-base sm:text-lg">
             {categoryAccessDenied
               ? 'Nie masz uprawnień do przeglądania zawartości tej kategorii.'
@@ -162,7 +162,7 @@ export default function VideosPage() {
               ? (currentCategory?.description || 'Filmy w tej kategorii.')
               : 'Przeglądaj materiały wideo społeczności.'}
           </p>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
             {continueWatching.length > 0 && (
               <button
                 onClick={handleResetProgress}

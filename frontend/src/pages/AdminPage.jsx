@@ -305,7 +305,7 @@ export default function AdminPage() {
                         <td className="px-4 py-3 text-xs text-zinc-500 font-mono whitespace-nowrap">{formatDate(video.publish_date)}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
-                            <Link to={`/video/${video.id}/analytics`} className="btn-icon-zinc" title="Analityka">
+                            <Link to={`/video/${video.id}/analytics?from=admin`} className="btn-icon-zinc" title="Analityka">
                               <BarChart3 className="w-3.5 h-3.5" />
                             </Link>
                             <button onClick={() => { setEditingVideo(video); setIsModalOpen(true); }} className="btn-icon-violet">

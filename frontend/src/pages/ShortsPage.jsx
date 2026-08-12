@@ -95,20 +95,13 @@ function ShortSlide({ video, active, registerSlide, autoAdvance, onToggleAutoAdv
         loop={!autoAdvance}
         onEnded={autoAdvance ? onEndedAdvance : undefined}
         disablePip
+        disableFullscreen
         compactControls
       />
 
-      {/* Desktop: bottom title card — SecurePlayer keeps its own normal hover controls here,
-          this just adds context on top; untouched by the mobile-only complaints below. */}
-      <div className="hidden sm:block absolute inset-x-0 bottom-0 p-5 pb-8 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none z-20">
-        <Link to={`/video/${video.id}`} className="pointer-events-auto inline-block no-underline">
-          <h2 className="text-white font-bold text-base line-clamp-2 mb-1">{video.title}</h2>
-        </Link>
-        <p className="text-white/70 text-sm">{video.author_display_name || video.author_name}</p>
-      </div>
-
-      {/* Mobile: title top-left (moved off the bottom so it stops fighting with the scrub bar) */}
-      <div className="sm:hidden absolute top-3 left-3 right-16 z-20 pointer-events-none">
+      {/* Title top-left on both mobile and desktop — the bottom was fought over by the mobile
+          scrub bar, and on desktop it sat right on top of SecurePlayer's own control bar. */}
+      <div className="absolute top-3 left-3 right-16 z-20 pointer-events-none">
         <Link to={`/video/${video.id}`} className="pointer-events-auto inline-block no-underline">
           <h2 className="text-white font-bold text-sm line-clamp-2 drop-shadow-lg">{video.title}</h2>
         </Link>
@@ -140,8 +133,9 @@ function ShortSlide({ video, active, registerSlide, autoAdvance, onToggleAutoAdv
         </div>
       </div>
 
-      {/* Action rail — like + loop/auto-advance, same on both mobile and desktop */}
-      <div className="absolute right-3 bottom-24 sm:bottom-8 z-20 flex flex-col items-center gap-3">
+      {/* Action rail — like + loop/auto-advance. Sits clear above SecurePlayer's own desktop
+          control bar (play/skip/volume/time/quality) so nothing in it gets covered. */}
+      <div className="absolute right-3 bottom-24 sm:bottom-28 z-20 flex flex-col items-center gap-3">
         <button onClick={toggleLike} disabled={favBusy} className="p-2.5 rounded-full bg-black/40 backdrop-blur text-white disabled:opacity-50">
           <Heart className={`w-6 h-6 ${isFav ? 'fill-pink-500 text-pink-500' : ''}`} />
         </button>

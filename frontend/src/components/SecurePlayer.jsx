@@ -30,7 +30,7 @@ function pickBestLevelIndex(levels) {
 
 export default function SecurePlayer({
   streamVideoId, drmEnhanced, title, controlRef, onTimeUpdate, onPlay, onPause, onSeek,
-  containerClassName, startMuted, onMuteChange, loop, onEnded, disablePip, compactControls,
+  containerClassName, startMuted, onMuteChange, loop, onEnded, disablePip, compactControls, disableFullscreen,
 }) {
   const { user } = useAuth();
   const videoRef = useRef(null);
@@ -691,6 +691,7 @@ export default function SecurePlayer({
         break;
       case 'f':
       case 'F':
+        if (disableFullscreen) break;
         e.preventDefault();
         toggleFullscreen();
         break;
@@ -1024,9 +1025,11 @@ export default function SecurePlayer({
                 </button>
               )}
 
-              <button onClick={toggleFullscreen} className="p-1.5 text-white hover:text-violet-400 transition-colors">
-                <Maximize className="w-5 h-5" />
-              </button>
+              {!disableFullscreen && (
+                <button onClick={toggleFullscreen} className="p-1.5 text-white hover:text-violet-400 transition-colors">
+                  <Maximize className="w-5 h-5" />
+                </button>
+              )}
             </div>
           </div>
         </div>

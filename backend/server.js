@@ -2441,6 +2441,7 @@ app.post('/api/debug/impersonate/:userId', requireDev, (req, res) => {
     const target = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.userId);
     if (!target) return res.status(404).json({ error: 'Nie znaleziono użytkownika.' });
     if (target.id === req.session.user.id) return res.status(400).json({ error: 'Nie możesz zalogować się na samego siebie.' });
+    if (target.role === 'dev') return res.status(403).json({ error: 'Nie można zalogować się jako inny deweloper.' });
 
     audit(req.session.user.id, 'impersonate_start', 'user', target.id,
       `${req.session.user.display_name || req.session.user.username} zalogował się jako ${target.display_name || target.username}`);
@@ -2706,7 +2707,13 @@ app.get('/api/videos/:id/analytics', requireAuth, (req, res) => {
         : null,
     };
 
-    res.json({ dailyViews, heatmap, summary, viewers, context, userId });
+    // Earliest recorded activity — lets the reset UI size its date-range slider to when data
+    // actually starts, instead of guessing a fixed window.
+    const oldestEvent = db.prepare('SELECT MIN(created_at) AS d FROM video_playback_events WHERE video_id = ?').get(video.id)?.d;
+    const oldestView = db.prepare('SELECT MIN(watched_at) AS d FROM watch_logs WHERE video_id = ?').get(video.id)?.d;
+    const oldestActivity = [oldestEvent, oldestView].filter(Boolean).sort()[0] || null;
+
+    res.json({ dailyViews, heatmap, summary, viewers, context, userId, oldestActivity });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

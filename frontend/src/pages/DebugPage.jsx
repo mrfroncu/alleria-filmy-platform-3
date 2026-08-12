@@ -237,12 +237,17 @@ export default function DebugPage() {
   const [impersonateSearch, setImpersonateSearch] = useState('');
   const [impersonatingId, setImpersonatingId] = useState(null);
   useEffect(() => { api.getAllUsers().then(setAllUsers).catch(() => {}); }, []);
-  const impersonateMatches = impersonateSearch.trim()
-    ? allUsers.filter(u =>
-        (u.display_name || '').toLowerCase().includes(impersonateSearch.toLowerCase()) ||
-        (u.username || '').toLowerCase().includes(impersonateSearch.toLowerCase())
-      ).slice(0, 8)
-    : [];
+  // Devs can't be impersonated (matches the backend guard) — filtered out entirely rather than
+  // shown-but-blocked, so the list only ever offers accounts you can actually log into.
+  const impersonateEligible = allUsers.filter(u => u.role !== 'dev');
+  const impersonateSearchLower = impersonateSearch.trim().toLowerCase();
+  const impersonateMatches = (impersonateSearchLower
+    ? impersonateEligible.filter(u =>
+        (u.display_name || '').toLowerCase().includes(impersonateSearchLower) ||
+        (u.username || '').toLowerCase().includes(impersonateSearchLower)
+      )
+    : impersonateEligible
+  ).sort((a, b) => (a.display_name || a.username).localeCompare(b.display_name || b.username));
 
   const handleImpersonate = async (targetUser) => {
     if (!(await confirm(`Zalogować się jako "${targetUser.display_name || targetUser.username}"? Zobaczysz aplikację dokładnie tak, jak ta osoba — łącznie z jej uprawnieniami.`, { confirmLabel: 'Zaloguj jako' }))) return;
@@ -803,34 +808,32 @@ export default function DebugPage() {
           <div className="flex-1 min-w-0">
             <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Zaloguj się jako użytkownik</h3>
             <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-              Przydatne do debugowania problemów zgłaszanych przez konkretną osobę. Po zalogowaniu zobaczysz aplikację z jej uprawnieniami — na każdej stronie pojawi się pasek z opcją powrotu na własne konto.
+              Przydatne do debugowania problemów zgłaszanych przez konkretną osobę. Zobaczysz aplikację dokładnie tak, jak ta osoba — z jej uprawnieniami, profilem i dostępnymi funkcjami — na każdej stronie pojawi się pasek z opcją powrotu na własne konto. Innego deweloperskiego konta nie da się tak zalogować.
             </p>
-            <div className="relative max-w-sm">
-              <input
-                type="text"
-                value={impersonateSearch}
-                onChange={e => setImpersonateSearch(e.target.value)}
-                placeholder="Szukaj po nazwie użytkownika..."
-                className="input-field !py-3 text-sm"
-              />
-              {impersonateMatches.length > 0 && (
-                <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden">
-                  {impersonateMatches.map(u => (
-                    <button
-                      key={u.id}
-                      onClick={() => handleImpersonate(u)}
-                      disabled={impersonatingId === u.id}
-                      className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-zinc-900 dark:text-white truncate">{u.display_name || u.username}</p>
-                        <p className="text-[11px] text-zinc-400 truncate">@{u.username} · {u.role}</p>
-                      </div>
-                      {impersonatingId === u.id ? <Loader2 className="w-4 h-4 animate-spin text-violet-500 shrink-0" /> : <LogIn className="w-4 h-4 text-zinc-400 shrink-0" />}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <input
+              type="text"
+              value={impersonateSearch}
+              onChange={e => setImpersonateSearch(e.target.value)}
+              placeholder="Filtruj po nazwie użytkownika..."
+              className="input-field !py-3 text-sm mb-3"
+            />
+            <div className="max-h-72 overflow-y-auto rounded-2xl border border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-800">
+              {impersonateMatches.length === 0 ? (
+                <p className="text-sm text-zinc-400 text-center py-6">Brak pasujących użytkowników.</p>
+              ) : impersonateMatches.map(u => (
+                <button
+                  key={u.id}
+                  onClick={() => handleImpersonate(u)}
+                  disabled={impersonatingId === u.id}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-zinc-900 dark:text-white truncate">{u.display_name || u.username}</p>
+                    <p className="text-[11px] text-zinc-400 truncate">@{u.username} · {u.role}</p>
+                  </div>
+                  {impersonatingId === u.id ? <Loader2 className="w-4 h-4 animate-spin text-violet-500 shrink-0" /> : <LogIn className="w-4 h-4 text-zinc-400 shrink-0" />}
+                </button>
+              ))}
             </div>
           </div>
         </div>
