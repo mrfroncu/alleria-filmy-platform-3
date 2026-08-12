@@ -41,7 +41,7 @@ function loadYtApi() {
   });
 }
 
-function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek, canControl }) {
+function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek, onTimeUpdate, canControl }) {
   // React owns only this wrapper — YT owns the inner div it creates
   const wrapperRef = useRef(null);
 
@@ -55,10 +55,12 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
   const onPlayRef = useRef(onPlay);
   const onPauseRef = useRef(onPause);
   const onSeekRef = useRef(onSeek);
+  const onTimeUpdateRef = useRef(onTimeUpdate);
 
   useEffect(() => { onPlayRef.current = onPlay; }, [onPlay]);
   useEffect(() => { onPauseRef.current = onPause; }, [onPause]);
   useEffect(() => { onSeekRef.current = onSeek; }, [onSeek]);
+  useEffect(() => { onTimeUpdateRef.current = onTimeUpdate; }, [onTimeUpdate]);
   useEffect(() => { canControlRef.current = canControl; }, [canControl]);
 
   useEffect(() => {
@@ -111,6 +113,10 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
           expectedTimeRef.current = actual;
           lastCheckRef.current = now;
         }
+        // Always after the branch above, so a from-position read off this (via onSeek) never
+        // sees this tick's own position — same ordering guarantee VideoPage.jsx's YouTube
+        // tracking relies on.
+        onTimeUpdateRef.current?.(actual);
       }, 1000);
     };
 
@@ -248,6 +254,47 @@ export default function WatchPartyPage() {
   const playerControlRef = useRef(null);
   const canControl = party?.members?.find(m => m.id === user?.id)?.canControl ?? false;
   const isHost = party?.hostId === user?.id;
+
+  // Playback-events analytics buffer (context: 'watch_party') — mirrors VideoPage.jsx's solo
+  // tracking. Only sent when the current queue item is a real library video (numeric videoId);
+  // an ad-hoc pasted YouTube link (videoId: "yt-<id>") isn't a row in `videos`, so there's
+  // nowhere to attach the events. flushWpEvents reads `party` off a ref (not a dep) so it keeps
+  // a stable identity — party updates on every sync tick, which would otherwise restart the
+  // flush interval constantly.
+  const partyRef = useRef(party);
+  useEffect(() => { partyRef.current = party; }, [party]);
+  const wpEventBufferRef = useRef([]);
+  const wpProgressRef = useRef(0);
+  const flushWpEvents = useCallback(() => {
+    const p = partyRef.current;
+    const item = p && p.currentIndex >= 0 ? p.queue[p.currentIndex] : null;
+    if (!item || typeof item.videoId !== 'number' || wpEventBufferRef.current.length === 0) return;
+    const events = wpEventBufferRef.current;
+    wpEventBufferRef.current = [];
+    fetch(`/api/videos/${item.videoId}/playback-events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ events, context: 'watch_party' }),
+      credentials: 'include',
+      keepalive: true,
+    }).catch(() => {});
+  }, []);
+  const currentVideoIdForEvents = (party && party.currentIndex >= 0 && typeof party.queue[party.currentIndex]?.videoId === 'number')
+    ? party.queue[party.currentIndex].videoId
+    : null;
+  useEffect(() => {
+    wpEventBufferRef.current = [];
+    const flushInterval = setInterval(flushWpEvents, 15000);
+    return () => { clearInterval(flushInterval); flushWpEvents(); };
+  }, [currentVideoIdForEvents, flushWpEvents]);
+  // Every participant (not just the controller) logs their own view — see log-view's comment.
+  useEffect(() => {
+    if (currentVideoIdForEvents != null) api.logVideoView(currentVideoIdForEvents).catch(() => {});
+  }, [currentVideoIdForEvents]);
+  const handleWpTimeUpdate = useCallback((pos) => { wpProgressRef.current = pos; }, []);
+  const handleWpPlay = useCallback((pos) => { wpEventBufferRef.current.push({ event_type: 'play', position: pos }); }, []);
+  const handleWpPause = useCallback((pos) => { wpEventBufferRef.current.push({ event_type: 'pause', position: pos }); }, []);
+  const handleWpSeek = useCallback((pos) => { wpEventBufferRef.current.push({ event_type: 'seek', position: pos, from_position: wpProgressRef.current }); }, []);
 
   // Film browser
   const [showBrowser, setShowBrowser] = useState(false);
@@ -502,9 +549,10 @@ export default function WatchPartyPage() {
                 drmEnhanced={currentItem.drm_enhanced}
                 title={currentItem.title}
                 controlRef={playerControlRef}
-                onPlay={canControl ? (pos) => send({ type: 'play', position: pos }) : undefined}
-                onPause={canControl ? (pos) => send({ type: 'pause', position: pos }) : undefined}
-                onSeek={canControl ? (pos) => send({ type: 'seek', position: pos }) : undefined}
+                onPlay={canControl ? (pos) => { send({ type: 'play', position: pos }); handleWpPlay(pos); } : undefined}
+                onPause={canControl ? (pos) => { send({ type: 'pause', position: pos }); handleWpPause(pos); } : undefined}
+                onSeek={canControl ? (pos) => { send({ type: 'seek', position: pos }); handleWpSeek(pos); } : undefined}
+                onTimeUpdate={handleWpTimeUpdate}
               />
             </div>
           ) : youtubeId ? (
@@ -514,9 +562,10 @@ export default function WatchPartyPage() {
                 videoId={youtubeId}
                 controlRef={playerControlRef}
                 canControl={canControl}
-                onPlay={canControl ? (pos) => send({ type: 'play', position: pos }) : undefined}
-                onPause={canControl ? (pos) => send({ type: 'pause', position: pos }) : undefined}
-                onSeek={canControl ? (pos) => send({ type: 'seek', position: pos }) : undefined}
+                onPlay={canControl ? (pos) => { send({ type: 'play', position: pos }); handleWpPlay(pos); } : undefined}
+                onPause={canControl ? (pos) => { send({ type: 'pause', position: pos }); handleWpPause(pos); } : undefined}
+                onSeek={canControl ? (pos) => { send({ type: 'seek', position: pos }); handleWpSeek(pos); } : undefined}
+                onTimeUpdate={handleWpTimeUpdate}
               />
             </div>
           ) : embedUrl ? (

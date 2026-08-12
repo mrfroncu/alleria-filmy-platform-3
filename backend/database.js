@@ -349,16 +349,9 @@ function initDB() {
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   )`);
 
-  // Star ratings — one rating per user per video, updatable (upsert on re-rate).
-  db.exec(`CREATE TABLE IF NOT EXISTS video_ratings (
-    video_id INTEGER NOT NULL,
-    user_id INTEGER NOT NULL,
-    rating INTEGER NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    PRIMARY KEY (video_id, user_id),
-    FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  )`);
+  // Star ratings were dropped in favor of favorites/likes being the single "I like this" signal —
+  // clean up the table on any dev DB that already created it.
+  try { db.exec(`DROP TABLE IF EXISTS video_ratings`); } catch (e) {}
 
   // Comment reactions — a user can react to the same comment with several different emoji
   // (each is its own toggle), but only once per emoji.
@@ -404,7 +397,8 @@ function initDB() {
   )`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at)`);
 
-  // Sampled player events (self-hosted videos only — see SecurePlayer's onPlay/onPause/onSeek)
+  // Sampled player events — SecurePlayer's real play/pause/seek DOM events for self-hosted, and
+  // a polling-inferred equivalent for YouTube (see YT_SEEK_JUMP_THRESHOLD_S in VideoPage.jsx) —
   // powering the per-video analytics heatmap. from_position is only set for 'seek' rows — it's
   // what makes a rewind ("landed before where they were") distinguishable from a skip forward.
   db.exec(`CREATE TABLE IF NOT EXISTS video_playback_events (
@@ -420,9 +414,30 @@ function initDB() {
   )`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_playback_events_video ON video_playback_events(video_id, event_type)`);
 
-  // Shorts — an explicit flag set at upload time (self-hosted only), not auto-detected from
-  // aspect ratio/duration, per the decision made when this feature was scoped.
-  try { db.exec(`ALTER TABLE videos ADD COLUMN is_short INTEGER DEFAULT 0`); } catch (e) {}
+  // 'solo' (normal playback) vs 'watch_party' — lets the analytics page split the two apart
+  // instead of silently blending a shared watch-party session into one viewer's solo stats.
+  try { db.exec(`ALTER TABLE video_playback_events ADD COLUMN context TEXT DEFAULT 'solo'`); } catch (e) {}
+  try { db.exec(`ALTER TABLE watch_logs ADD COLUMN context TEXT DEFAULT 'solo'`); } catch (e) {}
+
+  // Explicit "watched" mark — separate from watch_progress (which only tracks *resume* position
+  // and gets deleted once a video is finished, see the 90%-completion handler in VideoPage.jsx).
+  // A row here means "watched", full stop; auto-inserted at 90% completion or toggled manually,
+  // and survives independently of whatever happens to the resume position afterwards.
+  db.exec(`CREATE TABLE IF NOT EXISTS video_watched (
+    user_id INTEGER NOT NULL,
+    video_id INTEGER NOT NULL,
+    watched_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, video_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
+  )`);
+
+  // Shorts — reworked from a per-video flag into a per-category one: a category marked as a
+  // Shorts category plays its videos back-to-back in the sequential Shorts player instead of
+  // opening the normal video page. Videos themselves carry no is_short flag anymore — any
+  // format works (vertical or horizontal), it's purely about which category a video sits in.
+  try { db.exec(`ALTER TABLE videos DROP COLUMN is_short`); } catch (e) {}
+  try { db.exec(`ALTER TABLE categories ADD COLUMN is_shorts_category INTEGER DEFAULT 0`); } catch (e) {}
 
   return db;
 }

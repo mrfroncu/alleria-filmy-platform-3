@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, SlidersHorizontal, X, ChevronDown, Film, RotateCcw, Lock } from 'lucide-react';
+import { Search, SlidersHorizontal, X, ChevronDown, Film, RotateCcw, Lock, CheckCircle2 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
 import { useSettings } from '../contexts/SettingsContext';
@@ -28,6 +28,8 @@ export default function VideosPage() {
   const [page, setPage] = useState(1);
   const [continueWatching, setContinueWatching] = useState([]);
   const [resetting, setResetting] = useState(false);
+  const [resettingWatched, setResettingWatched] = useState(false);
+  const [hasWatchedAny, setHasWatchedAny] = useState(false);
   const [hoveredVideoId, setHoveredVideoId] = useState(null);
 
   // Display config — videosPerPage should be a multiple of gridColumns (default 3)
@@ -42,6 +44,7 @@ export default function VideosPage() {
 
   useEffect(() => {
     api.getAllProgress().then(setContinueWatching).catch(() => {});
+    api.getAllWatched().then(rows => setHasWatchedAny(rows.length > 0)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -93,6 +96,29 @@ export default function VideosPage() {
     setResetting(false);
   };
 
+  const handleResetWatched = async () => {
+    if (!(await confirm('Zresetować oznaczenia obejrzanych filmów? Wszystkie odznaczenia "obejrzane" znikną.', { danger: true, confirmLabel: 'Resetuj' }))) return;
+    setResettingWatched(true);
+    try {
+      await api.resetWatched();
+      setVideos(prev => prev.map(v => ({ ...v, is_watched: false })));
+      setHasWatchedAny(false);
+    } catch (e) {}
+    setResettingWatched(false);
+  };
+
+  const toggleWatched = async (e, video) => {
+    e.preventDefault(); e.stopPropagation();
+    const next = !video.is_watched;
+    setVideos(prev => prev.map(v => v.id === video.id ? { ...v, is_watched: next } : v));
+    if (next) setHasWatchedAny(true);
+    try {
+      if (next) await api.markWatched(video.id); else await api.unmarkWatched(video.id);
+    } catch (err) {
+      setVideos(prev => prev.map(v => v.id === video.id ? { ...v, is_watched: !next } : v));
+    }
+  };
+
   const progressMap = useMemo(() =>
     Object.fromEntries(continueWatching.map(p => [p.video_id, p])),
     [continueWatching]
@@ -136,16 +162,28 @@ export default function VideosPage() {
               ? (currentCategory?.description || 'Filmy w tej kategorii.')
               : 'Przeglądaj materiały wideo społeczności.'}
           </p>
-          {continueWatching.length > 0 && (
-            <button
-              onClick={handleResetProgress}
-              disabled={resetting}
-              className="btn-link-red flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 text-zinc-400"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Resetuj postęp oglądania
-            </button>
-          )}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {continueWatching.length > 0 && (
+              <button
+                onClick={handleResetProgress}
+                disabled={resetting}
+                className="btn-link-red flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 text-zinc-400"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Resetuj postęp oglądania
+              </button>
+            )}
+            {hasWatchedAny && (
+              <button
+                onClick={handleResetWatched}
+                disabled={resettingWatched}
+                className="btn-link-red flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 text-zinc-400"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Resetuj oznaczenia obejrzanych
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -302,7 +340,9 @@ export default function VideosPage() {
             {videos.slice((page - 1) * config.videosPerPage, page * config.videosPerPage).map((video, idx) => (
             <Link
               key={video.id}
-              to={`/video/${video.id}${categorySlug ? `?from=${categorySlug}` : ''}`}
+              to={currentCategory?.is_shorts_category
+                ? `/shorts/${categorySlug}?start=${video.id}`
+                : `/video/${video.id}${categorySlug ? `?from=${categorySlug}` : ''}`}
               className="video-card card overflow-hidden group"
               style={{ animationDelay: `${idx * 50}ms` }}
               onMouseEnter={() => setHoveredVideoId(video.id)}
@@ -311,6 +351,17 @@ export default function VideosPage() {
               <div className="relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
                 <HoverScrubThumbnail video={video} hovered={hoveredVideoId === video.id} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <button
+                  onClick={(e) => toggleWatched(e, video)}
+                  title={video.is_watched ? 'Oznacz jako nieobejrzany' : 'Oznacz jako obejrzany'}
+                  className={`absolute top-2 right-2 z-10 p-1 rounded-full backdrop-blur-sm transition-all ${
+                    video.is_watched
+                      ? 'bg-emerald-500 text-white opacity-100 hover:bg-emerald-600'
+                      : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/70'
+                  }`}
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                </button>
                 {progressMap[video.id] && (() => {
                   const p = progressMap[video.id];
                   const pct = p.duration > 0 ? Math.min(100, (p.position / p.duration) * 100) : 0;

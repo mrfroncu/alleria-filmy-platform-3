@@ -6,7 +6,7 @@ import { useUnsavedGuard } from '../contexts/UnsavedChangesContext';
 import { api } from '../utils/api';
 import {
   Film, Shield, Menu, X, Wrench, ChevronRight, ChevronDown, LogOut,
-  Heart, Clock, BarChart3, FolderOpen, FileText, MessageSquarePlus, Lock, Clapperboard
+  Heart, Clock, BarChart3, FolderOpen, FileText, MessageSquarePlus, Lock
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
 import WatchPartyTab from './WatchPartyTab';
@@ -27,7 +27,6 @@ const STATIC_PAGE_TITLES = {
   '/logs': 'Logi systemowe',
   '/debug': 'Narzędzia Developerskie',
   '/watch-party': 'Watch Party',
-  '/shorts': 'Shorts',
 };
 
 function getPageTitle(pathname, categories) {
@@ -35,6 +34,10 @@ function getPageTitle(pathname, categories) {
   if (pathname.startsWith('/category/')) {
     const cat = categories.find(c => c.slug === pathname.split('/')[2]);
     return cat?.name || 'Kategoria';
+  }
+  if (pathname.startsWith('/shorts/')) {
+    const cat = categories.find(c => c.slug === pathname.split('/')[2]);
+    return cat?.name ? `Shorts — ${cat.name}` : 'Shorts';
   }
   if (pathname.startsWith('/video/')) return 'Film';
   if (pathname.startsWith('/author/')) return 'Profil autora';
@@ -229,7 +232,6 @@ export default function Layout({ children }) {
           <nav className="space-y-0.5">
             {/* Baza Filmów with categories */}
             <NavLink to="/" icon={Film} label="Wszystkie filmy" active={allFilmsActive && !anyCatActive} />
-            <NavLink to="/shorts" icon={Clapperboard} label="Shorts" active={isActive('/shorts')} />
 
             {categories.length > 0 && (
               <>
@@ -320,38 +322,61 @@ export default function Layout({ children }) {
       </aside>
 
       <main ref={mainRef} className="flex-1 overflow-y-auto relative flex flex-col">
-        {/* Mobile top bar — always present (hamburger is the only way to reach the sidebar on mobile) */}
-        <div className="lg:hidden shrink-0 flex items-center justify-between gap-3 p-4 bg-gradient-to-r from-violet-100/50 via-white/60 to-fuchsia-100/40 dark:from-violet-500/10 dark:via-zinc-950/50 dark:to-fuchsia-500/10 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 dark:border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sticky top-0 z-30">
-          <div className="flex items-center gap-2 min-w-0">
-            {/* Sidebar opens from the left, so its trigger lives on the left too */}
-            <button onClick={() => setSidebarOpen(true)} className="btn-icon-zinc shrink-0">
-              <Menu className="w-5 h-5" />
-            </button>
-            <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain shrink-0" />
-            {showTopBar
-              ? <span className="font-bold text-zinc-900 dark:text-white font-display text-sm truncate">{pageTitle}</span>
-              : <span className="font-bold text-zinc-900 dark:text-white font-display text-sm">ALLERIA FILMY</span>}
+        {/* Sticks as one unit — the mobile/desktop top bars were already each independently
+            sticky top-0 (mutually exclusive via breakpoint, so that never conflicted); the
+            impersonation banner needed to join that same stack instead of being a third
+            independent sticky top-0 sibling, which would just overlap whichever bar is active. */}
+        <div className="sticky top-0 z-30 flex flex-col">
+          {/* Impersonation banner — always shown regardless of role/route, since the impersonated
+              session has exactly the target user's permissions and may not have dev-route access
+              to get back to Dev Tools at all. This is the only way back. */}
+          {user?.impersonatedBy && (
+            <div className="shrink-0 flex items-center justify-center gap-3 px-4 py-2 bg-amber-500 text-amber-950 text-xs font-bold flex-wrap">
+              <span>Jesteś zalogowany jako {user.display_name || user.username} (podszywanie się przez {user.impersonatedBy.display_name || user.impersonatedBy.username})</span>
+              <button
+                onClick={async () => { await api.stopImpersonating().catch(() => {}); window.location.href = '/'; }}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-950/10 hover:bg-amber-950/20 transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Wróć do swojego konta
+              </button>
+            </div>
+          )}
+          {/* Mobile top bar — always present (hamburger is the only way to reach the sidebar on mobile) */}
+          <div className="lg:hidden shrink-0 flex items-center justify-between gap-3 p-4 bg-gradient-to-r from-violet-100/50 via-white/60 to-fuchsia-100/40 dark:from-violet-500/10 dark:via-zinc-950/50 dark:to-fuchsia-500/10 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 dark:border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+            <div className="flex items-center gap-2 min-w-0">
+              {/* Sidebar opens from the left, so its trigger lives on the left too */}
+              <button onClick={() => setSidebarOpen(true)} className="btn-icon-zinc shrink-0">
+                <Menu className="w-5 h-5" />
+              </button>
+              <Link to="/" className="flex items-center gap-2 min-w-0">
+                <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain shrink-0" />
+                {showTopBar
+                  ? <span className="font-bold text-zinc-900 dark:text-white font-display text-sm truncate">{pageTitle}</span>
+                  : <span className="font-bold text-zinc-900 dark:text-white font-display text-sm">ALLERIA FILMY</span>}
+              </Link>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              {showTopBar && <GlobalSearch compact />}
+              {showTopBar && <NotificationBell />}
+              {showTopBar && <ProfileMenu compact />}
+            </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {showTopBar && <GlobalSearch compact />}
-            {showTopBar && <NotificationBell />}
-            {showTopBar && <ProfileMenu compact />}
-          </div>
-        </div>
 
-        {/* Desktop top bar — page title, global search, profile menu (optional, Zarządzanie > Ustawienia) */}
-        {showTopBar && (
-          <div className="hidden lg:flex shrink-0 items-center gap-6 px-8 py-3 bg-gradient-to-r from-violet-100/50 via-white/60 to-fuchsia-100/40 dark:from-violet-500/10 dark:via-zinc-950/50 dark:to-fuchsia-500/10 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 dark:border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sticky top-0 z-30">
-            <h1 className="text-zinc-900 dark:text-white font-bold text-lg font-display shrink-0 truncate max-w-[240px]">{pageTitle}</h1>
-            <div className="flex-1 flex justify-center">
-              <GlobalSearch />
+          {/* Desktop top bar — page title, global search, profile menu (optional, Zarządzanie > Ustawienia) */}
+          {showTopBar && (
+            <div className="hidden lg:flex shrink-0 items-center gap-6 px-8 py-3 bg-gradient-to-r from-violet-100/50 via-white/60 to-fuchsia-100/40 dark:from-violet-500/10 dark:via-zinc-950/50 dark:to-fuchsia-500/10 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 dark:border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+              <h1 className="text-zinc-900 dark:text-white font-bold text-lg font-display shrink-0 truncate max-w-[240px]">{pageTitle}</h1>
+              <div className="flex-1 flex justify-center">
+                <GlobalSearch />
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <NotificationBell />
+                <ProfileMenu />
+              </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <NotificationBell />
-              <ProfileMenu />
-            </div>
-          </div>
-        )}
+          )}
+        </div>
 
         <div className="flex-1">{children}</div>
 
@@ -363,7 +388,7 @@ export default function Layout({ children }) {
         </footer>
       </main>
 
-      {location.pathname !== '/watch-party' && location.pathname !== '/shorts' && <WatchPartyTab />}
+      {location.pathname !== '/watch-party' && !location.pathname.startsWith('/shorts/') && <WatchPartyTab />}
     </div>
   );
 }

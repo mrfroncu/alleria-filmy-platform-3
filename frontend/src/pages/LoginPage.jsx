@@ -92,7 +92,7 @@ export default function LoginPage() {
     try {
       const res = await api.loginTeamspeak();
       if (res?.challenge) startChallenge(res, 'teamspeak', 'TeamSpeak 6');
-      else window.location.href = '/';
+      else window.location.href = (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) ? returnTo : '/';
     }
     catch (err) { setTs6Error(parseTsError(err.message, 'TeamSpeak 6')); }
     finally { setTsLoading(false); }
@@ -103,7 +103,7 @@ export default function LoginPage() {
     try {
       const res = await api.loginTeamspeak3();
       if (res?.challenge) startChallenge(res, 'teamspeak3', 'TeamSpeak 3');
-      else window.location.href = '/';
+      else window.location.href = (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) ? returnTo : '/';
     }
     catch (err) { setTs3Error(parseTsError(err.message, 'TeamSpeak 3')); }
     finally { setTs3Loading(false); }
@@ -179,7 +179,7 @@ export default function LoginPage() {
             </h1>
 
             <p className="text-zinc-400 text-base xl:text-lg leading-relaxed max-w-xs xl:max-w-sm mb-12">
-              Archiwum wspomnień, kompilacje z rozgrywek - wszystko w jednym miejscu, wyłącznie dla członków społecznościAlleria.
+              Archiwum wspomnień, kompilacje z rozgrywek - wszystko w jednym miejscu, wyłącznie dla członków społeczności Alleria.
             </p>
 
             {/* Feature badges */}

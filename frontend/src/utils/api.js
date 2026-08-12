@@ -11,7 +11,11 @@ async function request(url, options = {}) {
   if (res.status === 401) {
     const data = await res.json().catch(() => ({}));
     if (!window.location.pathname.startsWith('/login')) {
-      window.location.href = '/login';
+      // Preserve where the user was headed — this fires as a hard navigation before
+      // ProtectedRoute's own returnTo redirect ever gets a chance to run, so without this
+      // the destination is lost and login always drops back to "/".
+      const returnTo = window.location.pathname + window.location.search;
+      window.location.href = `/login?returnTo=${encodeURIComponent(returnTo)}`;
     }
     throw new Error(data.error || 'Unauthorized');
   }
@@ -59,10 +63,10 @@ export const api = {
     if (params.include_transcoding) q.set('include_transcoding', '1');
     if (params.category) q.set('category', params.category);
     if (params.limit) q.set('limit', params.limit);
-    if (params.shorts) q.set('shorts', '1');
     return request(`/videos?${q}`);
   },
   getVideo: (id) => request(`/videos/${id}`),
+  logVideoView: (id) => request(`/videos/${id}/log-view`, { method: 'POST' }),
   createVideo: (formData) => request('/videos', { method: 'POST', body: formData }),
   updateVideo: (id, formData) => request(`/videos/${id}`, { method: 'PUT', body: formData }),
   deleteVideo: (id) => request(`/videos/${id}`, { method: 'DELETE' }),
@@ -173,13 +177,6 @@ export const api = {
   removeFavorite: (videoId) => request(`/favorites/${videoId}`, { method: 'DELETE' }),
   checkFavorite: (videoId) => request(`/favorites/check/${videoId}`),
 
-  // Ratings
-  getRating: (videoId) => request(`/videos/${videoId}/rating`),
-  rateVideo: (videoId, rating) => request(`/videos/${videoId}/rating`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating }),
-  }),
-  clearRating: (videoId) => request(`/videos/${videoId}/rating`, { method: 'DELETE' }),
-
   // History
   getHistory: () => request('/history'),
 
@@ -277,6 +274,8 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   }),
+  impersonateUser: (userId) => request(`/debug/impersonate/${userId}`, { method: 'POST' }),
+  stopImpersonating: () => request('/debug/stop-impersonating', { method: 'POST' }),
 
   // In-app notifications
   getNotificationsToken: () => request('/notifications/token'),
@@ -307,8 +306,24 @@ export const api = {
   resetProgress: () => request('/progress', { method: 'DELETE' }),
   clearProgress: (videoId) => request(`/progress/${videoId}`, { method: 'DELETE' }),
 
+  // Watched marks — separate from progress (see video_watched table)
+  markWatched: (videoId) => request(`/videos/${videoId}/watched`, { method: 'POST' }),
+  unmarkWatched: (videoId) => request(`/videos/${videoId}/watched`, { method: 'DELETE' }),
+  getAllWatched: () => request('/watched'),
+  resetWatched: () => request('/watched', { method: 'DELETE' }),
+
   // Video analytics
-  getVideoAnalytics: (videoId) => request(`/videos/${videoId}/analytics`),
+  getVideoAnalytics: (videoId, { context, userId } = {}) => {
+    const q = new URLSearchParams();
+    if (context && context !== 'all') q.set('context', context);
+    if (userId) q.set('user_id', userId);
+    const qs = q.toString();
+    return request(`/videos/${videoId}/analytics${qs ? `?${qs}` : ''}`);
+  },
+  resetVideoAnalytics: (videoId, { before, after, userId } = {}) => request(`/videos/${videoId}/analytics`, {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ before, after, user_id: userId }),
+  }),
 
   // Comments
   getComments: (videoId) => request(`/videos/${videoId}/comments`),

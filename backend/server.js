@@ -1537,10 +1537,15 @@ app.get('/api/auth/me', (req, res) => {
   // Live DB lookup (not baked into the session at login) — so an admin editing the Regulamin
   // immediately re-gates everyone on their next page load, no fresh login required.
   const row = db.prepare('SELECT tos_accepted_at FROM users WHERE id = ?').get(req.session.user.id);
+  let impersonatedBy = null;
+  if (req.session.impersonatorId) {
+    impersonatedBy = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(req.session.impersonatorId) || null;
+  }
   res.json({
     ...req.session.user,
     tosAccepted: !tosNeedsAcceptance(row?.tos_accepted_at),
     tosPreviouslyAccepted: !!row?.tos_accepted_at,
+    impersonatedBy,
   });
 });
 
@@ -1592,7 +1597,7 @@ function attachPreviewUrl(v) {
 }
 
 app.get('/api/videos', requireAuth, (req, res) => {
-  const { search, tags, author, sort = 'newest', include_transcoding, category, shorts } = req.query;
+  const { search, tags, author, sort = 'newest', include_transcoding, category } = req.query;
   const isAdminOrDev = req.session.user.role === 'admin' || req.session.user.role === 'dev';
   const isDev = req.session.user.role === 'dev';
 
@@ -1614,14 +1619,6 @@ app.get('/api/videos', requireAuth, (req, res) => {
   // Hide transcoding videos from regular users (admin+dev can see them)
   if (!isAdminOrDev || !include_transcoding) {
     conditions.push("(v.stream_status IS NULL OR v.stream_status = 'ready')");
-  }
-
-  // Shorts live in their own vertical feed (/shorts), not mixed into the main 16:9 grid — the
-  // regular listing excludes them unless explicitly asked for.
-  if (shorts === '1') {
-    conditions.push('v.is_short = 1');
-  } else {
-    conditions.push('(v.is_short IS NULL OR v.is_short = 0)');
   }
 
   // Hide scheduled (future) videos from regular users (admin+dev can see them)
@@ -1710,12 +1707,16 @@ app.get('/api/videos', requireAuth, (req, res) => {
 
   try {
     const videos = db.prepare(sql).all(...params);
+    const watchedIds = new Set(
+      db.prepare('SELECT video_id FROM video_watched WHERE user_id = ?').all(req.session.user.id).map(r => r.video_id)
+    );
     res.json(videos.map(v => attachPreviewUrl({
       ...v,
       tags: v.tag_names ? v.tag_names.split(',').map((name, i) => ({
         id: parseInt(v.tag_ids.split(',')[i]),
         name
-      })) : []
+      })) : [],
+      is_watched: watchedIds.has(v.id),
     })));
   } catch (err) {
     console.error('Error fetching videos:', err);
@@ -1767,6 +1768,33 @@ app.get('/api/videos/:id', requireAuth, (req, res) => {
   }
 });
 
+// Watch Party participants never call GET /api/videos/:id for the video playing in the party
+// (they get it via the party's own WebSocket sync), so without this, watch-party viewership
+// never reached watch_logs (and thus never showed up in the analytics daily-views chart) — one
+// row per participant per video, logged when it becomes the party's current video.
+app.post('/api/videos/:id/log-view', requireAuth, (req, res) => {
+  try {
+    const video = db.prepare('SELECT id, category_id, access_mode FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).json({ error: 'Video not found' });
+    const user = req.session.user;
+    if (user.role !== 'dev') {
+      if (video.access_mode === 'custom') {
+        const hasAccess = db.prepare('SELECT 1 FROM video_access WHERE video_id = ? AND user_id = ?').get(video.id, user.id);
+        if (!hasAccess) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
+      }
+      if (video.category_id) {
+        const cat = db.prepare('SELECT access_mode FROM categories WHERE id = ?').get(video.category_id);
+        if (cat) {
+          const { canView } = checkCatAccess(video.category_id, cat.access_mode, user.id, user.discord_roles || [], getUserRankIds(user.id));
+          if (!canView) return res.status(403).json({ error: 'Brak dostępu do tej kategorii.' });
+        }
+      }
+    }
+    db.prepare(`INSERT INTO watch_logs (user_id, video_id, context) VALUES (?, ?, 'watch_party')`).run(user.id, video.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res) => {
   try {
     const { title, author_id, main_source, main_source_type, main_source_title,
@@ -1776,7 +1804,7 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
       mirror4_name, mirror4_url, mirror4_type,
       mirror5_name, mirror5_url, mirror5_type,
       description, publish_date, tags,
-      stream_video_id, drm_enhanced, category_id, is_short } = req.body;
+      stream_video_id, drm_enhanced, category_id } = req.body;
 
     let thumbUrl = thumbnail || extractYoutubeThumbnail(main_source);
     let customThumb = 0;
@@ -1804,8 +1832,8 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
         mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type, mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type,
         mirror3_name, mirror3_url, mirror3_type, mirror4_name, mirror4_url, mirror4_type,
         mirror5_name, mirror5_url, mirror5_type,
-        description, publish_date, stream_video_id, drm_enhanced, category_id, is_short)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        description, publish_date, stream_video_id, drm_enhanced, category_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(title, parseInt(author_id), main_source || '', main_source_type || 'youtube', main_source_title || '',
       thumbUrl, customThumb,
       mirror1_name || null, mirror1_url || null, m1t === 'embed' ? 1 : 0, m1t,
@@ -1815,8 +1843,7 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
       mirror5_name || null, mirror5_url || null, m5t,
       description || '', publish_date,
       stream_video_id || null, drm_enhanced === 'true' || drm_enhanced === '1' ? 1 : 0,
-      category_id ? parseInt(category_id) : null,
-      stream_video_id && (is_short === 'true' || is_short === '1') ? 1 : 0);
+      category_id ? parseInt(category_id) : null);
 
     const videoId = result.lastInsertRowid;
 
@@ -1900,7 +1927,7 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
       mirror4_name, mirror4_url, mirror4_type,
       mirror5_name, mirror5_url, mirror5_type,
       description, publish_date, tags,
-      category_id, stream_video_id, drm_enhanced, access_mode, allowed_users, is_short } = req.body;
+      category_id, stream_video_id, drm_enhanced, access_mode, allowed_users } = req.body;
 
     const existing = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Video not found' });
@@ -1929,7 +1956,7 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
         mirror3_name=?, mirror3_url=?, mirror3_type=?,
         mirror4_name=?, mirror4_url=?, mirror4_type=?,
         mirror5_name=?, mirror5_url=?, mirror5_type=?,
-        description=?, publish_date=?, category_id=?, stream_video_id=?, drm_enhanced=?, access_mode=?, is_short=?,
+        description=?, publish_date=?, category_id=?, stream_video_id=?, drm_enhanced=?, access_mode=?,
         updated_at=datetime('now') WHERE id=?
     `).run(title, parseInt(author_id), main_source, main_source_type || 'youtube', main_source_title || '',
       thumbUrl, customThumb,
@@ -1943,7 +1970,6 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
       stream_video_id || existing.stream_video_id || null,
       drm_enhanced === 'true' || drm_enhanced === '1' ? 1 : 0,
       access_mode || existing.access_mode || 'category',
-      (stream_video_id || existing.stream_video_id) && (is_short === 'true' || is_short === '1') ? 1 : 0,
       req.params.id);
 
     // Update per-video access if custom mode
@@ -2104,11 +2130,11 @@ app.get('/api/categories', requireAuth, (req, res) => {
 // Create category (dev only)
 app.post('/api/categories', requireDev, (req, res) => {
   try {
-    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, push_enabled } = req.body;
+    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, push_enabled, is_shorts_category } = req.body;
     if (!name) return res.status(400).json({ error: 'Name required' });
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    const result = db.prepare('INSERT INTO categories (name, slug, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, push_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', webhook_enabled ? 1 : 0, email_enabled ? 1 : 0, push_enabled ? 1 : 0);
+    const result = db.prepare('INSERT INTO categories (name, slug, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, push_enabled, is_shorts_category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', webhook_enabled ? 1 : 0, email_enabled ? 1 : 0, push_enabled ? 1 : 0, is_shorts_category ? 1 : 0);
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(result.lastInsertRowid);
     audit(req.session.user.id, "create", "category", cat.id, name);
     res.json({ success: true, category: cat });
@@ -2118,10 +2144,10 @@ app.post('/api/categories', requireDev, (req, res) => {
 // Update category (dev only)
 app.put('/api/categories/:id', requireDev, (req, res) => {
   try {
-    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, push_enabled } = req.body;
+    const { name, description, icon, sort_order, parent_id, webhook_url, webhook_template, webhook_enabled, email_enabled, push_enabled, is_shorts_category } = req.body;
     const slug = name ? name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : undefined;
-    if (name) db.prepare('UPDATE categories SET name=?, slug=?, description=?, icon=?, sort_order=?, parent_id=?, webhook_url=?, webhook_template=?, webhook_enabled=?, email_enabled=?, push_enabled=? WHERE id=?')
-      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', webhook_enabled ? 1 : 0, email_enabled ? 1 : 0, push_enabled ? 1 : 0, req.params.id);
+    if (name) db.prepare('UPDATE categories SET name=?, slug=?, description=?, icon=?, sort_order=?, parent_id=?, webhook_url=?, webhook_template=?, webhook_enabled=?, email_enabled=?, push_enabled=?, is_shorts_category=? WHERE id=?')
+      .run(name, slug, description || '', icon || 'Film', sort_order || 0, parent_id || null, webhook_url || '', webhook_template || '', webhook_enabled ? 1 : 0, email_enabled ? 1 : 0, push_enabled ? 1 : 0, is_shorts_category ? 1 : 0, req.params.id);
     audit(req.session.user.id, "edit", "category", parseInt(req.params.id), name || "");
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2390,6 +2416,62 @@ app.post('/api/debug/create-user', requireDev, (req, res) => {
   }
 });
 
+// ============ IMPERSONATION (dev only) ============
+// req.session.user is fully replaced with the target's identity — including role — so the
+// impersonated session gets *exactly* what that user would see, permission-wise. That also
+// means it loses dev-only route access for the duration, which is why "stop impersonating"
+// can't live behind a dev-gated page — it has to be reachable from anywhere (see the Layout.jsx
+// banner) — and why this checks session.impersonatorId rather than requireDev.
+function buildSessionUser(u) {
+  return {
+    id: u.id,
+    discord_id: u.discord_id,
+    username: u.username,
+    display_name: u.display_name,
+    avatar: u.avatar,
+    role: u.role,
+    auth_method: u.auth_method,
+    discord_roles: JSON.parse(u.discord_roles || '[]'),
+  };
+}
+
+app.post('/api/debug/impersonate/:userId', requireDev, (req, res) => {
+  try {
+    if (req.session.impersonatorId) return res.status(400).json({ error: 'Już się kogoś podszywasz — najpierw wróć do swojego konta.' });
+    const target = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.userId);
+    if (!target) return res.status(404).json({ error: 'Nie znaleziono użytkownika.' });
+    if (target.id === req.session.user.id) return res.status(400).json({ error: 'Nie możesz zalogować się na samego siebie.' });
+
+    audit(req.session.user.id, 'impersonate_start', 'user', target.id,
+      `${req.session.user.display_name || req.session.user.username} zalogował się jako ${target.display_name || target.username}`);
+
+    req.session.impersonatorId = req.session.user.id;
+    req.session.user = buildSessionUser(target);
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: 'Session save error' });
+      res.json({ success: true, user: req.session.user });
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/debug/stop-impersonating', requireAuth, (req, res) => {
+  try {
+    if (!req.session.impersonatorId) return res.status(400).json({ error: 'Nie jesteś w trybie podszywania.' });
+    const original = db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.impersonatorId);
+    if (!original) return res.status(500).json({ error: 'Nie udało się odnaleźć oryginalnego konta.' });
+
+    audit(original.id, 'impersonate_stop', 'user', req.session.user.id,
+      `${original.display_name || original.username} wrócił z podszywania się pod ${req.session.user.display_name || req.session.user.username}`);
+
+    req.session.user = buildSessionUser(original);
+    delete req.session.impersonatorId;
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: 'Session save error' });
+      res.json({ success: true, user: req.session.user });
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ============ LOGS API ============
 app.get('/api/logs/watch', requireAdmin, (req, res) => {
   const page = parseInt(req.query.page) || 1;
@@ -2483,47 +2565,22 @@ app.get('/api/favorites/check/:videoId', requireAuth, (req, res) => {
   res.json({ isFavorite: !!fav, count: count?.c || 0 });
 });
 
-// ============ VIDEO RATINGS ============
-function ratingAggregate(videoId, userId) {
-  const agg = db.prepare('SELECT AVG(rating) AS avg, COUNT(*) AS count FROM video_ratings WHERE video_id = ?').get(videoId);
-  const mine = db.prepare('SELECT rating FROM video_ratings WHERE video_id = ? AND user_id = ?').get(videoId, userId);
-  return { myRating: mine?.rating || 0, average: agg.count > 0 ? Math.round(agg.avg * 10) / 10 : 0, count: agg.count };
-}
-
-app.get('/api/videos/:id/rating', requireAuth, (req, res) => {
-  res.json(ratingAggregate(req.params.id, req.session.user.id));
-});
-
-app.put('/api/videos/:id/rating', requireAuth, (req, res) => {
-  const rating = parseInt(req.body.rating, 10);
-  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return res.status(400).json({ error: 'Ocena musi być liczbą od 1 do 5.' });
-  db.prepare(`
-    INSERT INTO video_ratings (video_id, user_id, rating) VALUES (?, ?, ?)
-    ON CONFLICT(video_id, user_id) DO UPDATE SET rating = excluded.rating
-  `).run(req.params.id, req.session.user.id, rating);
-  res.json(ratingAggregate(req.params.id, req.session.user.id));
-});
-
-app.delete('/api/videos/:id/rating', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM video_ratings WHERE video_id = ? AND user_id = ?').run(req.params.id, req.session.user.id);
-  res.json(ratingAggregate(req.params.id, req.session.user.id));
-});
-
 // ============ VIDEO ANALYTICS ============
 // Batched sampled player events (self-hosted only) — the frontend buffers play/pause/seek and
 // flushes every ~15s / on pause / on unload, never one request per raw event.
 app.post('/api/videos/:id/playback-events', requireAuth, (req, res) => {
   try {
     const events = Array.isArray(req.body.events) ? req.body.events.slice(0, 200) : [];
+    const context = req.body.context === 'watch_party' ? 'watch_party' : 'solo';
     if (events.length > 0) {
-      const insert = db.prepare('INSERT INTO video_playback_events (video_id, user_id, event_type, position, from_position) VALUES (?, ?, ?, ?, ?)');
+      const insert = db.prepare('INSERT INTO video_playback_events (video_id, user_id, event_type, position, from_position, context) VALUES (?, ?, ?, ?, ?, ?)');
       const insertMany = db.transaction((rows) => {
         for (const e of rows) {
           if (!['play', 'pause', 'seek'].includes(e.event_type)) continue;
           const position = Number(e.position);
           if (!Number.isFinite(position) || position < 0) continue;
           const fromPosition = Number(e.from_position);
-          insert.run(req.params.id, req.session.user.id, e.event_type, position, Number.isFinite(fromPosition) ? fromPosition : null);
+          insert.run(req.params.id, req.session.user.id, e.event_type, position, Number.isFinite(fromPosition) ? fromPosition : null, context);
         }
       });
       insertMany(events);
@@ -2554,65 +2611,134 @@ function bucketPositions(positions, duration, bucketCount) {
 
 const ANALYTICS_BUCKETS = 50;
 
+// Distinct viewers for a video under a given context filter — powers both the per-user picker
+// and the unique-viewers summary stat. watch_progress is solo-only by construction (Watch Party
+// never writes to it), so it's excluded entirely once 'watch_party' is asked for specifically.
+function getVideoViewerUsers(videoId, context) {
+  const ids = new Set();
+  if (context !== 'watch_party') {
+    for (const r of db.prepare('SELECT DISTINCT user_id FROM watch_progress WHERE video_id = ?').all(videoId)) ids.add(r.user_id);
+  }
+  const ctxCond = context === 'all' ? '' : 'AND context = ?';
+  const ctxParams = context === 'all' ? [videoId] : [videoId, context];
+  for (const r of db.prepare(`SELECT DISTINCT user_id FROM watch_logs WHERE video_id = ? ${ctxCond}`).all(...ctxParams)) ids.add(r.user_id);
+  for (const r of db.prepare(`SELECT DISTINCT user_id FROM video_playback_events WHERE video_id = ? ${ctxCond}`).all(...ctxParams)) ids.add(r.user_id);
+  if (ids.size === 0) return [];
+  const placeholders = [...ids].map(() => '?').join(',');
+  return db.prepare(`SELECT id, username, display_name FROM users WHERE id IN (${placeholders})`).all(...ids);
+}
+
 app.get('/api/videos/:id/analytics', requireAuth, (req, res) => {
   try {
-    const video = db.prepare('SELECT id, author_id, main_source_type, stream_video_id FROM videos WHERE id = ?').get(req.params.id);
+    const video = db.prepare('SELECT id, author_id FROM videos WHERE id = ?').get(req.params.id);
     if (!video) return res.status(404).json({ error: 'Nie znaleziono filmu.' });
     const isOwner = video.author_id === req.session.user.id;
     const isAdmin = req.session.user.role === 'admin' || req.session.user.role === 'dev';
     if (!isOwner && !isAdmin) return res.status(403).json({ error: 'Brak uprawnień.' });
 
-    // Watch-time-over-time — daily view count, last 30 days. Works for every source type
-    // (YouTube included) since it's backed by watch_logs, not by sampled player events.
-    const dailyViews = db.prepare(`
-      SELECT DATE(watched_at) AS day, COUNT(*) AS views
-      FROM watch_logs WHERE video_id = ? AND watched_at >= datetime('now', '-30 days')
-      GROUP BY DATE(watched_at) ORDER BY day ASC
-    `).all(video.id);
+    const context = ['solo', 'watch_party'].includes(req.query.context) ? req.query.context : 'all';
+    const userId = req.query.user_id ? parseInt(req.query.user_id) : null;
+    const ctxCond = context === 'all' ? '' : 'AND context = ?';
 
-    // Heatmap needs sampled seek/pause events, which only self-hosted playback (SecurePlayer)
-    // reports — YouTube's iframe only exposes polled currentTime, no discrete play/pause/seek.
-    const isSelfHosted = video.main_source_type === 'selfhosted' && !!video.stream_video_id;
+    // Watch-time-over-time — daily view count, last 30 days.
+    const dailyParams = [video.id];
+    let dailySql = `SELECT DATE(watched_at) AS day, COUNT(*) AS views FROM watch_logs WHERE video_id = ? AND watched_at >= datetime('now', '-30 days')`;
+    if (context !== 'all') { dailySql += ' AND context = ?'; dailyParams.push(context); }
+    if (userId) { dailySql += ' AND user_id = ?'; dailyParams.push(userId); }
+    dailySql += ' GROUP BY DATE(watched_at) ORDER BY day ASC';
+    const dailyViews = db.prepare(dailySql).all(...dailyParams);
+
     let heatmap = null;
-    if (isSelfHosted) {
-      const duration = getVideoDuration(video.id);
-      if (duration > 0) {
-        const pauses = db.prepare(`SELECT position FROM video_playback_events WHERE video_id = ? AND event_type = 'pause'`).all(video.id).map(r => r.position);
-        const rewinds = db.prepare(`SELECT position FROM video_playback_events WHERE video_id = ? AND event_type = 'seek' AND from_position IS NOT NULL AND position < from_position`).all(video.id).map(r => r.position);
-        const skips = db.prepare(`SELECT from_position AS position FROM video_playback_events WHERE video_id = ? AND event_type = 'seek' AND from_position IS NOT NULL AND position > from_position`).all(video.id).map(r => r.position);
+    const duration = getVideoDuration(video.id);
+    if (duration > 0) {
+      const evParams = context === 'all' ? [video.id] : [video.id, context];
+      const userCond = userId ? 'AND user_id = ?' : '';
+      const withUser = (params) => userId ? [...params, userId] : params;
 
-        // Retention curve: for each bucket, the fraction of viewers whose furthest-ever
-        // position reached at least that point — the standard simplified retention-graph
-        // definition (not true frame-by-frame "were they actively watching" reconstruction).
-        const progressPositions = db.prepare('SELECT user_id, MAX(position) AS position FROM watch_progress WHERE video_id = ? GROUP BY user_id').all(video.id);
-        const eventPositions = db.prepare(`SELECT user_id, MAX(position) AS position FROM video_playback_events WHERE video_id = ? GROUP BY user_id`).all(video.id);
-        const furthestByUser = {};
-        for (const r of [...progressPositions, ...eventPositions]) {
-          furthestByUser[r.user_id] = Math.max(furthestByUser[r.user_id] || 0, r.position || 0);
-        }
-        const furthestValues = Object.values(furthestByUser);
-        const bucketSize = duration / ANALYTICS_BUCKETS;
-        const retention = new Array(ANALYTICS_BUCKETS).fill(0);
-        if (furthestValues.length > 0) {
-          for (let i = 0; i < ANALYTICS_BUCKETS; i++) {
-            const bucketStart = i * bucketSize;
-            retention[i] = furthestValues.filter(p => p >= bucketStart).length / furthestValues.length;
-          }
-        }
+      const pauses = db.prepare(`SELECT position FROM video_playback_events WHERE video_id = ? ${ctxCond} AND event_type = 'pause' ${userCond}`)
+        .all(...withUser(evParams)).map(r => r.position);
+      const rewinds = db.prepare(`SELECT position FROM video_playback_events WHERE video_id = ? ${ctxCond} AND event_type = 'seek' AND from_position IS NOT NULL AND position < from_position ${userCond}`)
+        .all(...withUser(evParams)).map(r => r.position);
+      const skips = db.prepare(`SELECT from_position AS position FROM video_playback_events WHERE video_id = ? ${ctxCond} AND event_type = 'seek' AND from_position IS NOT NULL AND position > from_position ${userCond}`)
+        .all(...withUser(evParams)).map(r => r.position);
 
-        heatmap = {
-          duration,
-          buckets: ANALYTICS_BUCKETS,
-          viewers: furthestValues.length,
-          retention,
-          pauses: bucketPositions(pauses, duration, ANALYTICS_BUCKETS),
-          rewinds: bucketPositions(rewinds, duration, ANALYTICS_BUCKETS),
-          skips: bucketPositions(skips, duration, ANALYTICS_BUCKETS),
-        };
+      // Retention curve: for each bucket, the fraction of viewers whose furthest-ever position
+      // reached at least that point — the standard simplified retention-graph definition (not
+      // true frame-by-frame "were they actively watching" reconstruction).
+      const progressPositions = context === 'watch_party' ? [] : (() => {
+        let sql = 'SELECT user_id, MAX(position) AS position FROM watch_progress WHERE video_id = ?';
+        const params = [video.id];
+        if (userId) { sql += ' AND user_id = ?'; params.push(userId); }
+        return db.prepare(sql + ' GROUP BY user_id').all(...params);
+      })();
+      const eventPositions = db.prepare(`SELECT user_id, MAX(position) AS position FROM video_playback_events WHERE video_id = ? ${ctxCond} ${userCond} GROUP BY user_id`)
+        .all(...withUser(evParams));
+      const furthestByUser = {};
+      for (const r of [...progressPositions, ...eventPositions]) {
+        furthestByUser[r.user_id] = Math.max(furthestByUser[r.user_id] || 0, r.position || 0);
       }
+      const furthestValues = Object.values(furthestByUser);
+      const bucketSize = duration / ANALYTICS_BUCKETS;
+      const retention = new Array(ANALYTICS_BUCKETS).fill(0);
+      if (furthestValues.length > 0) {
+        for (let i = 0; i < ANALYTICS_BUCKETS; i++) {
+          const bucketStart = i * bucketSize;
+          retention[i] = furthestValues.filter(p => p >= bucketStart).length / furthestValues.length;
+        }
+      }
+
+      heatmap = {
+        duration,
+        buckets: ANALYTICS_BUCKETS,
+        viewers: furthestValues.length,
+        retention,
+        pauses: bucketPositions(pauses, duration, ANALYTICS_BUCKETS),
+        rewinds: bucketPositions(rewinds, duration, ANALYTICS_BUCKETS),
+        skips: bucketPositions(skips, duration, ANALYTICS_BUCKETS),
+      };
     }
 
-    res.json({ dailyViews, heatmap, selfHosted: isSelfHosted });
+    const viewers = getVideoViewerUsers(video.id, context);
+    const summary = {
+      uniqueViewers: viewers.length,
+      avgCompletionPct: (heatmap && heatmap.viewers > 0)
+        ? Math.round((heatmap.retention.reduce((a, b) => a + b, 0) / ANALYTICS_BUCKETS) * 100)
+        : null,
+    };
+
+    res.json({ dailyViews, heatmap, summary, viewers, context, userId });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Reset analytics source data for a video — optionally scoped to a time window and/or a single
+// user. Only touches video_playback_events and watch_logs (the actual analytics-source tables);
+// deliberately leaves watch_progress alone since that's a viewer's own personal resume position
+// for "Continue watching", not something an author/admin resetting analytics should be able to
+// wipe out for someone else as a side effect.
+app.delete('/api/videos/:id/analytics', requireAuth, (req, res) => {
+  try {
+    const video = db.prepare('SELECT id, author_id FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).json({ error: 'Nie znaleziono filmu.' });
+    const isOwner = video.author_id === req.session.user.id;
+    const isAdmin = req.session.user.role === 'admin' || req.session.user.role === 'dev';
+    if (!isOwner && !isAdmin) return res.status(403).json({ error: 'Brak uprawnień.' });
+
+    const { before, after, user_id } = req.body || {};
+    const conds = ['video_id = ?'];
+    const params = [video.id];
+    if (user_id) { conds.push('user_id = ?'); params.push(parseInt(user_id)); }
+    if (after) { conds.push('created_at >= ?'); params.push(after); }
+    if (before) { conds.push('created_at <= ?'); params.push(before); }
+    const where = conds.join(' AND ');
+
+    const evInfo = db.prepare(`DELETE FROM video_playback_events WHERE ${where}`).run(...params);
+    // watch_logs uses watched_at, not created_at — same filter values, different column name.
+    const logsWhere = where.replace(/created_at/g, 'watched_at');
+    const logsInfo = db.prepare(`DELETE FROM watch_logs WHERE ${logsWhere}`).run(...params);
+
+    audit(req.session.user.id, 'delete', 'video_analytics', video.id,
+      `usunięto ${evInfo.changes} zdarzeń i ${logsInfo.changes} wyświetleń${user_id ? ` (użytkownik #${user_id})` : ''}${after || before ? ` (okres: ${after || '...'} – ${before || '...'})` : ''}`);
+    res.json({ success: true, deletedEvents: evInfo.changes, deletedViews: logsInfo.changes });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -4592,6 +4718,42 @@ app.get('/api/progress/:videoId', requireAuth, (req, res) => {
     const row = db.prepare('SELECT * FROM watch_progress WHERE user_id = ? AND video_id = ?')
       .get(user.id, parseInt(req.params.videoId));
     res.json(row || null);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============ WATCHED MARKS ============
+// Deliberately separate from watch_progress — see the video_watched table comment in database.js.
+app.post('/api/videos/:id/watched', requireAuth, (req, res) => {
+  const user = req.session.user;
+  try {
+    db.prepare(`
+      INSERT INTO video_watched (user_id, video_id, watched_at) VALUES (?, ?, datetime('now'))
+      ON CONFLICT(user_id, video_id) DO UPDATE SET watched_at = excluded.watched_at
+    `).run(user.id, parseInt(req.params.id));
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/videos/:id/watched', requireAuth, (req, res) => {
+  const user = req.session.user;
+  try {
+    db.prepare('DELETE FROM video_watched WHERE user_id = ? AND video_id = ?').run(user.id, parseInt(req.params.id));
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/watched', requireAuth, (req, res) => {
+  try {
+    const rows = db.prepare('SELECT video_id, watched_at FROM video_watched WHERE user_id = ?').all(req.session.user.id);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/watched', requireAuth, (req, res) => {
+  const user = req.session.user;
+  try {
+    const info = db.prepare('DELETE FROM video_watched WHERE user_id = ?').run(user.id);
+    res.json({ success: true, deleted: info.changes });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

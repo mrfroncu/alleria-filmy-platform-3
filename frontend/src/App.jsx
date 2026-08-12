@@ -85,7 +85,7 @@ export default function App() {
           <Route path="/author/:authorId" element={<P><AuthorPage /></P>} />
           <Route path="/tag/:tagId" element={<P><VideosPage /></P>} />
           <Route path="/watch-party" element={<P><WatchPartyPage /></P>} />
-          <Route path="/shorts" element={<P><ShortsPage /></P>} />
+          <Route path="/shorts/:categorySlug" element={<P><ShortsPage /></P>} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </WatchPartyProvider>

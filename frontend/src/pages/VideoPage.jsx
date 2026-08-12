@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw, Star, SmilePlus, Flag, BarChart3 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw, SmilePlus, Flag, BarChart3 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
@@ -47,24 +47,47 @@ function loadYtApi() {
 const DOUBLE_TAP_MS = 300;
 const EDGE_ZONE = 0.35;
 
+// A real seek is near-instant; normal 1x playback between two polls never drifts this far from
+// "elapsed wall-clock time" — used to infer seeks from polled currentTime, since the YouTube
+// IFrame API has no seek event of its own (native controls, our own custom bar, and double-tap
+// skip all end up going through this same detector uniformly).
+const YT_SEEK_JUMP_THRESHOLD_S = 1.5;
+
 // YouTube player with progress tracking — React owns wrapper div only, YT owns inner element
-function YouTubeTrackingPlayer({ videoId, onTimeUpdate, controlRef }) {
+function YouTubeTrackingPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, controlRef }) {
   const wrapperRef = useRef(null);
   const onTimeUpdateRef = useRef(onTimeUpdate);
   useEffect(() => { onTimeUpdateRef.current = onTimeUpdate; }, [onTimeUpdate]);
+  const onPlayRef = useRef(onPlay);
+  useEffect(() => { onPlayRef.current = onPlay; }, [onPlay]);
+  const onPauseRef = useRef(onPause);
+  useEffect(() => { onPauseRef.current = onPause; }, [onPause]);
+  const onSeekRef = useRef(onSeek);
+  useEffect(() => { onSeekRef.current = onSeek; }, [onSeek]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper || !videoId) return;
-    let destroyed = false, player = null, pollId = null;
+    let destroyed = false, player = null, pollId = null, lastPollTime = null, lastCt = null;
 
     const reportTime = () => {
       if (!player) return;
       const ct = player.getCurrentTime?.() ?? 0;
       const dur = player.getDuration?.() ?? 0;
+
+      // Fires BEFORE onTimeUpdate below: the seek handler reads "from position" off a ref that
+      // onTimeUpdate keeps fresh, so it must still hold last tick's value when this runs.
+      const now = Date.now();
+      if (lastPollTime != null) {
+        const expected = lastCt + (now - lastPollTime) / 1000;
+        if (Math.abs(ct - expected) > YT_SEEK_JUMP_THRESHOLD_S) onSeekRef.current?.(ct);
+      }
+      lastPollTime = now;
+      lastCt = ct;
+
       if (dur > 0 && onTimeUpdateRef.current) onTimeUpdateRef.current(ct, dur);
     };
-    const stopPoll = () => { if (pollId) { clearInterval(pollId); pollId = null; } };
+    const stopPoll = () => { if (pollId) { clearInterval(pollId); pollId = null; } lastPollTime = null; lastCt = null; };
     const startPoll = () => {
       stopPoll();
       reportTime(); // report immediately so we don't miss a 2s window
@@ -86,8 +109,11 @@ function YouTubeTrackingPlayer({ videoId, onTimeUpdate, controlRef }) {
             if (controlRef) controlRef.current = { seek: (pos) => player.seekTo(pos, true) };
           },
           onStateChange: ({ data }) => {
-            if (data === window.YT.PlayerState.PLAYING) startPoll();
-            else stopPoll();
+            if (data === window.YT.PlayerState.PLAYING) { startPoll(); onPlayRef.current?.(player.getCurrentTime?.() ?? 0); }
+            else {
+              stopPoll();
+              if (data === window.YT.PlayerState.PAUSED) onPauseRef.current?.(player.getCurrentTime?.() ?? 0);
+            }
           },
         },
       });
@@ -106,12 +132,18 @@ function YouTubeTrackingPlayer({ videoId, onTimeUpdate, controlRef }) {
 // YouTube player with our own control chrome (matches SecurePlayer's look) instead of the native
 // YouTube UI — mounted with controls:0. Quality control is intentionally omitted: YouTube stopped
 // honoring setPlaybackQuality() for regular embeds years ago, so there is nothing real to expose.
-function YouTubeCustomPlayer({ videoId, onTimeUpdate, controlRef }) {
+function YouTubeCustomPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, controlRef }) {
   const wrapperRef = useRef(null);
   const containerRef = useRef(null);
   const playerRef = useRef(null);
   const onTimeUpdateRef = useRef(onTimeUpdate);
   useEffect(() => { onTimeUpdateRef.current = onTimeUpdate; }, [onTimeUpdate]);
+  const onPlayRef = useRef(onPlay);
+  useEffect(() => { onPlayRef.current = onPlay; }, [onPlay]);
+  const onPauseRef = useRef(onPause);
+  useEffect(() => { onPauseRef.current = onPause; }, [onPause]);
+  const onSeekRef = useRef(onSeek);
+  useEffect(() => { onSeekRef.current = onSeek; }, [onSeek]);
 
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -133,7 +165,7 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, controlRef }) {
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper || !videoId) return;
-    let destroyed = false, player = null, pollId = null;
+    let destroyed = false, player = null, pollId = null, lastPollTime = null, lastCt = null;
 
     const poll = () => {
       if (!player) return;
@@ -142,9 +174,22 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, controlRef }) {
       setCurrentTime(ct);
       if (dur > 0) setDuration(dur);
       setBuffered((player.getVideoLoadedFraction?.() ?? 0) * 100);
+
+      // Catches seeks from every source uniformly — native scrub bar clicks, double-tap skip —
+      // since they all just move player.getCurrentTime() without a dedicated seek event. Must
+      // fire before onTimeUpdate: the seek handler's "from position" comes off a ref onTimeUpdate
+      // keeps fresh, so it needs last tick's value still in place when this runs.
+      const now = Date.now();
+      if (lastPollTime != null) {
+        const expected = lastCt + (now - lastPollTime) / 1000;
+        if (Math.abs(ct - expected) > YT_SEEK_JUMP_THRESHOLD_S) onSeekRef.current?.(ct);
+      }
+      lastPollTime = now;
+      lastCt = ct;
+
       if (dur > 0 && onTimeUpdateRef.current) onTimeUpdateRef.current(ct, dur);
     };
-    const stopPoll = () => { if (pollId) { clearInterval(pollId); pollId = null; } };
+    const stopPoll = () => { if (pollId) { clearInterval(pollId); pollId = null; } lastPollTime = null; lastCt = null; };
     const startPoll = () => { stopPoll(); poll(); pollId = setInterval(poll, 500); };
 
     const playerDiv = document.createElement('div');
@@ -169,8 +214,12 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, controlRef }) {
           },
           onStateChange: ({ data }) => {
             if (destroyed) return;
-            if (data === window.YT.PlayerState.PLAYING) { setPlaying(true); startPoll(); }
-            else { setPlaying(false); stopPoll(); }
+            if (data === window.YT.PlayerState.PLAYING) {
+              setPlaying(true); startPoll(); onPlayRef.current?.(player.getCurrentTime?.() ?? 0);
+            } else {
+              setPlaying(false); stopPoll();
+              if (data === window.YT.PlayerState.PAUSED) onPauseRef.current?.(player.getCurrentTime?.() ?? 0);
+            }
           },
         },
       });
@@ -471,28 +520,6 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, controlRef }) {
   );
 }
 
-// Five-star widget — used both interactively (video header) and read-only (nowhere yet, kept
-// generic since average display doesn't need click handlers).
-function StarRating({ value, hoverValue, onRate, onHover, onLeave, readOnly, size = 'w-5 h-5' }) {
-  const display = hoverValue || value;
-  return (
-    <div className="flex items-center gap-0.5" onMouseLeave={onLeave}>
-      {[1, 2, 3, 4, 5].map(n => (
-        <button
-          key={n}
-          type="button"
-          disabled={readOnly}
-          onClick={() => onRate?.(n)}
-          onMouseEnter={() => onHover?.(n)}
-          className={`transition-transform ${readOnly ? 'cursor-default' : 'cursor-pointer hover:scale-110 active:scale-95'}`}
-        >
-          <Star className={`${size} transition-colors ${n <= display ? 'fill-amber-400 text-amber-400' : 'text-zinc-300 dark:text-zinc-700'}`} />
-        </button>
-      ))}
-    </div>
-  );
-}
-
 const COMMENT_REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
 const COMMENT_REPORT_REASONS = [
@@ -616,11 +643,6 @@ export default function VideoPage() {
   const [isFav, setIsFav] = useState(false);
   const [favCount, setFavCount] = useState(0);
   const [favLoading, setFavLoading] = useState(false);
-  const [myRating, setMyRating] = useState(0);
-  const [avgRating, setAvgRating] = useState(0);
-  const [ratingCount, setRatingCount] = useState(0);
-  const [hoverRating, setHoverRating] = useState(0);
-  const [ratingBusy, setRatingBusy] = useState(false);
   const [prevVideo, setPrevVideo] = useState(null);
   const [nextVideo, setNextVideo] = useState(null);
   const [canEdit, setCanEdit] = useState(false);
@@ -685,10 +707,8 @@ export default function VideoPage() {
     Promise.all([
       api.getVideo(id),
       api.checkFavorite(id).catch(() => ({ isFavorite: false, count: 0 })),
-      api.getRating(id).catch(() => ({ myRating: 0, average: 0, count: 0 })),
-    ]).then(([v, f, r]) => {
+    ]).then(([v, f]) => {
       setVideo(v); setIsFav(f.isFavorite); setFavCount(f.count || 0); setError(null);
-      setMyRating(r.myRating || 0); setAvgRating(r.average || 0); setRatingCount(r.count || 0);
       // NEW data is now in state → trigger enter animation
       setPendingSlide(slideDir);
       setPhase('entering');
@@ -766,16 +786,6 @@ export default function VideoPage() {
     setFavLoading(false);
   };
 
-  const rateVideo = async (rating) => {
-    if (ratingBusy) return;
-    setRatingBusy(true);
-    try {
-      // Clicking the currently-set star again clears the rating instead of re-submitting it
-      const r = rating === myRating ? await api.clearRating(id) : await api.rateVideo(id, rating);
-      setMyRating(r.myRating || 0); setAvgRating(r.average || 0); setRatingCount(r.count || 0);
-    } catch (e) {}
-    setRatingBusy(false);
-  };
   const openEditModal = async () => { try { setEditUsers(await api.getAllUsers()); } catch (e) { setEditUsers([]); } setShowEditModal(true); };
   const submitComment = async () => {
     if (!newComment.trim() || commentLoading) return; setCommentLoading(true);
@@ -828,6 +838,7 @@ export default function VideoPage() {
       if (!s.completed) {
         s.completed = true;
         api.clearProgress(id).catch(() => {});
+        api.markWatched(id).catch(() => {});
       }
       return;
     }
@@ -841,10 +852,11 @@ export default function VideoPage() {
     }
   }, [id]);
 
-  // SecurePlayer-only (self-hosted) — feeds the per-video analytics heatmap. from_position
-  // comes from progressStateRef, which handleTimeUpdate keeps fresh on every native tick, so
-  // it reflects "where playback was right before this seek" without SecurePlayer itself
-  // needing to know anything about analytics.
+  // Shared by SecurePlayer (self-hosted, real DOM events) and both YouTube players (IFrame API
+  // has no seek event, so they infer one from a polling jump — see YT_SEEK_JUMP_THRESHOLD_S).
+  // Feeds the per-video analytics heatmap. from_position comes from progressStateRef, which
+  // handleTimeUpdate keeps fresh on every tick, so it reflects "where playback was right before
+  // this seek" without the player itself needing to know anything about analytics.
   const handlePlayerPlay = useCallback((pos) => { eventBufferRef.current.push({ event_type: 'play', position: pos }); }, []);
   const handlePlayerPause = useCallback((pos) => { eventBufferRef.current.push({ event_type: 'pause', position: pos }); }, []);
   const handlePlayerSeek = useCallback((pos) => {
@@ -913,19 +925,6 @@ export default function VideoPage() {
               <Link to={`/author/${video.author_id}`} className="text-sm font-bold text-violet-500 hover:text-violet-600 transition-colors">{video.author_display_name || video.author_name}</Link>
               {video.tags?.length > 0 && <div className="flex flex-wrap gap-1.5">{video.tags.map(t => <Link key={t.id} to={`/?tags=${t.id}`} className="tag-chip hover:scale-105 active:scale-95">{t.name}</Link>)}</div>}
             </div>
-            <div className="flex items-center gap-2 mt-2">
-              <StarRating
-                value={myRating}
-                hoverValue={hoverRating}
-                onRate={rateVideo}
-                onHover={setHoverRating}
-                onLeave={() => setHoverRating(0)}
-                readOnly={ratingBusy}
-              />
-              {ratingCount > 0 && (
-                <span className="text-xs text-zinc-400">{avgRating.toFixed(1)} <span className="text-zinc-300 dark:text-zinc-600">({ratingCount})</span></span>
-              )}
-            </div>
             <div className="flex items-center gap-3 mt-2 text-xs text-zinc-400">
               <span>{formatDate(video.publish_date)}</span>
               {video.category_name && <><span>•</span><Link to={`/category/${video.category_slug}`} className="hover:text-violet-500 transition-colors">{video.category_name}</Link></>}
@@ -973,8 +972,8 @@ export default function VideoPage() {
           ) : embedUrl ? (
             <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in">
               {config.customYoutubePlayer
-                ? <YouTubeCustomPlayer videoId={extractYoutubeId(src.url)} onTimeUpdate={handleTimeUpdate} controlRef={playerControlRef} />
-                : <YouTubeTrackingPlayer videoId={extractYoutubeId(src.url)} onTimeUpdate={handleTimeUpdate} controlRef={playerControlRef} />}
+                ? <YouTubeCustomPlayer videoId={extractYoutubeId(src.url)} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} controlRef={playerControlRef} />
+                : <YouTubeTrackingPlayer videoId={extractYoutubeId(src.url)} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} controlRef={playerControlRef} />}
             </div>
           ) : isHtml && src.url ? (
             <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in"><HtmlEmbed html={src.url} /></div>

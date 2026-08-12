@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { FolderOpen, Plus, Pencil, Trash2, Users, Shield, Lock, FileText, Settings, ShieldCheck, LayoutGrid, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail, Play, AlertTriangle } from 'lucide-react';
+import { useSearchParams, Link } from 'react-router-dom';
+import { FolderOpen, Plus, Pencil, Trash2, Users, Shield, Lock, FileText, Settings, ShieldCheck, LayoutGrid, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail, Play, AlertTriangle, Flag, ExternalLink, Loader2 } from 'lucide-react';
 import { api } from '../utils/api';
 import { buildCategoryTreeOptions, formatDate } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
@@ -10,7 +10,8 @@ import { useToast } from '../contexts/ToastContext';
 import { useUnsavedForm, useUnsavedGuard } from '../contexts/UnsavedChangesContext';
 import { renderMarkdown } from '../utils/markdown';
 
-const MANAGE_TAB_IDS = ['categories', 'ranks', 'users', 'gdpr', 'tos', 'settings'];
+const MANAGE_TAB_IDS = ['categories', 'ranks', 'users', 'reports', 'gdpr', 'tos', 'settings'];
+const REPORT_REASON_LABELS = { spam: 'Spam', harassment: 'Nękanie / obraźliwe treści', spoiler: 'Spoiler', inappropriate: 'Nieodpowiednia treść', other: 'Inne' };
 
 // Standard on/off slider switch — used for the boolean settings toggles in the Ustawienia tab.
 function ToggleSwitch({ checked, onChange, disabled, label }) {
@@ -48,6 +49,7 @@ const EMPTY_CAT_BASELINE = {
   viewerMode: 'public', editorMode: 'none', viewerRoles: '', editorRoles: '',
   viewerRankIds: [], editorRankIds: [], viewerUserIds: [], editorUserIds: [],
   webhookUrl: '', webhookTemplate: '', webhookEnabled: false, emailEnabled: false, pushEnabled: false,
+  isShortsCategory: false,
 };
 
 export default function ManagePage() {
@@ -92,6 +94,7 @@ export default function ManagePage() {
   const [catWebhookEnabled, setCatWebhookEnabled] = useState(false);
   const [catEmailEnabled, setCatEmailEnabled] = useState(false);
   const [catPushEnabled, setCatPushEnabled] = useState(false);
+  const [catShortsCategory, setCatShortsCategory] = useState(false);
   const [catBaseline, setCatBaseline] = useState(EMPTY_CAT_BASELINE);
 
   // Rank form state
@@ -304,6 +307,39 @@ export default function ManagePage() {
     if (!(settings?.gdpr_region && settings.gdpr_region !== 'off')) { setGdprPendingCount(0); return; }
     loadGdprPendingCount();
   }, [settings?.gdpr_region]);
+
+  // Comment moderation queue
+  const [commentReports, setCommentReports] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsPendingCount, setReportsPendingCount] = useState(0);
+  const [reportStatusFilter, setReportStatusFilter] = useState('pending');
+  const [resolvingReportId, setResolvingReportId] = useState(null);
+
+  const loadReportsPendingCount = () => api.getCommentReportsPendingCount().then(r => setReportsPendingCount(r.count || 0)).catch(() => {});
+  useEffect(() => { loadReportsPendingCount(); }, []);
+
+  const loadReports = () => {
+    setReportsLoading(true);
+    api.getCommentReports(reportStatusFilter === 'all' ? '' : reportStatusFilter)
+      .then(setCommentReports).catch(() => {}).finally(() => setReportsLoading(false));
+  };
+  useEffect(() => { if (tab === 'reports') loadReports(); }, [tab, reportStatusFilter]);
+
+  const resolveReport = async (report, action) => {
+    if (action === 'delete_comment') {
+      if (!(await confirm('Komentarz zostanie ukryty — jego treść zniknie z widoku, ale wpis zostaje w bazie (ślad zostaje zachowany). Zgłoszenie zostanie oznaczone jako rozstrzygnięte. Kontynuować?', { danger: true, confirmLabel: 'Ukryj komentarz' }))) return;
+    } else if (action === 'hard_delete') {
+      if (!(await confirm('Komentarz i wszystkie jego odpowiedzi zostaną usunięte NA ZAWSZE z bazy danych — tej operacji nie można cofnąć. Zgłoszenie zostanie oznaczone jako rozstrzygnięte. Kontynuować?', { danger: true, confirmLabel: 'Usuń trwale' }))) return;
+    }
+    setResolvingReportId(report.id);
+    try {
+      await api.resolveCommentReport(report.id, action);
+      setCommentReports(prev => prev.filter(r => r.id !== report.id));
+      setReportsPendingCount(c => Math.max(0, c - 1));
+      toast.success('Zgłoszenie rozpatrzone.');
+    } catch (err) { toast.error('Błąd: ' + err.message); }
+    setResolvingReportId(null);
+  };
 
   const handleGdprDownloadFile = async (r) => {
     try {
@@ -662,6 +698,7 @@ export default function ManagePage() {
     setCatWebhookUrl(''); setCatWebhookTemplate(''); setCatWebhookEnabled(false);
     setCatEmailEnabled(false);
     setCatPushEnabled(false);
+    setCatShortsCategory(false);
     setEditingCat(null);
     setCatBaseline(EMPTY_CAT_BASELINE);
   };
@@ -677,6 +714,7 @@ export default function ManagePage() {
         name: catName, description: catDesc, sort_order: parseInt(catOrder) || 0, parent_id: catParentId ? parseInt(catParentId) : null,
         webhook_url: catWebhookUrl, webhook_template: catWebhookTemplate, webhook_enabled: catWebhookEnabled,
         email_enabled: catEmailEnabled, push_enabled: catPushEnabled,
+        is_shorts_category: catShortsCategory,
       };
       const accessPayload = {
         viewer_mode: catViewerMode,
@@ -715,6 +753,7 @@ export default function ManagePage() {
     setCatWebhookEnabled(!!cat.webhook_enabled);
     setCatEmailEnabled(!!cat.email_enabled);
     setCatPushEnabled(!!cat.push_enabled);
+    setCatShortsCategory(!!cat.is_shorts_category);
     const rawMode = cat.access_mode || 'public:none';
     const [vm, em] = rawMode.includes(':') ? rawMode.split(':')
       : rawMode === 'custom' ? ['custom', 'none']
@@ -746,6 +785,7 @@ export default function ManagePage() {
       viewerMode: vm, editorMode: em, viewerRoles, editorRoles, viewerRankIds, editorRankIds, viewerUserIds, editorUserIds,
       webhookUrl: cat.webhook_url || '', webhookTemplate: cat.webhook_template || '', webhookEnabled: !!cat.webhook_enabled,
       emailEnabled: !!cat.email_enabled, pushEnabled: !!cat.push_enabled,
+      isShortsCategory: !!cat.is_shorts_category,
     });
     setTab('categories');
   };
@@ -800,7 +840,7 @@ export default function ManagePage() {
     viewerRankIds: sortIds(catViewerRankIds), editorRankIds: sortIds(catEditorRankIds),
     viewerUserIds: sortIds(catViewerUserIds), editorUserIds: sortIds(catEditorUserIds),
     webhookUrl: catWebhookUrl, webhookTemplate: catWebhookTemplate, webhookEnabled: catWebhookEnabled,
-    emailEnabled: catEmailEnabled, pushEnabled: catPushEnabled,
+    emailEnabled: catEmailEnabled, pushEnabled: catPushEnabled, isShortsCategory: catShortsCategory,
   };
   const catBaselineShape = {
     ...catBaseline, viewerRankIds: sortIds(catBaseline.viewerRankIds), editorRankIds: sortIds(catBaseline.editorRankIds),
@@ -841,7 +881,7 @@ export default function ManagePage() {
     <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
       <div className="mb-8">
         {!config.showTopBar && <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">Zarządzanie</h1>}
-        <p className="text-zinc-500 dark:text-zinc-400">Zarządzaj kategoriami, rangami, użytkownikami oraz ustawieniami platformy.</p>
+        <p className="text-zinc-500 dark:text-zinc-400">Zarządzaj kategoriami, rangami, użytkownikami, zgłoszeniami komentarzy oraz ustawieniami platformy.</p>
       </div>
 
       {/* Tabs */}
@@ -850,6 +890,7 @@ export default function ManagePage() {
           ['categories', 'Kategorie', FolderOpen],
           ['ranks', 'Rangi', Shield],
           ['users', 'Użytkownicy', Users],
+          ['reports', 'Zgłoszenia', Flag],
           ...(settings?.gdpr_region && settings.gdpr_region !== 'off' ? [['gdpr', 'RODO', Lock]] : []),
           ['tos', 'Regulamin', FileText],
           ['settings', 'Ustawienia', Settings],
@@ -865,6 +906,11 @@ export default function ManagePage() {
             {key === 'gdpr' && gdprPendingCount > 0 && (
               <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] font-bold">
                 {gdprPendingCount > 99 ? '99+' : gdprPendingCount}
+              </span>
+            )}
+            {key === 'reports' && reportsPendingCount > 0 && (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] font-bold">
+                {reportsPendingCount > 99 ? '99+' : reportsPendingCount}
               </span>
             )}
           </button>
@@ -1015,6 +1061,14 @@ export default function ManagePage() {
                 <span className="text-sm text-zinc-900 dark:text-white font-bold">Wysyłaj powiadomienia przeglądarkowe dla tej kategorii</span>
               </label>
 
+              <div>
+                <label className="flex items-center gap-3 cursor-pointer p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                  <input type="checkbox" checked={catShortsCategory} onChange={e => setCatShortsCategory(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500" />
+                  <span className="text-sm text-zinc-900 dark:text-white font-bold">Kategoria Shortów</span>
+                </label>
+                <p className="text-[9px] text-zinc-400 mt-1">Kliknięcie filmu w tej kategorii uruchomi odtwarzanie sekwencyjne (jeden film przechodzi w kolejny) zamiast zwykłej strony filmu. Format dowolny — nie musi być pionowy.</p>
+              </div>
+
               <button onClick={saveCategory} className="btn-primary text-sm">{editingCat ? 'Zapisz zmiany' : 'Dodaj kategorię'}</button>
             </div>
           </div>
@@ -1042,6 +1096,7 @@ export default function ManagePage() {
                           {(cat.access_mode || '').includes('custom') && <span className="text-[9px] bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5"><Users className="w-2.5 h-2.5" /> NIESTANDARDOWE</span>}
                           {cat.webhook_enabled && cat.webhook_url && <span className="text-[9px] bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 rounded font-bold">WEBHOOK</span>}
                           {cat.email_enabled && <span className="text-[9px] bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 px-1.5 py-0.5 rounded font-bold">EMAIL</span>}
+                          {cat.is_shorts_category && <span className="text-[9px] bg-pink-100 dark:bg-pink-500/10 text-pink-600 dark:text-pink-300 px-1.5 py-0.5 rounded font-bold">SHORTS</span>}
                         </div>
                         {cat.description && <p className="text-xs text-zinc-400 mt-0.5">{cat.description}</p>}
                         {((cat.access && cat.access.length > 0) || (cat.rank_access && cat.rank_access.length > 0)) && (
@@ -1271,6 +1326,101 @@ export default function ManagePage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ============ ZGŁOSZENIA ============ */}
+      {tab === 'reports' && (
+        <div className="animate-fade-in">
+          <div className="flex flex-wrap gap-2 mb-4">
+            {[['pending', 'Oczekujące'], ['resolved', 'Rozstrzygnięte'], ['dismissed', 'Odrzucone'], ['all', 'Wszystkie']].map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setReportStatusFilter(key)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${reportStatusFilter === key ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {reportsLoading ? (
+            <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 text-violet-500 animate-spin" /></div>
+          ) : commentReports.length === 0 ? (
+            <div className="card p-8 text-center"><p className="text-zinc-400 text-sm">Brak zgłoszeń.</p></div>
+          ) : (
+            <div className="space-y-3">
+              {commentReports.map(r => (
+                <div key={r.id} className="card p-5">
+                  <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                        {REPORT_REASON_LABELS[r.reason] || r.reason}
+                      </span>
+                      {r.status !== 'pending' && (
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-lg ${r.status === 'dismissed' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500' : 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'}`}>
+                          {r.status === 'dismissed' ? 'Odrzucone' : 'Rozstrzygnięte'}
+                        </span>
+                      )}
+                      {r.video_id && (
+                        <Link to={`/video/${r.video_id}`} target="_blank" className="text-xs text-violet-500 hover:text-violet-400 flex items-center gap-1">
+                          {r.video_title || `Film #${r.video_id}`} <ExternalLink className="w-3 h-3" />
+                        </Link>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-zinc-400 font-mono whitespace-nowrap">{formatDate(r.created_at)}</span>
+                  </div>
+
+                  <div className="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl mb-2">
+                    <p className="text-[10px] text-zinc-400 mb-1">
+                      Komentarz {r.comment_author_display_name || r.comment_author_username ? `— ${r.comment_author_display_name || r.comment_author_username}` : ''}
+                    </p>
+                    <p className="text-sm text-zinc-700 dark:text-zinc-300 break-words">
+                      {r.comment_deleted ? <span className="italic text-zinc-400">(komentarz już usunięty)</span> : (r.comment_content || <span className="italic text-zinc-400">(komentarz nie istnieje)</span>)}
+                    </p>
+                  </div>
+
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                    Zgłosił: <span className="font-semibold text-zinc-700 dark:text-zinc-300">{r.reporter_display_name || r.reporter_username}</span>
+                  </p>
+                  <p className="text-sm text-zinc-600 dark:text-zinc-300 mb-3">{r.description}</p>
+
+                  {r.status === 'pending' && (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => resolveReport(r, 'dismiss')}
+                        disabled={resolvingReportId === r.id}
+                        title="Zgłoszenie jest bezzasadne — komentarz zostaje bez zmian, zgłoszenie oznaczone jako odrzucone."
+                        className="btn-ghost text-xs disabled:opacity-50"
+                      >
+                        Odrzuć zgłoszenie
+                      </button>
+                      {!r.comment_deleted && (
+                        <button
+                          onClick={() => resolveReport(r, 'delete_comment')}
+                          disabled={resolvingReportId === r.id}
+                          title="Treść komentarza znika z widoku, ale wpis zostaje w bazie — odwracalne przez dev."
+                          className="btn-sm-danger !py-1.5 !px-3 text-xs disabled:opacity-50"
+                        >
+                          Ukryj komentarz
+                        </button>
+                      )}
+                      {/* /manage is dev-only (route-level guard), so unlike the old Redaktor-panel
+                          copy of this UI, every viewer here already qualifies for hard delete. */}
+                      <button
+                        onClick={() => resolveReport(r, 'hard_delete')}
+                        disabled={resolvingReportId === r.id}
+                        title="Trwale usuwa komentarz i jego odpowiedzi z bazy danych — nieodwracalne."
+                        className="btn-link-red text-xs px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50"
+                      >
+                        Usuń trwale (nieodwracalne)
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

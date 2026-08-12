@@ -1,20 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp, FolderOpen, Loader2, Flag, ExternalLink, BarChart3 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp, FolderOpen, Loader2, BarChart3 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import VideoModal from '../components/VideoModal';
 import { useSettings } from '../contexts/SettingsContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useToast } from '../contexts/ToastContext';
-import { useAuth } from '../contexts/AuthContext';
 
-const ADMIN_TAB_IDS = ['videos', 'tags', 'reports'];
-const REPORT_REASON_LABELS = { spam: 'Spam', harassment: 'Nękanie / obraźliwe treści', spoiler: 'Spoiler', inappropriate: 'Nieodpowiednia treść', other: 'Inne' };
+const ADMIN_TAB_IDS = ['videos', 'tags'];
 
 export default function AdminPage() {
   const { config } = useSettings();
-  const { user } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
   const [searchParams] = useSearchParams();
@@ -38,13 +35,6 @@ export default function AdminPage() {
 
   const [expandedTag, setExpandedTag] = useState(null);
 
-  // Comment moderation queue
-  const [commentReports, setCommentReports] = useState([]);
-  const [reportsLoading, setReportsLoading] = useState(false);
-  const [reportsPendingCount, setReportsPendingCount] = useState(0);
-  const [reportStatusFilter, setReportStatusFilter] = useState('pending');
-  const [resolvingReportId, setResolvingReportId] = useState(null);
-
   const loadData = async () => {
     setLoading(true);
     try {
@@ -57,31 +47,6 @@ export default function AdminPage() {
   };
 
   useEffect(() => { loadData(); }, []);
-
-  const loadReportsPendingCount = () => api.getCommentReportsPendingCount().then(r => setReportsPendingCount(r.count || 0)).catch(() => {});
-  useEffect(() => { loadReportsPendingCount(); }, []);
-
-  const loadReports = () => {
-    setReportsLoading(true);
-    api.getCommentReports(reportStatusFilter === 'all' ? '' : reportStatusFilter)
-      .then(setCommentReports).catch(() => {}).finally(() => setReportsLoading(false));
-  };
-  useEffect(() => { if (tab === 'reports') loadReports(); }, [tab, reportStatusFilter]);
-
-  const resolveReport = async (report, action) => {
-    if (action !== 'dismiss') {
-      const label = action === 'hard_delete' ? 'usunąć komentarz trwale' : 'usunąć komentarz';
-      if (!(await confirm(`Czy na pewno chcesz ${label} i odrzucić zgłoszenie?`, { danger: true, confirmLabel: 'Potwierdź' }))) return;
-    }
-    setResolvingReportId(report.id);
-    try {
-      await api.resolveCommentReport(report.id, action);
-      setCommentReports(prev => prev.filter(r => r.id !== report.id));
-      setReportsPendingCount(c => Math.max(0, c - 1));
-      toast.success('Zgłoszenie rozpatrzone.');
-    } catch (err) { toast.error('Błąd: ' + err.message); }
-    setResolvingReportId(null);
-  };
 
   // Auto-poll transcode status every 15 seconds
   const [transcodeProgress, setTranscodeProgress] = useState({});
@@ -149,14 +114,13 @@ export default function AdminPage() {
   const tabs = [
     { key: 'videos', label: 'Biblioteka', icon: Film },
     { key: 'tags', label: 'Tagi', icon: Tag },
-    { key: 'reports', label: 'Zgłoszenia', icon: Flag },
   ];
 
   return (
     <div className="p-6 sm:p-10 max-w-7xl mx-auto page-enter">
       <div className="mb-8">
         {!config.showTopBar && <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-display mb-3">Panel Redaktora</h1>}
-        <p className="text-zinc-500 dark:text-zinc-400">Zarządzaj filmami, tagami i zgłoszeniami komentarzy.</p>
+        <p className="text-zinc-500 dark:text-zinc-400">Zarządzaj filmami i tagami.</p>
       </div>
 
       {/* Summary */}
@@ -213,11 +177,6 @@ export default function AdminPage() {
           >
             <t.icon className="w-4 h-4" />
             {t.label}
-            {t.key === 'reports' && reportsPendingCount > 0 && (
-              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] font-bold">
-                {reportsPendingCount > 99 ? '99+' : reportsPendingCount}
-              </span>
-            )}
           </button>
         ))}
       </div>
@@ -423,98 +382,6 @@ export default function AdminPage() {
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* === REPORTS TAB === */}
-      {tab === 'reports' && (
-        <div>
-          <div className="flex flex-wrap gap-2 mb-4">
-            {[['pending', 'Oczekujące'], ['resolved', 'Rozstrzygnięte'], ['dismissed', 'Odrzucone'], ['all', 'Wszystkie']].map(([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setReportStatusFilter(key)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${reportStatusFilter === key ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {reportsLoading ? (
-            <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 text-violet-500 animate-spin" /></div>
-          ) : commentReports.length === 0 ? (
-            <div className="card p-8 text-center"><p className="text-zinc-400 text-sm">Brak zgłoszeń.</p></div>
-          ) : (
-            <div className="space-y-3">
-              {commentReports.map(r => (
-                <div key={r.id} className="card p-5">
-                  <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                        {REPORT_REASON_LABELS[r.reason] || r.reason}
-                      </span>
-                      {r.status !== 'pending' && (
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-lg ${r.status === 'dismissed' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500' : 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'}`}>
-                          {r.status === 'dismissed' ? 'Odrzucone' : 'Rozstrzygnięte'}
-                        </span>
-                      )}
-                      {r.video_id && (
-                        <Link to={`/video/${r.video_id}`} target="_blank" className="text-xs text-violet-500 hover:text-violet-400 flex items-center gap-1">
-                          {r.video_title || `Film #${r.video_id}`} <ExternalLink className="w-3 h-3" />
-                        </Link>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-zinc-400 font-mono whitespace-nowrap">{formatDate(r.created_at)}</span>
-                  </div>
-
-                  <div className="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl mb-2">
-                    <p className="text-[10px] text-zinc-400 mb-1">
-                      Komentarz {r.comment_author_display_name || r.comment_author_username ? `— ${r.comment_author_display_name || r.comment_author_username}` : ''}
-                    </p>
-                    <p className="text-sm text-zinc-700 dark:text-zinc-300 break-words">
-                      {r.comment_deleted ? <span className="italic text-zinc-400">(komentarz już usunięty)</span> : (r.comment_content || <span className="italic text-zinc-400">(komentarz nie istnieje)</span>)}
-                    </p>
-                  </div>
-
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                    Zgłosił: <span className="font-semibold text-zinc-700 dark:text-zinc-300">{r.reporter_display_name || r.reporter_username}</span>
-                  </p>
-                  <p className="text-sm text-zinc-600 dark:text-zinc-300 mb-3">{r.description}</p>
-
-                  {r.status === 'pending' && (
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => resolveReport(r, 'dismiss')}
-                        disabled={resolvingReportId === r.id}
-                        className="btn-ghost text-xs disabled:opacity-50"
-                      >
-                        Odrzuć zgłoszenie
-                      </button>
-                      {!r.comment_deleted && (
-                        <button
-                          onClick={() => resolveReport(r, 'delete_comment')}
-                          disabled={resolvingReportId === r.id}
-                          className="btn-sm-danger !py-1.5 !px-3 text-xs disabled:opacity-50"
-                        >
-                          Usuń komentarz
-                        </button>
-                      )}
-                      {user?.role === 'dev' && (
-                        <button
-                          onClick={() => resolveReport(r, 'hard_delete')}
-                          disabled={resolvingReportId === r.id}
-                          className="btn-link-red text-xs px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50"
-                        >
-                          Usuń trwale
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 

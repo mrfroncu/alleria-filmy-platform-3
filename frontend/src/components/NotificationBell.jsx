@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Film, MessageCircle, Download, Flag, X, Loader2, CheckCheck } from 'lucide-react';
 import { useNotifications } from '../contexts/NotificationsContext';
@@ -81,7 +82,14 @@ export default function NotificationBell({ fullScreenOnly = false }) {
 
   useEffect(() => {
     if (!open) return;
-    const onClickOutside = (e) => { if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false); };
+    // The mobile/full-screen panels are portaled to <body> (see below), so they're no longer
+    // DOM descendants of rootRef — a data attribute lets this check reach them without juggling
+    // multiple refs for the mutually-exclusive render paths below.
+    const onClickOutside = (e) => {
+      if (rootRef.current && rootRef.current.contains(e.target)) return;
+      if (e.target.closest && e.target.closest('[data-notification-panel]')) return;
+      setOpen(false);
+    };
     const onEscape = (e) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', onClickOutside);
     document.addEventListener('keydown', onEscape);
@@ -106,17 +114,27 @@ export default function NotificationBell({ fullScreenOnly = false }) {
 
       {open && (
         fullScreenOnly ? (
-          <div className="fixed inset-0 z-[60] bg-white dark:bg-zinc-900 flex flex-col">
-            <NotificationPanel onClose={close} />
-          </div>
+          createPortal(
+            <div data-notification-panel className="fixed inset-0 z-[60] bg-white dark:bg-zinc-900 flex flex-col">
+              <NotificationPanel onClose={close} />
+            </div>,
+            document.body
+          )
         ) : (
           <>
-            {/* Mobile: full-screen panel */}
-            <div className="fixed inset-0 z-[60] bg-white dark:bg-zinc-900 flex flex-col sm:hidden">
-              <NotificationPanel onClose={close} />
-            </div>
+            {/* Mobile: full-screen panel — portaled to <body> because the top bar it would
+                otherwise nest under uses backdrop-blur, which (like any filter) creates a new
+                containing block for position:fixed descendants. Without the portal, "fixed inset-0"
+                resolves against that short top-bar box instead of the viewport, so the panel renders
+                squashed into a sliver at the very top instead of covering the screen. */}
+            {createPortal(
+              <div data-notification-panel className="fixed inset-0 z-[60] bg-white dark:bg-zinc-900 flex flex-col sm:hidden">
+                <NotificationPanel onClose={close} />
+              </div>,
+              document.body
+            )}
             {/* Desktop: anchored dropdown */}
-            <div className="hidden sm:flex absolute right-0 top-full mt-2 w-96 max-h-[32rem] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl z-50 flex-col overflow-hidden animate-scale-in origin-top-right">
+            <div data-notification-panel className="hidden sm:flex absolute right-0 top-full mt-2 w-96 max-h-[32rem] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl z-50 flex-col overflow-hidden animate-scale-in origin-top-right">
               <NotificationPanel onClose={close} />
             </div>
           </>
