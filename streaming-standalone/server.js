@@ -412,13 +412,22 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
   }
   fs.writeFileSync(path.join(outputDir, 'master.m3u8'), master);
 
-  // Generate thumbnail from source
-  try {
-    execSync(`ffmpeg -i "${inputPath}" -ss 00:00:05 -vframes 1 -q:v 3 "${path.join(outputDir, 'thumb.jpg')}" -y`, { stdio: 'pipe' });
-  } catch (e) {
+  // Generate thumbnail from source — try a few timestamps before giving up. A short clip (or one
+  // with an unreadable frame at a given offset) can fail every attempt except 0:00, which grabs
+  // the very first decodable frame and is about as close to "always works" as ffmpeg gets; the
+  // final catch logs instead of swallowing, so a total failure is at least visible in the logs
+  // rather than silently leaving the video with no thumbnail forever.
+  let thumbOk = false;
+  let lastThumbErr = null;
+  for (const ts of ['00:00:05', '00:00:01', '00:00:00']) {
     try {
-      execSync(`ffmpeg -i "${inputPath}" -ss 00:00:01 -vframes 1 -q:v 3 "${path.join(outputDir, 'thumb.jpg')}" -y`, { stdio: 'pipe' });
-    } catch (e2) {}
+      execSync(`ffmpeg -i "${inputPath}" -ss ${ts} -vframes 1 -q:v 3 "${path.join(outputDir, 'thumb.jpg')}" -y`, { stdio: 'pipe' });
+      thumbOk = true;
+      break;
+    } catch (e) { lastThumbErr = e; }
+  }
+  if (!thumbOk) {
+    console.log(`[STREAM] Thumbnail generation failed for ${videoId} at every attempted timestamp: ${lastThumbErr?.message}`);
   }
 
   // Get duration
