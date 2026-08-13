@@ -70,6 +70,9 @@ export const api = {
   createVideo: (formData) => request('/videos', { method: 'POST', body: formData }),
   updateVideo: (id, formData) => request(`/videos/${id}`, { method: 'PUT', body: formData }),
   deleteVideo: (id) => request(`/videos/${id}`, { method: 'DELETE' }),
+  promoteMirrorSource: (id, slot) => request(`/videos/${id}/promote-source`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slot }),
+  }),
 
   // Tags
   getTags: (search) => request(`/tags${search ? `?search=${encodeURIComponent(search)}` : ''}`),

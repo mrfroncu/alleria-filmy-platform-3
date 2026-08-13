@@ -2031,6 +2031,68 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
   }
 });
 
+// Swaps the main source with a mirror slot in place — e.g. promote a self-hosted mirror to main
+// and demote the old YouTube main down to that mirror slot — without re-uploading anything.
+// Only 'link' (YouTube) and 'streamer' (self-hosted) mirrors are eligible: those are the only two
+// mirror types with a first-class main-source equivalent. 'embed'/'plex' mirrors have no main
+// representation (the edit form's main-source toggle only offers YouTube/self-hosted, and would
+// silently clobber main_source_type back to one of those on the next unrelated save), so promoting
+// them would only work until someone next saves the edit form.
+app.put('/api/videos/:id/promote-source', requireAdmin, (req, res) => {
+  try {
+    const slot = parseInt(req.body?.slot, 10);
+    if (![1, 2, 3, 4, 5].includes(slot)) return res.status(400).json({ error: 'Nieprawidłowy slot mirrora.' });
+
+    const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).json({ error: 'Nie znaleziono filmu.' });
+
+    const mirrorUrl = video[`mirror${slot}_url`];
+    const mirrorType = video[`mirror${slot}_type`] || (video[`mirror${slot}_is_embed`] ? 'embed' : 'link');
+    const mirrorName = video[`mirror${slot}_name`];
+    if (!mirrorUrl) return res.status(400).json({ error: 'Ten mirror jest pusty.' });
+    if (mirrorType !== 'link' && mirrorType !== 'streamer') {
+      return res.status(400).json({ error: 'Tylko mirrory typu Link/YouTube lub Upload można ustawić jako główne źródło.' });
+    }
+
+    const oldMain = {
+      source: video.main_source, type: video.main_source_type || 'youtube',
+      title: video.main_source_title, streamId: video.stream_video_id,
+    };
+
+    // New main takes over the mirror's content.
+    const newMain = mirrorType === 'streamer'
+      ? { source: mirrorUrl, type: 'selfhosted', title: mirrorName || 'Self-hosted', streamId: mirrorUrl.replace('self-hosted:', ''), status: 'ready' }
+      : { source: mirrorUrl, type: 'youtube', title: mirrorName || 'YouTube', streamId: null, status: null };
+
+    // The old main slides down into the vacated mirror slot.
+    const newMirror = oldMain.type === 'selfhosted'
+      ? { name: oldMain.title || 'Self-hosted', url: oldMain.source, type: 'streamer' }
+      : { name: oldMain.title || 'YouTube', url: oldMain.source, type: 'link' };
+
+    // Only mirror1/mirror2 carry the legacy _is_embed column (mirror3-5 were added later, with
+    // just _type) — the UPDATE must omit that clause for slots 3-5 or SQLite errors on it.
+    const hasIsEmbedColumn = slot === 1 || slot === 2;
+    db.prepare(`
+      UPDATE videos SET
+        main_source = ?, main_source_type = ?, main_source_title = ?, stream_video_id = ?, stream_status = ?,
+        mirror${slot}_name = ?, mirror${slot}_url = ?, mirror${slot}_type = ?${hasIsEmbedColumn ? `, mirror${slot}_is_embed = 0` : ''},
+        updated_at = datetime('now')
+      WHERE id = ?
+    `).run(
+      newMain.source, newMain.type, newMain.title, newMain.streamId, newMain.status,
+      newMirror.name, newMirror.url, newMirror.type,
+      req.params.id
+    );
+
+    audit(req.session.user.id, 'edit', 'video', parseInt(req.params.id),
+      `zamieniono główne źródło (${oldMain.type}) z mirrorem ${slot} (${mirrorType})`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error promoting mirror source:', err);
+    res.status(500).json({ error: 'Failed to promote source' });
+  }
+});
+
 app.delete('/api/videos/:id', requireAdmin, (req, res) => {
   try {
     const vid = db.prepare('SELECT title FROM videos WHERE id = ?').get(req.params.id);
