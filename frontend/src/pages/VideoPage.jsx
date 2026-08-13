@@ -917,6 +917,9 @@ export default function VideoPage() {
     ...(video.mirror4_url ? [{ key: 'mirror4', label: video.mirror4_name || 'Mirror 4' }] : []),
     ...(video.mirror5_url ? [{ key: 'mirror5', label: video.mirror5_name || 'Mirror 5' }] : []),
   ];
+  // Passed to SecurePlayer so a broken source's own error state offers a one-click way out
+  // instead of only the tab row further down the page.
+  const otherSources = sources.filter(s => s.key !== activeSource);
   const isDev = user?.role === 'dev';
   const activeCount = comments.filter(c => !c.deleted).length;
   // Animation class based on phase
@@ -954,9 +957,9 @@ export default function VideoPage() {
 
         <div className="mb-2 anim-stagger-2" key={`player-${activeSource}`}>
           {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
-            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} />
+            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={setActiveSource} />
           ) : isStreamer && streamerVideoId ? (
-            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} />
+            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={setActiveSource} />
           ) : isPlex && src.url ? (
             <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in plex-container flex items-center justify-center">
               {/* Floating particles */}

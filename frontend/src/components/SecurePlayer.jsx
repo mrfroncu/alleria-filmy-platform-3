@@ -31,6 +31,11 @@ function pickBestLevelIndex(levels) {
 export default function SecurePlayer({
   streamVideoId, drmEnhanced, title, controlRef, onTimeUpdate, onPlay, onPause, onSeek,
   containerClassName, startMuted, onMuteChange, loop, onEnded, disablePip, compactControls, disableFullscreen,
+  // Optional alternate sources shown as quick-switch buttons in the "unavailable" error state —
+  // e.g. VideoPage passes its other mirrors so a broken main source isn't a dead end. Callers
+  // that have nothing to offer here (Shorts, Watch Party) simply omit both and the section stays
+  // hidden entirely rather than showing an empty "Dostępne mirrory" list.
+  mirrors, onSelectMirror,
 }) {
   const { user } = useAuth();
   const videoRef = useRef(null);
@@ -833,6 +838,22 @@ export default function SecurePlayer({
           >
             Spróbuj ponownie
           </button>
+          {mirrors?.length > 0 && (
+            <div className="mt-6 pt-5 border-t border-white/10">
+              <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-3">Dostępne mirrory</p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {mirrors.map(m => (
+                  <button
+                    key={m.key}
+                    onClick={() => onSelectMirror?.(m.key)}
+                    className="px-4 py-2 rounded-xl text-sm font-bold bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition-colors"
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
