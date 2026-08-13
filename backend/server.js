@@ -1710,6 +1710,9 @@ app.get('/api/videos', requireAuth, (req, res) => {
     const watchedIds = new Set(
       db.prepare('SELECT video_id FROM video_watched WHERE user_id = ?').all(req.session.user.id).map(r => r.video_id)
     );
+    const transcriptStatusByVideo = new Map(
+      db.prepare('SELECT video_id, status FROM video_transcripts').all().map(r => [r.video_id, r.status])
+    );
     res.json(videos.map(v => attachPreviewUrl({
       ...v,
       tags: v.tag_names ? v.tag_names.split(',').map((name, i) => ({
@@ -1717,6 +1720,7 @@ app.get('/api/videos', requireAuth, (req, res) => {
         name
       })) : [],
       is_watched: watchedIds.has(v.id),
+      transcript_status: transcriptStatusByVideo.get(v.id) || null,
     })));
   } catch (err) {
     console.error('Error fetching videos:', err);
@@ -1804,7 +1808,7 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
       mirror4_name, mirror4_url, mirror4_type,
       mirror5_name, mirror5_url, mirror5_type,
       description, publish_date, tags,
-      stream_video_id, drm_enhanced, category_id } = req.body;
+      stream_video_id, drm_enhanced, category_id, transcribe } = req.body;
 
     let thumbUrl = thumbnail || extractYoutubeThumbnail(main_source);
     let customThumb = 0;
@@ -1851,6 +1855,12 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
     // Mark self-hosted videos as transcoding
     if (stream_video_id) {
       db.prepare(`UPDATE videos SET stream_status = 'transcoding' WHERE id = ?`).run(videoId);
+    }
+    // Transcription (checkbox at upload) was already kicked off on the streaming service itself
+    // (see the `transcribe` flag threaded through /api/stream/upload/complete) — this just gives
+    // the 30s poll loop a row to track so it actually picks the job up once it's running.
+    if (stream_video_id && (transcribe === 'true' || transcribe === true)) {
+      db.prepare(`INSERT INTO video_transcripts (video_id, status) VALUES (?, 'pending')`).run(videoId);
     }
 
     // Webhook logic:
@@ -1927,7 +1937,7 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
       mirror4_name, mirror4_url, mirror4_type,
       mirror5_name, mirror5_url, mirror5_type,
       description, publish_date, tags,
-      category_id, stream_video_id, drm_enhanced, access_mode, allowed_users } = req.body;
+      category_id, stream_video_id, drm_enhanced, access_mode, allowed_users, transcribe } = req.body;
 
     const existing = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Video not found' });
@@ -1971,6 +1981,17 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
       drm_enhanced === 'true' || drm_enhanced === '1' ? 1 : 0,
       access_mode || existing.access_mode || 'category',
       req.params.id);
+
+    // A self-hosted file uploaded for the first time during an edit (converting from e.g.
+    // YouTube) goes through this endpoint, not POST /api/videos — same pending-row bookkeeping
+    // as there, so the 30s poll loop has something to track once the streaming service starts
+    // the job it was already told to run via the upload/complete relay's transcribe flag.
+    if (!existing.stream_video_id && stream_video_id && (transcribe === 'true' || transcribe === true)) {
+      db.prepare(`
+        INSERT INTO video_transcripts (video_id, status) VALUES (?, 'pending')
+        ON CONFLICT(video_id) DO UPDATE SET status = 'pending', error_message = NULL, updated_at = datetime('now')
+      `).run(req.params.id);
+    }
 
     // Update per-video access if custom mode
     if (access_mode === 'custom' && allowed_users) {
@@ -2871,6 +2892,127 @@ app.delete('/api/videos/:id/analytics', requireAuth, (req, res) => {
     audit(req.session.user.id, 'delete', 'video_analytics', video.id,
       `usunięto ${evInfo.changes} zdarzeń i ${logsInfo.changes} wyświetleń${userDesc}${after || before ? ` (okres: ${after || '...'} – ${before || '...'})` : ''}`);
     res.json({ success: true, deletedEvents: evInfo.changes, deletedViews: logsInfo.changes });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============ TRANSCRIPTS (offline speech-to-text, PL/EN) ============
+// Same per-video access check repeated inline at GET /api/videos/:id, POST .../log-view, etc.
+// (this codebase has no shared "can this user view this video" helper — see exploration notes)
+// — kept local to this section rather than retrofitting the existing call sites.
+function userCanViewVideo(video, user) {
+  if (user.role === 'dev') return true;
+  if (video.access_mode === 'custom') {
+    const hasAccess = db.prepare('SELECT 1 FROM video_access WHERE video_id = ? AND user_id = ?').get(video.id, user.id);
+    if (!hasAccess) return false;
+  }
+  if (video.category_id) {
+    const cat = db.prepare('SELECT access_mode FROM categories WHERE id = ?').get(video.category_id);
+    if (cat) {
+      const { canView } = checkCatAccess(video.category_id, cat.access_mode, user.id, user.discord_roles || [], getUserRankIds(user.id));
+      if (!canView) return false;
+    }
+  }
+  return true;
+}
+
+// Triggers transcription — for a self-hosted video, whether it was just uploaded with the
+// checkbox checked (in which case a transcript row already exists as 'pending'/'processing' from
+// the poll loop below) or retroactively for one already sitting in the library. requireAdmin
+// matches the existing video upload/edit endpoints — only admin/dev manage video sources at all.
+app.post('/api/videos/:id/transcribe', requireAdmin, async (req, res) => {
+  try {
+    const video = db.prepare('SELECT id, title, stream_video_id, main_source_type FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).json({ error: 'Nie znaleziono filmu.' });
+    if (video.main_source_type !== 'selfhosted' || !video.stream_video_id) {
+      return res.status(400).json({ error: 'Transkrypcja dostępna tylko dla filmów hostowanych na własnym serwerze.' });
+    }
+    const r = await fetch(`${STREAM_URL}/transcribe/${video.stream_video_id}`, {
+      method: 'POST', headers: { 'X-Stream-Token': STREAM_SECRET },
+    });
+    const data = await r.json();
+    if (!r.ok) return res.status(r.status).json(data);
+    db.prepare(`
+      INSERT INTO video_transcripts (video_id, status) VALUES (?, 'pending')
+      ON CONFLICT(video_id) DO UPDATE SET status = 'pending', error_message = NULL, updated_at = datetime('now')
+    `).run(video.id);
+    audit(req.session.user.id, 'edit', 'video_transcript', video.id, `uruchomiono transkrypcję filmu "${video.title}"`);
+    res.json({ success: true, status: 'pending' });
+  } catch (err) {
+    logStreamError('transcribe', err);
+    res.status(500).json({ error: 'Nie udało się uruchomić transkrypcji. Spróbuj ponownie.' });
+  }
+});
+
+app.get('/api/videos/:id/transcript', requireAuth, (req, res) => {
+  try {
+    const video = db.prepare('SELECT id, author_id, access_mode, category_id FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).json({ error: 'Nie znaleziono filmu.' });
+    const isOwner = video.author_id === req.session.user.id;
+    const isAdmin = req.session.user.role === 'admin' || req.session.user.role === 'dev';
+    if (!isOwner && !isAdmin) return res.status(403).json({ error: 'Brak uprawnień.' });
+
+    const meta = db.prepare('SELECT * FROM video_transcripts WHERE video_id = ?').get(video.id);
+    const segments = db.prepare('SELECT id, start_time, end_time, text, edited FROM transcript_segments WHERE video_id = ? ORDER BY start_time ASC').all(video.id);
+    res.json({ status: meta?.status || 'none', language: meta?.language || null, errorMessage: meta?.error_message || null, segments });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/transcript-segments/:id', requireAuth, (req, res) => {
+  try {
+    const segment = db.prepare('SELECT id, video_id FROM transcript_segments WHERE id = ?').get(req.params.id);
+    if (!segment) return res.status(404).json({ error: 'Nie znaleziono segmentu.' });
+    const video = db.prepare('SELECT id, author_id FROM videos WHERE id = ?').get(segment.video_id);
+    const isOwner = video && video.author_id === req.session.user.id;
+    const isAdmin = req.session.user.role === 'admin' || req.session.user.role === 'dev';
+    if (!isOwner && !isAdmin) return res.status(403).json({ error: 'Brak uprawnień.' });
+
+    const text = (req.body?.text || '').trim();
+    if (!text) return res.status(400).json({ error: 'Tekst nie może być pusty.' });
+    db.prepare('UPDATE transcript_segments SET text = ?, edited = 1 WHERE id = ?').run(text, segment.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Separate endpoint from the title/description/tag search in GET /api/videos (?search=) — results
+// here are segment-shaped (video + timestamp + snippet), not video-shaped, so folding it into that
+// endpoint's response would change its contract for every existing caller.
+app.get('/api/search/transcripts', requireAuth, (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (q.length < 2) return res.json({ results: [] });
+
+    // FTS5 query syntax treats bare punctuation/operators specially — quote the whole phrase so
+    // a search like "co się dzieje?" doesn't get parsed as an FTS query expression.
+    const ftsQuery = `"${q.replace(/"/g, '""')}"`;
+    const candidates = db.prepare(`
+      SELECT ts.id, ts.video_id, ts.start_time, ts.text
+      FROM transcript_search
+      JOIN transcript_segments ts ON ts.id = transcript_search.rowid
+      WHERE transcript_search MATCH ?
+      ORDER BY rank LIMIT 30
+    `).all(ftsQuery);
+    if (candidates.length === 0) return res.json({ results: [] });
+
+    const user = req.session.user;
+    const videoCache = new Map();
+    const results = [];
+    for (const c of candidates) {
+      if (results.length >= 8) break;
+      let video = videoCache.get(c.video_id);
+      if (video === undefined) {
+        video = db.prepare(`
+          SELECT v.id, v.title, v.thumbnail, v.access_mode, v.category_id
+          FROM videos v WHERE v.id = ?
+        `).get(c.video_id) || null;
+        videoCache.set(c.video_id, video);
+      }
+      if (!video || !userCanViewVideo(video, user)) continue;
+      results.push({
+        videoId: video.id, title: video.title, thumbnail: video.thumbnail,
+        startTime: c.start_time, snippet: c.text,
+      });
+    }
+    res.json({ results });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -4019,7 +4161,7 @@ const chunkUpload = multer({
 
 // Step 1: Initialize chunked upload — returns upload_id
 app.post('/api/stream/upload/init', requireAdmin, (req, res) => {
-  const { filename, filesize, total_chunks, drm_enhanced } = req.body;
+  const { filename, filesize, total_chunks, drm_enhanced, transcribe } = req.body;
   if (!filename || !total_chunks) return res.status(400).json({ error: 'Missing params' });
   const safeFilename = (filename || 'upload.mp4').replace(/[^a-zA-Z0-9._\-\s]/g, '_').replace(/\r|\n/g, '').slice(0, 255);
   const uploadId = uuidv4();
@@ -4028,6 +4170,7 @@ app.post('/api/stream/upload/init', requireAdmin, (req, res) => {
   fs.writeFileSync(path.join(uploadDir, 'meta.json'), JSON.stringify({
     filename: safeFilename, filesize: parseInt(filesize) || 0, total_chunks: parseInt(total_chunks),
     drm_enhanced: drm_enhanced === 'true' || drm_enhanced === true,
+    transcribe: transcribe === 'true' || transcribe === true,
     received: [], created: Date.now()
   }));
   console.log(`[CHUNK] Upload init: ${uploadId} — ${safeFilename} (${total_chunks} chunks, ${(parseInt(filesize) / 1024 / 1024).toFixed(1)} MB)`);
@@ -4142,7 +4285,7 @@ app.post('/api/stream/upload/complete', requireAdmin, async (req, res) => {
           `--${boundary}\r\nContent-Disposition: form-data; name="video"; filename="${safeFilename}"\r\nContent-Type: video/mp4\r\n\r\n`
         );
         const epilogue = Buffer.from(
-          `\r\n--${boundary}\r\nContent-Disposition: form-data; name="drm_enhanced"\r\n\r\n${meta.drm_enhanced ? 'true' : 'false'}\r\n--${boundary}\r\nContent-Disposition: form-data; name="video_id"\r\n\r\n${videoId}\r\n--${boundary}--\r\n`
+          `\r\n--${boundary}\r\nContent-Disposition: form-data; name="drm_enhanced"\r\n\r\n${meta.drm_enhanced ? 'true' : 'false'}\r\n--${boundary}\r\nContent-Disposition: form-data; name="video_id"\r\n\r\n${videoId}\r\n--${boundary}\r\nContent-Disposition: form-data; name="transcribe"\r\n\r\n${meta.transcribe ? 'true' : 'false'}\r\n--${boundary}--\r\n`
         );
 
         const bodyStream = new PassThrough();
@@ -5061,6 +5204,47 @@ if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
             console.log(`[TRANSCODE] ❌ Video ${video.id} "${video.title}" → error`);
           }
         } catch (e) { /* streaming service unreachable — skip */ }
+      }
+    } catch (e) { /* DB error — skip */ }
+  }, 30000);
+
+  // Auto-check transcription status every 30 seconds — same poll shape as transcoding above,
+  // sharing the streaming service's per-video status.json (transcript_status field).
+  setInterval(async () => {
+    try {
+      const inFlight = db.prepare(`
+        SELECT vt.video_id, v.title, v.stream_video_id
+        FROM video_transcripts vt JOIN videos v ON v.id = vt.video_id
+        WHERE vt.status IN ('pending', 'processing') AND v.stream_video_id IS NOT NULL
+      `).all();
+      for (const row of inFlight) {
+        try {
+          const r = await fetch(`${STREAM_URL}/status/${row.stream_video_id}`, {
+            headers: { 'X-Stream-Token': STREAM_SECRET }
+          });
+          const data = await r.json();
+          if (data.transcript_status === 'processing') {
+            db.prepare("UPDATE video_transcripts SET status = 'processing', updated_at = datetime('now') WHERE video_id = ?").run(row.video_id);
+          } else if (data.transcript_status === 'ready') {
+            const tr = await fetch(`${STREAM_URL}/transcript/${row.stream_video_id}`, {
+              headers: { 'X-Stream-Token': STREAM_SECRET }
+            });
+            const transcript = await tr.json();
+            const insertSeg = db.prepare('INSERT INTO transcript_segments (video_id, start_time, end_time, text) VALUES (?, ?, ?, ?)');
+            db.prepare('DELETE FROM transcript_segments WHERE video_id = ?').run(row.video_id); // clears any stale segments from a prior run
+            const insertAll = db.transaction((segments) => { for (const s of segments) insertSeg.run(row.video_id, s.start, s.end, s.text); });
+            insertAll(transcript.segments || []);
+            db.prepare(`
+              UPDATE video_transcripts SET status = 'ready', language = ?, error_message = NULL, updated_at = datetime('now') WHERE video_id = ?
+            `).run(transcript.language || null, row.video_id);
+            console.log(`[TRANSCRIPT] ✅ Video ${row.video_id} "${row.title}" → ready (${(transcript.segments || []).length} segments)`);
+          } else if (data.transcript_status === 'error') {
+            db.prepare(`
+              UPDATE video_transcripts SET status = 'error', error_message = ?, updated_at = datetime('now') WHERE video_id = ?
+            `).run(data.transcript_error || 'Nieznany błąd transkrypcji.', row.video_id);
+            console.log(`[TRANSCRIPT] ❌ Video ${row.video_id} "${row.title}" → error`);
+          }
+        } catch (e) { /* streaming service unreachable — skip, retried next tick */ }
       }
     } catch (e) { /* DB error — skip */ }
   }, 30000);

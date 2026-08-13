@@ -26,6 +26,7 @@ import ShortsPage from './pages/ShortsPage';
 // Lazy: recharts alone adds ~370KB (raw) to the bundle — not worth every visitor paying for
 // on first load when only authors/admins ever open this page.
 const VideoAnalyticsPage = lazy(() => import('./pages/VideoAnalyticsPage'));
+const VideoTranscriptPage = lazy(() => import('./pages/VideoTranscriptPage'));
 
 function ProtectedRoute({ children, adminOnly, devOnly }) {
   const { user, loading, isAdmin, isDev } = useAuth();
@@ -73,6 +74,7 @@ export default function App() {
           <Route path="/" element={<P><VideosPage /></P>} />
           <Route path="/video/:id" element={<P><VideoPage /></P>} />
           <Route path="/video/:id/analytics" element={<P><Suspense fallback={<LoadingScreen />}><VideoAnalyticsPage /></Suspense></P>} />
+          <Route path="/video/:id/transcript" element={<P><Suspense fallback={<LoadingScreen />}><VideoTranscriptPage /></Suspense></P>} />
           <Route path="/category/:categorySlug" element={<P><VideosPage /></P>} />
           <Route path="/favorites" element={<P><FavoritesPage /></P>} />
           <Route path="/history" element={<P><HistoryPage /></P>} />

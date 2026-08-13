@@ -81,6 +81,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const [isSelfHosted, setIsSelfHosted] = useState(false);
   const [videoFile, setVideoFile] = useState(null);
   const [drmEnhanced, setDrmEnhanced] = useState(false);
+  const [transcribe, setTranscribe] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [uploadPercent, setUploadPercent] = useState(0);
   const [chunkPercent, setChunkPercent] = useState(0);
@@ -216,7 +217,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     setMirror5Name(''); setMirror5Url(''); setMirror5Type('link'); setMirror5VideoFile(null); setMirror5StreamVideoId('');
     setDescription(''); setPublishDate(new Date().toISOString());
     setSelectedTags([]); setTagInput(''); setShowMirror1(false); setShowMirror2(false); setShowMirror3(false); setShowMirror4(false); setShowMirror5(false);
-    setIsSelfHosted(false); setVideoFile(null); setDrmEnhanced(false); setUploadProgress(''); setUploadPercent(0); setChunkPercent(0); setStreamVideoId(''); setCategoryId(defaultCategoryId ? String(defaultCategoryId) : ''); setAccessMode('category'); setAllowedUsers([]);
+    setIsSelfHosted(false); setVideoFile(null); setDrmEnhanced(false); setTranscribe(false); setUploadProgress(''); setUploadPercent(0); setChunkPercent(0); setStreamVideoId(''); setCategoryId(defaultCategoryId ? String(defaultCategoryId) : ''); setAccessMode('category'); setAllowedUsers([]);
   };
 
   useEffect(() => {
@@ -343,6 +344,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
           filesize: videoFile.size,
           total_chunks: totalChunks,
           drm_enhanced: drmEnhanced,
+          transcribe,
         });
         if (!initRes.success) throw new Error(initRes.error || 'Init failed');
         const uploadId = initRes.upload_id;
@@ -441,6 +443,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
       formData.append('tags', JSON.stringify(selectedTags));
       formData.append('stream_video_id', finalStreamId || '');
       formData.append('drm_enhanced', drmEnhanced ? 'true' : 'false');
+      formData.append('transcribe', transcribe ? 'true' : 'false');
       formData.append('category_id', categoryId || '');
       formData.append('access_mode', accessMode);
       formData.append('allowed_users', JSON.stringify(allowedUsers));
@@ -658,6 +661,16 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                     <p className="text-[10px] text-zinc-500 mt-0.5">Blokada nagrywania ekranu, watermark z nazwą użytkownika, blokada devtools</p>
                   </div>
                 </label>
+
+                {!streamVideoId && (
+                  <label className="flex items-center gap-3 cursor-pointer p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                    <input type="checkbox" checked={transcribe} onChange={e => setTranscribe(e.target.checked)} className="w-4 h-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500" />
+                    <div>
+                      <span className="text-sm text-zinc-900 dark:text-white font-bold">Transkrybuj film (PL/EN)</span>
+                      <p className="text-[10px] text-zinc-500 mt-0.5">Rozpoznawanie mowy offline, bez żadnego API — pozwoli wyszukiwać ten film po wypowiedzianych frazach i przeskakiwać do dokładnego momentu</p>
+                    </div>
+                  </label>
+                )}
 
                 {uploadProgress && (
                   <div className="space-y-3 p-4 bg-violet-50/50 dark:bg-violet-500/5 rounded-xl border border-violet-100 dark:border-violet-500/10">
