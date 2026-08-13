@@ -29,15 +29,22 @@ All required source files (`server.js`, `package.json`, `versions.js`) are inclu
 
 ## Custom Storage Path
 
-To store videos on a specific mount point, edit `docker-compose.yml`:
+To store videos on a specific mount point, set it in **`.env`** — never edit the `volumes:` line
+in `docker-compose.yml` directly. That file gets re-copied on updates (step 1 above), which would
+silently reset the mount back to the plain `stream-data` Docker volume: the container would then
+see an empty library while your actual videos stay untouched but orphaned at the old host path.
 
-```yaml
-volumes:
-  - /mnt/storage/alleria-streaming:/data
+```env
+STREAM_HOST_DATA_DIR=/mnt/storage/alleria-streaming
 ```
 
-Or set env vars for granular control:
+`docker-compose.yml` already reads this var (`${STREAM_HOST_DATA_DIR:-stream-data}:/data`), so a
+plain `docker compose up -d` picks it up — no compose file edit needed.
+
+For reorganizing the layout *inside* the container (rarely needed, and does not by itself affect
+what's persisted on the host — that's controlled by `STREAM_HOST_DATA_DIR` above):
 ```env
+STREAM_DATA_DIR=/data
 STREAM_MEDIA_DIR=/data/media
 STREAM_KEYS_DIR=/data/keys
 STREAM_UPLOAD_DIR=/data/uploads

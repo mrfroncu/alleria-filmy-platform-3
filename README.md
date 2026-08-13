@@ -326,7 +326,13 @@ Lub konfiguracja permanentna w `~/.cloudflared/config.yml`.
 | `STREAM_PUBLIC_URL` | Publiczny URL streamingu |
 | `ALLOWED_ORIGIN` | Domena dla CORS |
 
-### Streaming Storage (ustawiane w kontenerze streaming)
+### Streaming Storage
+| Zmienna | Domyślnie | Opis |
+|---------|-----------|------|
+| `STREAM_HOST_DATA_DIR` | *(wolumin Dockera)* | **Ścieżka na hoście** (array/NFS/Tailscale mount) montowana do `/data` w kontenerze — ustawiać wyłącznie w `.env`, nigdy ręczną edycją `volumes:` w `docker-compose.yml` (ten plik bywa nadpisywany przy aktualizacjach, co cicho resetuje mount na pusty wolumin — dane nie znikają, kontener po prostu przestaje na nie patrzeć) |
+
+Poniższe (ustawiane w kontenerze streaming) reorganizują układ katalogów *wewnątrz* kontenera — rzadko potrzebne, i same w sobie **nie** decydują co jest trwale zapisane na hoście (to robi `STREAM_HOST_DATA_DIR` powyżej):
+
 | Zmienna | Domyślnie | Opis |
 |---------|-----------|------|
 | `STREAM_DATA_DIR` | `/data` | Root katalog danych |
