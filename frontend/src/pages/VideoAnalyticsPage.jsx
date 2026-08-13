@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, RotateCcw, Users, TrendingUp, X, ChevronDown } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Brush } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
 import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
 import { useConfirm } from '../contexts/ConfirmContext';
@@ -77,10 +77,11 @@ function RetentionTooltip({ active, payload, label }) {
 // Hand-built rather than recharts — needs to stay a tight, dense bar strip aligned 1:1 to the
 // video's own timeline, not a general-purpose chart. Native `title` tooltip is the per-mark
 // hover layer here — a deliberate scope call given these are small multiples, not one chart
-// authors will pore over bucket-by-bucket.
-function HeatmapStrip({ label, color, values, duration }) {
+// authors will pore over bucket-by-bucket. bucketDuration/offset are passed explicitly (rather
+// than derived from values.length) so tooltip times stay correct once `values` is a zoomed-in
+// slice of the full bucket array, not the whole thing.
+function HeatmapStrip({ label, color, values, bucketDuration, offset = 0 }) {
   const max = Math.max(1, ...values);
-  const bucketDuration = duration / values.length;
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
@@ -90,8 +91,8 @@ function HeatmapStrip({ label, color, values, duration }) {
       <div className="flex items-end gap-px h-14 bg-zinc-50 dark:bg-zinc-800/40 rounded-lg p-1.5">
         {values.map((v, i) => (
           <div
-            key={i}
-            title={`${formatTime(i * bucketDuration)} — ${v}`}
+            key={offset + i}
+            title={`${formatTime((offset + i) * bucketDuration)} — ${v}`}
             className="flex-1 rounded-t-sm"
             style={{ height: `${v === 0 ? 3 : Math.max(6, (v / max) * 100)}%`, background: color, opacity: v === 0 ? 0.15 : 0.85 }}
           />
@@ -260,20 +261,21 @@ export default function VideoAnalyticsPage() {
   const [userFilterMode, setUserFilterMode] = useState('all');
   const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [showReset, setShowReset] = useState(false);
-  // Drag-selected date window from the views chart's <Brush> — null/null = full history. Feeds
-  // every other chart (heatmap/retention share the same fetch) and the reset modal, Grafana-style.
+  // Grafana-style: click+drag directly on the "Oglądalność w czasie" chart's own plot area (no
+  // separate strip below it) to pick a calendar-date window — null/null = full history. Feeds
+  // every other chart (heatmap/retention share the same fetch) and the reset modal.
   const [activeRange, setActiveRange] = useState({ after: null, before: null });
-  const [pendingRange, setPendingRange] = useState(null);
+  // The one live drag in progress on the views chart, shown as a ReferenceArea while dragging and
+  // committed to activeRange on mouseup. Indices into `dailyViews`.
+  const [viewsDrag, setViewsDrag] = useState(null); // { start, end } | null
+
+  // Same drag-to-select interaction, but on the retention chart's own axis (elapsed video time,
+  // not calendar dates) — purely a client-side zoom of retention + the three heatmap strips below
+  // it, since they all share that exact bucket-index x-domain. Indices into heatmap.retention.
+  const [posRange, setPosRange] = useState(null); // { start, end } | null
+  const [posDrag, setPosDrag] = useState(null); // { start, end } | null
 
   useEffect(() => { api.getVideo(id).then(setVideo).catch(() => {}); }, [id]);
-
-  // Debounce the brush→fetch commit so a drag-in-progress doesn't fire a request per pixel; it
-  // settles ~400ms after the last onChange, which in practice means right after mouseup.
-  useEffect(() => {
-    if (!pendingRange) return;
-    const t = setTimeout(() => setActiveRange(pendingRange), 400);
-    return () => clearTimeout(t);
-  }, [pendingRange]);
 
   const loadAnalytics = useCallback(() => {
     setLoading(true); setError(null);
@@ -292,7 +294,8 @@ export default function VideoAnalyticsPage() {
   useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
 
   const rangeActive = !!(activeRange.after || activeRange.before);
-  const resetRange = () => { setPendingRange(null); setActiveRange({ after: null, before: null }); };
+  const resetRange = () => { setViewsDrag(null); setActiveRange({ after: null, before: null }); };
+  const resetZoom = () => { setPosDrag(null); setPosRange(null); };
 
   if (loading && !data) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-violet-500 animate-spin" /></div>;
@@ -304,10 +307,60 @@ export default function VideoAnalyticsPage() {
   const dailyViews = (data?.dailyViews || []).map(d => ({ ...d, dayLabel: formatDateShort(d.day) }));
   const heatmap = data?.heatmap;
   const viewers = data?.viewers || [];
+  const bucketDuration = heatmap ? heatmap.duration / heatmap.buckets : 0;
   const retentionSeries = heatmap ? heatmap.retention.map((r, i) => ({
-    time: formatTime(i * (heatmap.duration / heatmap.buckets)),
+    idx: i,
+    time: formatTime(i * bucketDuration),
     value: r,
   })) : [];
+
+  // Views chart: drag directly on the plot area, ReferenceArea shows the live selection.
+  const handleViewsMouseDown = (e) => {
+    if (e?.activeTooltipIndex == null) return;
+    setViewsDrag({ start: e.activeTooltipIndex, end: e.activeTooltipIndex });
+  };
+  const handleViewsMouseMove = (e) => {
+    if (!viewsDrag || e?.activeTooltipIndex == null) return;
+    setViewsDrag(d => ({ ...d, end: e.activeTooltipIndex }));
+  };
+  const handleViewsMouseUp = () => {
+    if (!viewsDrag) return;
+    const start = Math.min(viewsDrag.start, viewsDrag.end);
+    const end = Math.max(viewsDrag.start, viewsDrag.end);
+    setViewsDrag(null);
+    if (start === end) return;
+    const startDay = dailyViews[start]?.day;
+    const endDay = dailyViews[end]?.day;
+    if (startDay && endDay) setActiveRange({ after: startDay, before: `${endDay} 23:59:59` });
+  };
+
+  const zoomActive = !!posRange;
+  const zoomedRetention = zoomActive ? retentionSeries.slice(posRange.start, posRange.end + 1) : retentionSeries;
+  const zoomOffset = zoomActive ? posRange.start : 0;
+  const slicePos = (arr) => (zoomActive ? arr.slice(posRange.start, posRange.end + 1) : arr);
+
+  // Retention chart: same interaction, but zooms retention + the heatmap strips (shared bucket
+  // x-domain) client-side instead of triggering a refetch. activeTooltipIndex is relative to
+  // whatever's currently bound as chart data (zoomedRetention when already zoomed), so it's
+  // offset back to an absolute bucket index — otherwise zooming in twice in a row would silently
+  // re-slice the wrong range the second time.
+  const handlePosMouseDown = (e) => {
+    if (e?.activeTooltipIndex == null) return;
+    const idx = zoomOffset + e.activeTooltipIndex;
+    setPosDrag({ start: idx, end: idx });
+  };
+  const handlePosMouseMove = (e) => {
+    if (!posDrag || e?.activeTooltipIndex == null) return;
+    setPosDrag(d => ({ ...d, end: zoomOffset + e.activeTooltipIndex }));
+  };
+  const handlePosMouseUp = () => {
+    if (!posDrag) return;
+    const start = Math.min(posDrag.start, posDrag.end);
+    const end = Math.max(posDrag.start, posDrag.end);
+    setPosDrag(null);
+    if (start === end) return;
+    setPosRange({ start, end });
+  };
 
   return (
     <div className="p-6 sm:p-10 max-w-5xl mx-auto page-enter">
@@ -373,15 +426,23 @@ export default function VideoAnalyticsPage() {
           title="Oglądalność w czasie"
           subtitle={
             dailyViews.length > 1
-              ? (rangeActive ? 'Zawężono zakres — przeciągnij pasek ponownie lub kliknij „Resetuj zakres"' : 'Liczba wyświetleń dziennie, cała historia — przeciągnij pasek pod wykresem, by zawęzić zakres (dotyczy też pozostałych wykresów poniżej)')
+              ? (rangeActive ? 'Zawężono zakres — przeciągnij ponownie na wykresie lub kliknij „Resetuj zakres"' : 'Liczba wyświetleń dziennie, cała historia — przeciągnij myszką po wykresie, by zawęzić zakres (dotyczy też pozostałych wykresów poniżej)')
               : 'Liczba wyświetleń dziennie'
           }
         >
           {dailyViews.length === 0 ? (
             <p className="text-sm text-zinc-400 py-8 text-center">Brak wyświetleń w tym okresie.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={dailyViews.length > 1 ? 260 : 220}>
-              <AreaChart key={`${activeRange.after || ''}-${activeRange.before || ''}-${dailyViews.length}`} data={dailyViews} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart
+                data={dailyViews}
+                margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
+                onMouseDown={handleViewsMouseDown}
+                onMouseMove={handleViewsMouseMove}
+                onMouseUp={handleViewsMouseUp}
+                onMouseLeave={() => setViewsDrag(null)}
+                style={{ cursor: 'crosshair' }}
+              >
                 <defs>
                   <linearGradient id="viewsFill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={COLORS.retention} stopOpacity={0.35} />
@@ -393,21 +454,14 @@ export default function VideoAnalyticsPage() {
                 <YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
                 <Tooltip content={<ViewsTooltip />} cursor={{ stroke: '#3f3f46', strokeWidth: 1 }} />
                 <Area type="monotone" dataKey="views" stroke={COLORS.retention} strokeWidth={2} fill="url(#viewsFill)" />
-                {dailyViews.length > 1 && (
-                  <Brush
-                    dataKey="dayLabel"
-                    height={28}
-                    travellerWidth={8}
-                    stroke="#8b5cf6"
-                    fill="#18181b"
-                    onChange={(range) => {
-                      if (range?.startIndex == null || range?.endIndex == null) return;
-                      if (range.startIndex === 0 && range.endIndex === dailyViews.length - 1) { setPendingRange(null); return; }
-                      const startDay = dailyViews[range.startIndex]?.day;
-                      const endDay = dailyViews[range.endIndex]?.day;
-                      if (!startDay || !endDay) return;
-                      setPendingRange({ after: startDay, before: `${endDay} 23:59:59` });
-                    }}
+                {viewsDrag && viewsDrag.start !== viewsDrag.end && (
+                  <ReferenceArea
+                    x1={dailyViews[Math.min(viewsDrag.start, viewsDrag.end)]?.dayLabel}
+                    x2={dailyViews[Math.max(viewsDrag.start, viewsDrag.end)]?.dayLabel}
+                    stroke={COLORS.retention}
+                    strokeOpacity={0.5}
+                    fill={COLORS.retention}
+                    fillOpacity={0.15}
                   />
                 )}
               </AreaChart>
@@ -423,9 +477,33 @@ export default function VideoAnalyticsPage() {
           </ChartCard>
         ) : (
           <>
-            <ChartCard title="Retencja" subtitle={`Odsetek widzów, którzy dotarli do danego momentu (${heatmap.viewers} widzów)`}>
+            <ChartCard
+              title="Retencja"
+              subtitle={
+                zoomActive
+                  ? `Przybliżono do fragmentu filmu — przeciągnij ponownie lub kliknij „Resetuj przybliżenie" (${heatmap.viewers} widzów)`
+                  : `Odsetek widzów, którzy dotarli do danego momentu — przeciągnij myszką, by przybliżyć fragment filmu (dotyczy też pasków poniżej) (${heatmap.viewers} widzów)`
+              }
+            >
+              {zoomActive && (
+                <button
+                  onClick={resetZoom}
+                  className="flex items-center gap-1.5 mb-3 px-2.5 py-1 rounded-lg bg-violet-50 dark:bg-violet-500/10 hover:bg-violet-100 dark:hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-[11px] font-bold transition-colors"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Resetuj przybliżenie
+                </button>
+              )}
               <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={retentionSeries} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                <AreaChart
+                  data={zoomedRetention}
+                  margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
+                  onMouseDown={handlePosMouseDown}
+                  onMouseMove={handlePosMouseMove}
+                  onMouseUp={handlePosMouseUp}
+                  onMouseLeave={() => setPosDrag(null)}
+                  style={{ cursor: 'crosshair' }}
+                >
                   <defs>
                     <linearGradient id="retentionFill" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor={COLORS.retention} stopOpacity={0.35} />
@@ -437,15 +515,25 @@ export default function VideoAnalyticsPage() {
                   <YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} domain={[0, 1]} tickFormatter={v => `${Math.round(v * 100)}%`} width={36} />
                   <Tooltip content={<RetentionTooltip />} cursor={{ stroke: '#3f3f46', strokeWidth: 1 }} />
                   <Area type="monotone" dataKey="value" stroke={COLORS.retention} strokeWidth={2} fill="url(#retentionFill)" />
+                  {posDrag && posDrag.start !== posDrag.end && (
+                    <ReferenceArea
+                      x1={retentionSeries[Math.min(posDrag.start, posDrag.end)]?.time}
+                      x2={retentionSeries[Math.max(posDrag.start, posDrag.end)]?.time}
+                      stroke={COLORS.retention}
+                      strokeOpacity={0.5}
+                      fill={COLORS.retention}
+                      fillOpacity={0.15}
+                    />
+                  )}
                 </AreaChart>
               </ResponsiveContainer>
             </ChartCard>
 
             <ChartCard title="Interakcje widzów" subtitle="Gdzie widzowie pauzują, cofają się i pomijają fragmenty">
               <div className="space-y-5">
-                <HeatmapStrip label="Pauzy" color={COLORS.pauses} values={heatmap.pauses} duration={heatmap.duration} />
-                <HeatmapStrip label="Cofnięcia (ponowne obejrzenie)" color={COLORS.rewinds} values={heatmap.rewinds} duration={heatmap.duration} />
-                <HeatmapStrip label="Pominięcia (skip)" color={COLORS.skips} values={heatmap.skips} duration={heatmap.duration} />
+                <HeatmapStrip label="Pauzy" color={COLORS.pauses} values={slicePos(heatmap.pauses)} bucketDuration={bucketDuration} offset={zoomOffset} />
+                <HeatmapStrip label="Cofnięcia (ponowne obejrzenie)" color={COLORS.rewinds} values={slicePos(heatmap.rewinds)} bucketDuration={bucketDuration} offset={zoomOffset} />
+                <HeatmapStrip label="Pominięcia (skip)" color={COLORS.skips} values={slicePos(heatmap.skips)} bucketDuration={bucketDuration} offset={zoomOffset} />
               </div>
             </ChartCard>
           </>
