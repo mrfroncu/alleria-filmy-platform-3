@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw, SmilePlus, Flag, BarChart3, Captions } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw, SmilePlus, Flag, BarChart3 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
@@ -753,31 +753,6 @@ export default function VideoPage() {
     }).catch(err => setError(err.message)).finally(() => setLoading(false));
   }, [id]);
 
-  // Deep-link seek from a transcript search result (?t=123, seconds) — fires once per video load.
-  // There's no "player ready" event to hook (unlike the resume banner above, which only ever
-  // seeks from a manual click made well after the player has mounted), so this briefly polls for
-  // playerControlRef to be populated instead — mount timing varies by player type (YouTube's
-  // IFrame API is the slowest).
-  useEffect(() => {
-    const t = parseInt(searchParams.get('t'), 10);
-    if (!Number.isFinite(t) || t < 0) return;
-    let cancelled = false;
-    let attempts = 0;
-    const trySeek = () => {
-      if (cancelled) return;
-      if (playerControlRef.current?.seek) {
-        playerControlRef.current.seek(t);
-        playerControlRef.current.play?.();
-      } else if (attempts < 40) { // ~10s at 250ms
-        attempts++;
-        setTimeout(trySeek, 250);
-      }
-    };
-    trySeek();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
-
   const flushPlaybackEvents = useCallback((videoId) => {
     if (eventBufferRef.current.length === 0) return;
     const events = eventBufferRef.current;
@@ -962,7 +937,6 @@ export default function VideoPage() {
           <div className="flex-1">
             <div className="flex items-start gap-3 mb-3">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display flex-1">{video.title}</h1>
-              {canEdit && video.stream_video_id && <Link to={`/video/${id}/transcript`} className="shrink-0 p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-violet-500 dark:hover:text-violet-400 transition-all hover:scale-110 active:scale-95" title="Transkrypcja"><Captions className="w-5 h-5" /></Link>}
               {canEdit && <Link to={`/video/${id}/analytics`} className="shrink-0 p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-violet-500 dark:hover:text-violet-400 transition-all hover:scale-110 active:scale-95" title="Analityka"><BarChart3 className="w-5 h-5" /></Link>}
               {canEdit && <button onClick={openEditModal} className="shrink-0 p-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-500/20 transition-all hover:scale-110 active:scale-95"><Pencil className="w-5 h-5" /></button>}
               <button onClick={toggleFav} disabled={favLoading} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl transition-all duration-300 hover:scale-105 active:scale-95 ${isFav ? 'bg-pink-50 dark:bg-pink-500/10 text-pink-500 shadow-lg shadow-pink-500/10' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-pink-500'}`}>

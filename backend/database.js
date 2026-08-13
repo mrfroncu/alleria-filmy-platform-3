@@ -439,47 +439,6 @@ function initDB() {
   try { db.exec(`ALTER TABLE videos DROP COLUMN is_short`); } catch (e) {}
   try { db.exec(`ALTER TABLE categories ADD COLUMN is_shorts_category INTEGER DEFAULT 0`); } catch (e) {}
 
-  // Offline speech-to-text transcripts (self-hosted whisper.cpp, no external API) — one row per
-  // video tracking overall job status, segments hold the actual timestamped text. Searched via
-  // the FTS5 virtual table below; `edited` marks a segment corrected by an editor so it's never
-  // silently overwritten by a future re-transcription.
-  db.exec(`CREATE TABLE IF NOT EXISTS video_transcripts (
-    video_id INTEGER PRIMARY KEY,
-    status TEXT DEFAULT 'pending',
-    language TEXT,
-    error_message TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
-  )`);
-  db.exec(`CREATE TABLE IF NOT EXISTS transcript_segments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    video_id INTEGER NOT NULL,
-    start_time REAL NOT NULL,
-    end_time REAL NOT NULL,
-    text TEXT NOT NULL,
-    edited INTEGER DEFAULT 0,
-    FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
-  )`);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_transcript_segments_video ON transcript_segments(video_id)`);
-
-  // External-content FTS5 index — transcript_segments stays the single source of truth for the
-  // actual row data, this table only indexes `text` for MATCH queries. Triggers below keep it in
-  // sync on every insert/update/delete so a correction in the editor is searchable immediately.
-  db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS transcript_search USING fts5(
-    text, content='transcript_segments', content_rowid='id'
-  )`);
-  db.exec(`CREATE TRIGGER IF NOT EXISTS transcript_segments_ai AFTER INSERT ON transcript_segments BEGIN
-    INSERT INTO transcript_search(rowid, text) VALUES (new.id, new.text);
-  END`);
-  db.exec(`CREATE TRIGGER IF NOT EXISTS transcript_segments_ad AFTER DELETE ON transcript_segments BEGIN
-    INSERT INTO transcript_search(transcript_search, rowid, text) VALUES ('delete', old.id, old.text);
-  END`);
-  db.exec(`CREATE TRIGGER IF NOT EXISTS transcript_segments_au AFTER UPDATE ON transcript_segments BEGIN
-    INSERT INTO transcript_search(transcript_search, rowid, text) VALUES ('delete', old.id, old.text);
-    INSERT INTO transcript_search(rowid, text) VALUES (new.id, new.text);
-  END`);
-
   return db;
 }
 

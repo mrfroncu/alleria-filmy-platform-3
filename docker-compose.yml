@@ -16,12 +16,7 @@ services:
       - streaming
 
   streaming:
-    build:
-      context: ./streaming
-      args:
-        # Speech-to-text model for transcription (tiny/base/small/medium/large-v3) — bigger is
-        # more accurate but slower on CPU. Set WHISPER_MODEL in .env to override.
-        WHISPER_MODEL: ${WHISPER_MODEL:-small}
+    build: ./streaming
     container_name: alleria-streaming
     volumes:
       # Default: Docker volume. To use custom path (e.g. NFS/Tailscale mount):

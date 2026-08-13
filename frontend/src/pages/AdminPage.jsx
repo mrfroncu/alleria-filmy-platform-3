@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp, FolderOpen, Loader2, BarChart3, Captions } from 'lucide-react';
+import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp, FolderOpen, Loader2, BarChart3 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import VideoModal from '../components/VideoModal';
@@ -47,19 +47,6 @@ export default function AdminPage() {
   };
 
   useEffect(() => { loadData(); }, []);
-
-  const [transcribing, setTranscribing] = useState(null); // video id currently being triggered
-  const handleTranscribe = async (video) => {
-    setTranscribing(video.id);
-    try {
-      await api.transcribeVideo(video.id);
-      toast.success(`Transkrypcja "${video.title}" uruchomiona.`);
-      loadData();
-    } catch (err) {
-      toast.error('Błąd: ' + err.message);
-    }
-    setTranscribing(null);
-  };
 
   // Auto-poll transcode status every 15 seconds
   const [transcodeProgress, setTranscodeProgress] = useState({});
@@ -299,13 +286,7 @@ export default function AdminPage() {
                                 </span>
                               )}
                               {video.stream_video_id && video.stream_status === 'ready' && (
-                                <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
-                                  <span className="w-1 h-1 bg-emerald-500 rounded-full" /> Gotowy{video.drm_enhanced ? ' • DRM' : ''}
-                                  {(video.transcript_status === 'pending' || video.transcript_status === 'processing') && (
-                                    <span className="text-violet-500 ml-1">• Transkrypcja...</span>
-                                  )}
-                                  {video.transcript_status === 'error' && <span className="text-red-500 ml-1">• Błąd transkrypcji</span>}
-                                </span>
+                                <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1"><span className="w-1 h-1 bg-emerald-500 rounded-full" /> Gotowy{video.drm_enhanced ? ' • DRM' : ''}</span>
                               )}
                             </div>
                           </div>
@@ -324,22 +305,6 @@ export default function AdminPage() {
                         <td className="px-4 py-3 text-xs text-zinc-500 font-mono whitespace-nowrap">{formatDate(video.publish_date)}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
-                            {video.stream_video_id && video.stream_status === 'ready' && (
-                              video.transcript_status === 'ready' ? (
-                                <Link to={`/video/${video.id}/transcript`} className="btn-icon-zinc" title="Transkrypcja">
-                                  <Captions className="w-3.5 h-3.5" />
-                                </Link>
-                              ) : video.transcript_status !== 'pending' && video.transcript_status !== 'processing' && (
-                                <button
-                                  onClick={() => handleTranscribe(video)}
-                                  disabled={transcribing === video.id}
-                                  className="btn-icon-zinc disabled:opacity-50"
-                                  title="Transkrybuj film"
-                                >
-                                  <Captions className="w-3.5 h-3.5" />
-                                </button>
-                              )
-                            )}
                             <Link to={`/video/${video.id}/analytics?from=admin`} className="btn-icon-zinc" title="Analityka">
                               <BarChart3 className="w-3.5 h-3.5" />
                             </Link>

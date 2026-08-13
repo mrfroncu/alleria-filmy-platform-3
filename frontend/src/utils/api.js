@@ -170,14 +170,6 @@ export const api = {
   streamCleanupPurge: (data) => request('/stream/cleanup', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
   }),
-
-  // Transcripts (offline speech-to-text, self-hosted whisper.cpp)
-  transcribeVideo: (videoId) => request(`/videos/${videoId}/transcribe`, { method: 'POST' }),
-  getTranscript: (videoId) => request(`/videos/${videoId}/transcript`),
-  updateTranscriptSegment: (segmentId, text) => request(`/transcript-segments/${segmentId}`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }),
-  }),
-  searchTranscripts: (q) => request(`/search/transcripts?q=${encodeURIComponent(q)}`),
   streamToken: (videoId) => request(`/stream/token/${videoId}`),
   streamCastToken: (videoId) => request(`/stream/cast-token/${videoId}`),
   getStreamErrors: () => request('/debug/stream-errors'),
