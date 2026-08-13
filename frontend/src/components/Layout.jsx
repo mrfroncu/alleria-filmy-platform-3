@@ -6,12 +6,13 @@ import { useUnsavedGuard } from '../contexts/UnsavedChangesContext';
 import { api } from '../utils/api';
 import {
   Film, Shield, Menu, X, Wrench, ChevronRight, ChevronDown, LogOut,
-  Heart, Clock, BarChart3, FolderOpen, FileText, MessageSquarePlus, Lock
+  Heart, Clock, BarChart3, FolderOpen, FileText, MessageSquarePlus, Lock, Clapperboard
 } from 'lucide-react';
 import { getCurrentYear } from '../utils/helpers';
 import WatchPartyTab from './WatchPartyTab';
 import ProfileMenu from './ProfileMenu';
 import GlobalSearch from './GlobalSearch';
+import NotificationBell from './NotificationBell';
 
 const LOGO_URL = 'https://alleria.pl/image/favicon.png';
 
@@ -33,6 +34,10 @@ function getPageTitle(pathname, categories) {
   if (pathname.startsWith('/category/')) {
     const cat = categories.find(c => c.slug === pathname.split('/')[2]);
     return cat?.name || 'Kategoria';
+  }
+  if (pathname.startsWith('/shorts/')) {
+    const cat = categories.find(c => c.slug === pathname.split('/')[2]);
+    return cat?.name ? `Shorts — ${cat.name}` : 'Shorts';
   }
   if (pathname.startsWith('/video/')) return 'Film';
   if (pathname.startsWith('/author/')) return 'Profil autora';
@@ -86,7 +91,11 @@ function CatTree({ cats, parentId, depth, location, setSidebarOpen, activeCatSlu
           }`}
         >
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-violet-500' : hasKids ? 'bg-zinc-400 dark:bg-zinc-500' : 'bg-zinc-300 dark:bg-zinc-600'}`} />
+            {cat.is_shorts_category ? (
+              <Clapperboard className={`w-3 h-3 shrink-0 ${active ? 'text-violet-500' : 'text-zinc-400 dark:text-zinc-500'}`} title="Kategoria Shortów" />
+            ) : (
+              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-violet-500' : hasKids ? 'bg-zinc-400 dark:bg-zinc-500' : 'bg-zinc-300 dark:bg-zinc-600'}`} />
+            )}
             <span className="font-semibold text-[13px] truncate">{cat.name}</span>
             <span className="text-[10px] text-zinc-400 shrink-0">{cat.videoCount || 0}</span>
           </div>
@@ -188,8 +197,15 @@ export default function Layout({ children }) {
   const allFilmsActive = (location.pathname === '/' || location.pathname.startsWith('/video') || location.pathname.startsWith('/author') || location.pathname.startsWith('/tag')) && !anyCatActive;
   const pageTitle = getPageTitle(location.pathname, categories);
 
+  // h-dvh, not h-screen: 100vh is measured against the *largest* possible mobile viewport
+  // (toolbar collapsed), so on load (toolbar visible) this div is taller than what's actually on
+  // screen — body/html then grow to match and gain their own, unintended scroll region stacked
+  // behind <main>'s own overflow-y-auto. A touch starting outside <main> (e.g. the floating
+  // WatchPartyTab) scrolls that outer surface instead, which is what "swiping the watch party tab
+  // scrolls the whole page, then the middle only scrolls a little" was. 100dvh tracks the actual
+  // visible viewport instead, so this outer surface never exists.
   return (
-    <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950 font-sans selection:bg-violet-100 selection:text-violet-900 relative overflow-hidden transition-colors duration-300">
+    <div className="flex h-dvh bg-zinc-50 dark:bg-zinc-950 font-sans selection:bg-violet-100 selection:text-violet-900 relative overflow-hidden transition-colors duration-300">
       {sidebarOpen && (
         <div className="fixed inset-0 bg-zinc-950/60 backdrop-blur-sm z-40 lg:hidden animate-fade-in" onClick={() => setSidebarOpen(false)} />
       )}
@@ -293,6 +309,7 @@ export default function Layout({ children }) {
                     </p>
                   </div>
                 </Link>
+                <NotificationBell fullScreenOnly />
                 <button onClick={() => guardNav(logout)} className="p-1.5 rounded-lg text-zinc-400 hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 transition-all duration-300 shrink-0" title="Wyloguj">
                   <LogOut className="w-4 h-4" />
                 </button>
@@ -316,35 +333,61 @@ export default function Layout({ children }) {
       </aside>
 
       <main ref={mainRef} className="flex-1 overflow-y-auto relative flex flex-col">
-        {/* Mobile top bar — always present (hamburger is the only way to reach the sidebar on mobile) */}
-        <div className="lg:hidden shrink-0 flex items-center justify-between gap-3 p-4 bg-gradient-to-r from-violet-100/50 via-white/60 to-fuchsia-100/40 dark:from-violet-500/10 dark:via-zinc-950/50 dark:to-fuchsia-500/10 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 dark:border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sticky top-0 z-30">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain shrink-0" />
-            {showTopBar
-              ? <span className="font-bold text-zinc-900 dark:text-white font-display text-sm truncate">{pageTitle}</span>
-              : <span className="font-bold text-zinc-900 dark:text-white font-display text-sm">ALLERIA FILMY</span>}
+        {/* Sticks as one unit — the mobile/desktop top bars were already each independently
+            sticky top-0 (mutually exclusive via breakpoint, so that never conflicted); the
+            impersonation banner needed to join that same stack instead of being a third
+            independent sticky top-0 sibling, which would just overlap whichever bar is active. */}
+        <div className="sticky top-0 z-30 flex flex-col">
+          {/* Impersonation banner — always shown regardless of role/route, since the impersonated
+              session has exactly the target user's permissions and may not have dev-route access
+              to get back to Dev Tools at all. This is the only way back. */}
+          {user?.impersonatedBy && (
+            <div className="shrink-0 flex items-center justify-center gap-3 px-4 py-2 bg-amber-500 text-amber-950 text-xs font-bold flex-wrap">
+              <span>Jesteś zalogowany jako {user.display_name || user.username} (podszywanie się przez {user.impersonatedBy.display_name || user.impersonatedBy.username})</span>
+              <button
+                onClick={async () => { await api.stopImpersonating().catch(() => {}); window.location.href = '/'; }}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-950/10 hover:bg-amber-950/20 transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Wróć do swojego konta
+              </button>
+            </div>
+          )}
+          {/* Mobile top bar — always present (hamburger is the only way to reach the sidebar on mobile) */}
+          <div className="lg:hidden shrink-0 flex items-center justify-between gap-3 p-4 bg-gradient-to-r from-violet-100/50 via-white/60 to-fuchsia-100/40 dark:from-violet-500/10 dark:via-zinc-950/50 dark:to-fuchsia-500/10 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 dark:border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+            <div className="flex items-center gap-2 min-w-0">
+              {/* Sidebar opens from the left, so its trigger lives on the left too */}
+              <button onClick={() => setSidebarOpen(true)} className="btn-icon-zinc shrink-0">
+                <Menu className="w-5 h-5" />
+              </button>
+              <Link to="/" className="flex items-center gap-2 min-w-0">
+                <img src={LOGO_URL} alt="Alleria" className="w-7 h-7 object-contain shrink-0" />
+                {showTopBar
+                  ? <span className="font-bold text-zinc-900 dark:text-white font-display text-sm truncate">{pageTitle}</span>
+                  : <span className="font-bold text-zinc-900 dark:text-white font-display text-sm">ALLERIA FILMY</span>}
+              </Link>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              {showTopBar && <GlobalSearch compact />}
+              {showTopBar && <NotificationBell />}
+              {showTopBar && <ProfileMenu compact />}
+            </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {showTopBar && <GlobalSearch compact />}
-            {showTopBar && <ProfileMenu compact />}
-            <button onClick={() => setSidebarOpen(true)} className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white">
-              <Menu className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
 
-        {/* Desktop top bar — page title, global search, profile menu (optional, Zarządzanie > Ustawienia) */}
-        {showTopBar && (
-          <div className="hidden lg:flex shrink-0 items-center gap-6 px-8 py-3 bg-gradient-to-r from-violet-100/50 via-white/60 to-fuchsia-100/40 dark:from-violet-500/10 dark:via-zinc-950/50 dark:to-fuchsia-500/10 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 dark:border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sticky top-0 z-30">
-            <h1 className="text-zinc-900 dark:text-white font-bold text-lg font-display shrink-0 truncate max-w-[240px]">{pageTitle}</h1>
-            <div className="flex-1 flex justify-center">
-              <GlobalSearch />
+          {/* Desktop top bar — page title, global search, profile menu (optional, Zarządzanie > Ustawienia) */}
+          {showTopBar && (
+            <div className="hidden lg:flex shrink-0 items-center gap-6 px-8 py-3 bg-gradient-to-r from-violet-100/50 via-white/60 to-fuchsia-100/40 dark:from-violet-500/10 dark:via-zinc-950/50 dark:to-fuchsia-500/10 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 dark:border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+              <h1 className="text-zinc-900 dark:text-white font-bold text-lg font-display shrink-0 truncate max-w-[240px]">{pageTitle}</h1>
+              <div className="flex-1 flex justify-center">
+                <GlobalSearch />
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <NotificationBell />
+                <ProfileMenu />
+              </div>
             </div>
-            <div className="shrink-0">
-              <ProfileMenu />
-            </div>
-          </div>
-        )}
+          )}
+        </div>
 
         <div className="flex-1">{children}</div>
 
@@ -356,7 +399,7 @@ export default function Layout({ children }) {
         </footer>
       </main>
 
-      <WatchPartyTab />
+      {location.pathname !== '/watch-party' && !location.pathname.startsWith('/shorts/') && <WatchPartyTab />}
     </div>
   );
 }

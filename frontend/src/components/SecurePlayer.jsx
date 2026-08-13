@@ -20,7 +20,18 @@ const CAST_SDK_URL = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loa
 const DOUBLE_TAP_MS = 300;
 const EDGE_ZONE = 0.35;
 
-export default function SecurePlayer({ streamVideoId, drmEnhanced, title, controlRef, onTimeUpdate, onPlay, onPause, onSeek }) {
+// Persisted across videos/sessions (unlike a manual per-resolution pick, which only ever applies
+// to the video currently open) — "Najlepsza" means "always start at the top of the ladder",
+// distinct from "Auto" (hls.js's own ABR heuristic).
+const QUALITY_PREF_KEY = 'alleria_player_quality_pref';
+function pickBestLevelIndex(levels) {
+  return levels.reduce((best, l) => (l.height > (best?.height ?? -1) ? l : best), null)?.index ?? -1;
+}
+
+export default function SecurePlayer({
+  streamVideoId, drmEnhanced, title, controlRef, onTimeUpdate, onPlay, onPause, onSeek,
+  containerClassName, startMuted, onMuteChange, loop, onEnded, disablePip, compactControls, disableFullscreen,
+}) {
   const { user } = useAuth();
   const videoRef = useRef(null);
   const containerRef = useRef(null);
@@ -29,7 +40,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(!!startMuted);
   const [volume, setVolume] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -75,6 +86,18 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
     document.head.appendChild(script);
     return () => {};
   }, []);
+
+  // Seed the DOM element's own muted flag from startMuted (e.g. the Shorts feed, which
+  // autoplays off-gesture — browsers only allow that muted). React state alone (the
+  // `muted` useState above) doesn't reach the underlying <video>; every other mute toggle
+  // in this file sets `v.muted` imperatively too, so this follows the same pattern.
+  useEffect(() => {
+    if (startMuted && videoRef.current) videoRef.current.muted = true;
+  }, []);
+
+  // Fires on every mute change regardless of source (button, controlRef.toggleMute(), volume
+  // dragged to zero, cast) — simpler than calling a callback at each individual mutation site.
+  useEffect(() => { onMuteChange?.(muted); }, [muted]);
 
   // AirPlay availability — Safari/WebKit only. The target picker itself
   // (webkitShowPlaybackTargetPicker) needs no setup; we just track whether a
@@ -266,7 +289,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
 
       hls.on(window.Hls.Events.MANIFEST_PARSED, (e, data) => {
         setLoading(false);
-        setQualities(data.levels.map((l, i) => {
+        const levels = data.levels.map((l, i) => {
           // Only call out the frame rate for genuinely high-fps content (≥50, matching the
           // transcoding pipeline's own 60fps threshold) — standard 24/25/30fps stays plain
           // "720p" etc., same convention as YouTube ("1080p60" vs just "1080p").
@@ -277,7 +300,13 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
             bitrate: l.bitrate,
             label: `${l.height}p${fps ? fps : ''}`
           };
-        }));
+        });
+        setQualities(levels);
+        if (localStorage.getItem(QUALITY_PREF_KEY) === 'best') {
+          const bestIdx = pickBestLevelIndex(levels);
+          hls.currentLevel = bestIdx;
+          setCurrentQuality(bestIdx);
+        }
       });
 
       hls.on(window.Hls.Events.ERROR, (e, data) => {
@@ -452,6 +481,8 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
         if (videoRef.current) videoRef.current.pause();
       },
       getCurrentTime: () => (casting && castPlayerRef.current ? castPlayerRef.current.currentTime : (videoRef.current?.currentTime ?? 0)),
+      getDuration: () => duration,
+      toggleMute: () => toggleMute(),
     };
   });
 
@@ -660,6 +691,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
         break;
       case 'f':
       case 'F':
+        if (disableFullscreen) break;
         e.preventDefault();
         toggleFullscreen();
         break;
@@ -698,12 +730,25 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
     if (v && v.webkitShowPlaybackTargetPicker) v.webkitShowPlaybackTargetPicker();
   };
 
+  // A manual pick of one specific resolution only ever applies to the video currently open —
+  // it does not persist. Only the Auto/"Najlepsza" default (see selectAutoQuality/
+  // selectBestQuality below) is remembered across videos.
   const changeQuality = (idx) => {
     if (hlsRef.current) {
       hlsRef.current.currentLevel = idx;
       setCurrentQuality(idx);
     }
     setShowQuality(false);
+  };
+
+  const selectAutoQuality = () => {
+    changeQuality(-1);
+    localStorage.setItem(QUALITY_PREF_KEY, 'auto');
+  };
+
+  const selectBestQuality = () => {
+    changeQuality(pickBestLevelIndex(qualities));
+    localStorage.setItem(QUALITY_PREF_KEY, 'best');
   };
 
   const toggleFullscreen = () => {
@@ -760,7 +805,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
 
   if (error) {
     return (
-      <div className="aspect-video bg-black rounded-[32px] flex items-center justify-center">
+      <div className={`${containerClassName || 'aspect-video rounded-[32px]'} bg-black flex items-center justify-center`}>
         <div className="text-center p-8">
           <Shield className="w-12 h-12 text-red-400 mx-auto mb-4" />
           <p className="text-red-300 text-sm font-medium">{error}</p>
@@ -773,7 +818,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
     <div
       ref={containerRef}
       tabIndex={0}
-      className="relative aspect-video bg-black rounded-[32px] overflow-hidden group select-none outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60"
+      className={`relative ${containerClassName || 'aspect-video rounded-[32px]'} bg-black overflow-hidden group select-none outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60`}
       onMouseMove={handleMouseMove}
       onMouseLeave={() => playing && setShowControls(false)}
       onContextMenu={e => e.preventDefault()}
@@ -794,8 +839,10 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
         tabIndex={-1}
         onClick={() => { togglePlay(); containerRef.current?.focus(); }}
         onTouchEnd={handleVideoTouchEnd}
+        onEnded={() => onEnded?.()}
         controlsList="nodownload noremoteplayback"
-        disablePictureInPicture={drmEnhanced}
+        disablePictureInPicture={drmEnhanced || disablePip}
+        loop={loop}
         style={{ objectFit: 'contain' }}
       />
 
@@ -810,7 +857,7 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
       )}
 
       {/* DRM Watermark overlay */}
-      {drmEnhanced && user && (
+      {!!drmEnhanced && user && (
         <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden opacity-[0.03]" style={{ mixBlendMode: 'difference' }}>
           <div className="absolute inset-0 flex flex-wrap items-center justify-center gap-24 -rotate-12">
             {Array(12).fill(null).map((_, i) => (
@@ -863,15 +910,17 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
       )}
 
       {/* DRM badge */}
-      {drmEnhanced && (
+      {!!drmEnhanced && (
         <div className="absolute top-4 left-4 z-20 flex items-center gap-1.5 px-3 py-1.5 bg-black/60 backdrop-blur rounded-xl">
           <Shield className="w-3.5 h-3.5 text-emerald-400" />
           <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">DRM Protected</span>
         </div>
       )}
 
-      {/* Custom Controls */}
-      <div className={`absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+      {/* Custom Controls — on compactControls (Shorts) this whole bar (seek/skip/volume/time/
+          quality/PiP) is desktop-only; the caller renders its own minimal always-visible mobile
+          chrome instead (see ShortSlide), driven by onTimeUpdate/controlRef. */}
+      <div className={`absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'} ${compactControls ? 'hidden sm:block' : ''}`}>
         <div className="bg-gradient-to-t from-black/80 via-black/40 to-transparent pt-16 pb-4 px-5">
           {/* Progress bar */}
           <div className="mb-3 cursor-pointer group/bar" onClick={seek}>
@@ -946,13 +995,16 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
                   <button onClick={() => setShowQuality(!showQuality)} className="p-1.5 text-white hover:text-violet-400 transition-colors flex items-center gap-1">
                     <Settings className="w-4 h-4" />
                     <span className="text-[11px] font-bold">
-                      {currentQuality === -1 ? 'Auto' : qualities.find(q => q.index === currentQuality)?.label || 'Auto'}
+                      {currentQuality === -1 ? 'Auto' : (currentQuality === pickBestLevelIndex(qualities) ? 'Najlepsza' : qualities.find(q => q.index === currentQuality)?.label) || 'Auto'}
                     </span>
                   </button>
                   {showQuality && (
                     <div className="absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur rounded-xl border border-white/10 py-1 min-w-[120px]">
-                      <button onClick={() => changeQuality(-1)} className={`w-full text-left px-4 py-2 text-sm ${currentQuality === -1 ? 'text-violet-400 font-bold' : 'text-white'} hover:bg-white/10`}>
+                      <button onClick={selectAutoQuality} className={`w-full text-left px-4 py-2 text-sm ${currentQuality === -1 ? 'text-violet-400 font-bold' : 'text-white'} hover:bg-white/10`}>
                         Auto
+                      </button>
+                      <button onClick={selectBestQuality} title="Zawsze ładuj najwyższą dostępną jakość — zapamiętane dla kolejnych filmów" className={`w-full text-left px-4 py-2 text-sm ${currentQuality !== -1 && currentQuality === pickBestLevelIndex(qualities) ? 'text-violet-400 font-bold' : 'text-white'} hover:bg-white/10`}>
+                        Najlepsza
                       </button>
                       {qualities.map(q => (
                         <button key={q.index} onClick={() => changeQuality(q.index)} className={`w-full text-left px-4 py-2 text-sm ${currentQuality === q.index ? 'text-violet-400 font-bold' : 'text-white'} hover:bg-white/10`}>
@@ -964,16 +1016,20 @@ export default function SecurePlayer({ streamVideoId, drmEnhanced, title, contro
                 </div>
               )}
 
-              {/* Picture-in-Picture — blocked for DRM-enhanced content as part of anti-capture protections */}
-              {!drmEnhanced && !casting && document.pictureInPictureEnabled && (
+              {/* Picture-in-Picture — blocked for DRM-enhanced content as part of anti-capture
+                  protections, and for Shorts (disablePip) where PiP doesn't make sense in a
+                  rapid-fire vertical feed */}
+              {!drmEnhanced && !disablePip && !casting && document.pictureInPictureEnabled && (
                 <button onClick={togglePiP} className={`p-1.5 transition-colors ${pipActive ? 'text-violet-400' : 'text-white hover:text-violet-400'}`} title="Obraz w obrazie">
                   <PictureInPicture2 className="w-5 h-5" />
                 </button>
               )}
 
-              <button onClick={toggleFullscreen} className="p-1.5 text-white hover:text-violet-400 transition-colors">
-                <Maximize className="w-5 h-5" />
-              </button>
+              {!disableFullscreen && (
+                <button onClick={toggleFullscreen} className="p-1.5 text-white hover:text-violet-400 transition-colors">
+                  <Maximize className="w-5 h-5" />
+                </button>
+              )}
             </div>
           </div>
         </div>

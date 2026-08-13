@@ -41,7 +41,7 @@ function loadYtApi() {
   });
 }
 
-function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek, canControl }) {
+function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek, onTimeUpdate, canControl }) {
   // React owns only this wrapper — YT owns the inner div it creates
   const wrapperRef = useRef(null);
 
@@ -55,10 +55,12 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
   const onPlayRef = useRef(onPlay);
   const onPauseRef = useRef(onPause);
   const onSeekRef = useRef(onSeek);
+  const onTimeUpdateRef = useRef(onTimeUpdate);
 
   useEffect(() => { onPlayRef.current = onPlay; }, [onPlay]);
   useEffect(() => { onPauseRef.current = onPause; }, [onPause]);
   useEffect(() => { onSeekRef.current = onSeek; }, [onSeek]);
+  useEffect(() => { onTimeUpdateRef.current = onTimeUpdate; }, [onTimeUpdate]);
   useEffect(() => { canControlRef.current = canControl; }, [canControl]);
 
   useEffect(() => {
@@ -111,6 +113,10 @@ function WatchPartyYouTubePlayer({ videoId, controlRef, onPlay, onPause, onSeek,
           expectedTimeRef.current = actual;
           lastCheckRef.current = now;
         }
+        // Always after the branch above, so a from-position read off this (via onSeek) never
+        // sees this tick's own position — same ordering guarantee VideoPage.jsx's YouTube
+        // tracking relies on.
+        onTimeUpdateRef.current?.(actual);
       }, 1000);
     };
 
@@ -248,6 +254,47 @@ export default function WatchPartyPage() {
   const playerControlRef = useRef(null);
   const canControl = party?.members?.find(m => m.id === user?.id)?.canControl ?? false;
   const isHost = party?.hostId === user?.id;
+
+  // Playback-events analytics buffer (context: 'watch_party') — mirrors VideoPage.jsx's solo
+  // tracking. Only sent when the current queue item is a real library video (numeric videoId);
+  // an ad-hoc pasted YouTube link (videoId: "yt-<id>") isn't a row in `videos`, so there's
+  // nowhere to attach the events. flushWpEvents reads `party` off a ref (not a dep) so it keeps
+  // a stable identity — party updates on every sync tick, which would otherwise restart the
+  // flush interval constantly.
+  const partyRef = useRef(party);
+  useEffect(() => { partyRef.current = party; }, [party]);
+  const wpEventBufferRef = useRef([]);
+  const wpProgressRef = useRef(0);
+  const flushWpEvents = useCallback(() => {
+    const p = partyRef.current;
+    const item = p && p.currentIndex >= 0 ? p.queue[p.currentIndex] : null;
+    if (!item || typeof item.videoId !== 'number' || wpEventBufferRef.current.length === 0) return;
+    const events = wpEventBufferRef.current;
+    wpEventBufferRef.current = [];
+    fetch(`/api/videos/${item.videoId}/playback-events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ events, context: 'watch_party' }),
+      credentials: 'include',
+      keepalive: true,
+    }).catch(() => {});
+  }, []);
+  const currentVideoIdForEvents = (party && party.currentIndex >= 0 && typeof party.queue[party.currentIndex]?.videoId === 'number')
+    ? party.queue[party.currentIndex].videoId
+    : null;
+  useEffect(() => {
+    wpEventBufferRef.current = [];
+    const flushInterval = setInterval(flushWpEvents, 15000);
+    return () => { clearInterval(flushInterval); flushWpEvents(); };
+  }, [currentVideoIdForEvents, flushWpEvents]);
+  // Every participant (not just the controller) logs their own view — see log-view's comment.
+  useEffect(() => {
+    if (currentVideoIdForEvents != null) api.logVideoView(currentVideoIdForEvents).catch(() => {});
+  }, [currentVideoIdForEvents]);
+  const handleWpTimeUpdate = useCallback((pos) => { wpProgressRef.current = pos; }, []);
+  const handleWpPlay = useCallback((pos) => { wpEventBufferRef.current.push({ event_type: 'play', position: pos }); }, []);
+  const handleWpPause = useCallback((pos) => { wpEventBufferRef.current.push({ event_type: 'pause', position: pos }); }, []);
+  const handleWpSeek = useCallback((pos) => { wpEventBufferRef.current.push({ event_type: 'seek', position: pos, from_position: wpProgressRef.current }); }, []);
 
   // Film browser
   const [showBrowser, setShowBrowser] = useState(false);
@@ -454,11 +501,11 @@ export default function WatchPartyPage() {
   const embedUrl = (isStreamer || isHtml || currentSrc?.type === 'plex' || youtubeId) ? null : currentSrc ? youtubeToEmbed(currentSrc.url) : null;
 
   return (
-    <div className="flex h-full bg-zinc-950">
+    <div className="flex flex-col lg:flex-row h-full bg-zinc-950 overflow-y-auto lg:overflow-hidden">
       {/* Main content: player + queue browser */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 lg:h-full lg:min-h-0">
         {/* Header bar */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
+        <div className="flex items-center gap-3 flex-wrap px-4 py-3 border-b border-zinc-800 shrink-0">
           <Users className="w-4 h-4 text-violet-400" />
           <span className="font-bold text-white text-sm">Watch Party</span>
           <span className="font-mono text-[11px] text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded tracking-widest">{party.code}</span>
@@ -481,8 +528,9 @@ export default function WatchPartyPage() {
           </div>
         </div>
 
-        {/* Player */}
-        <div className="flex-1 bg-black flex items-center justify-center min-h-0">
+        {/* Player — fixed aspect ratio on mobile (page scrolls below it); fills remaining
+            column height on desktop, where the whole page is a fixed-height split view */}
+        <div className="aspect-video lg:aspect-auto lg:flex-1 bg-black flex items-center justify-center min-h-0 shrink-0 lg:shrink">
           {!currentItem ? (
             <div className="text-center space-y-3">
               <Film className="w-12 h-12 text-zinc-700 mx-auto" />
@@ -501,9 +549,10 @@ export default function WatchPartyPage() {
                 drmEnhanced={currentItem.drm_enhanced}
                 title={currentItem.title}
                 controlRef={playerControlRef}
-                onPlay={canControl ? (pos) => send({ type: 'play', position: pos }) : undefined}
-                onPause={canControl ? (pos) => send({ type: 'pause', position: pos }) : undefined}
-                onSeek={canControl ? (pos) => send({ type: 'seek', position: pos }) : undefined}
+                onPlay={canControl ? (pos) => { send({ type: 'play', position: pos }); handleWpPlay(pos); } : undefined}
+                onPause={canControl ? (pos) => { send({ type: 'pause', position: pos }); handleWpPause(pos); } : undefined}
+                onSeek={canControl ? (pos) => { send({ type: 'seek', position: pos }); handleWpSeek(pos); } : undefined}
+                onTimeUpdate={handleWpTimeUpdate}
               />
             </div>
           ) : youtubeId ? (
@@ -513,9 +562,10 @@ export default function WatchPartyPage() {
                 videoId={youtubeId}
                 controlRef={playerControlRef}
                 canControl={canControl}
-                onPlay={canControl ? (pos) => send({ type: 'play', position: pos }) : undefined}
-                onPause={canControl ? (pos) => send({ type: 'pause', position: pos }) : undefined}
-                onSeek={canControl ? (pos) => send({ type: 'seek', position: pos }) : undefined}
+                onPlay={canControl ? (pos) => { send({ type: 'play', position: pos }); handleWpPlay(pos); } : undefined}
+                onPause={canControl ? (pos) => { send({ type: 'pause', position: pos }); handleWpPause(pos); } : undefined}
+                onSeek={canControl ? (pos) => { send({ type: 'seek', position: pos }); handleWpSeek(pos); } : undefined}
+                onTimeUpdate={handleWpTimeUpdate}
               />
             </div>
           ) : embedUrl ? (
@@ -567,8 +617,9 @@ export default function WatchPartyPage() {
         )}
       </div>
 
-      {/* Right panel: participants + queue + add */}
-      <div className="w-72 border-l border-zinc-800 flex flex-col bg-zinc-900 shrink-0">
+      {/* Right panel: participants + queue + add — full width under the player on mobile
+          (page scrolls), fixed w-72 side column filling the row's height on desktop */}
+      <div className="w-full lg:w-72 border-t lg:border-t-0 lg:border-l border-zinc-800 flex flex-col bg-zinc-900 shrink-0 lg:h-full lg:min-h-0">
         {/* Participants */}
         <div className="border-b border-zinc-800 p-3">
           <div className="text-[10px] text-zinc-500 uppercase tracking-widest mb-2">Uczestnicy ({party.members.length})</div>
@@ -607,7 +658,7 @@ export default function WatchPartyPage() {
         </div>
 
         {/* Queue */}
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex flex-col lg:flex-1 lg:min-h-0">
           <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800 shrink-0">
             <div className="text-[10px] text-zinc-500 uppercase tracking-widest">Kolejka ({party.queue.length})</div>
             {canControl && (
@@ -616,7 +667,7 @@ export default function WatchPartyPage() {
               </button>
             )}
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div className="max-h-64 lg:max-h-none lg:flex-1 overflow-y-auto">
             {party.queue.length === 0 ? (
               <div className="p-4 text-center text-zinc-600 text-xs">Kolejka jest pusta</div>
             ) : (

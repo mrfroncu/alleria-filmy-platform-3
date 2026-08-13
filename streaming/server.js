@@ -412,13 +412,44 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
   }
   fs.writeFileSync(path.join(outputDir, 'master.m3u8'), master);
 
-  // Generate thumbnail from source
-  try {
-    execSync(`ffmpeg -i "${inputPath}" -ss 00:00:05 -vframes 1 -q:v 3 "${path.join(outputDir, 'thumb.jpg')}" -y`, { stdio: 'pipe' });
-  } catch (e) {
+  // Generate thumbnail from source — try a few timestamps before giving up. A short clip (or one
+  // with an unreadable frame at a given offset) can fail every attempt except 0:00, which grabs
+  // the very first decodable frame and is about as close to "always works" as ffmpeg gets; the
+  // final catch logs instead of swallowing, so a total failure is at least visible in the logs
+  // rather than silently leaving the video with no thumbnail forever.
+  let thumbOk = false;
+  let lastThumbErr = null;
+  for (const ts of ['00:00:05', '00:00:01', '00:00:00']) {
     try {
-      execSync(`ffmpeg -i "${inputPath}" -ss 00:00:01 -vframes 1 -q:v 3 "${path.join(outputDir, 'thumb.jpg')}" -y`, { stdio: 'pipe' });
-    } catch (e2) {}
+      execSync(`ffmpeg -i "${inputPath}" -ss ${ts} -vframes 1 -q:v 3 "${path.join(outputDir, 'thumb.jpg')}" -y`, { stdio: 'pipe' });
+      thumbOk = true;
+      break;
+    } catch (e) { lastThumbErr = e; }
+  }
+  if (!thumbOk) {
+    console.log(`[STREAM] Thumbnail generation failed for ${videoId} at every attempted timestamp: ${lastThumbErr?.message}`);
+  }
+
+  // Generate hover-scrub preview sprite (storyboard), like YouTube's thumbnail hover preview.
+  // Skipped for very short clips — a handful of seconds isn't worth scrubbing through.
+  if (totalDuration >= 30) {
+    try {
+      const PREVIEW_INTERVAL_TARGET = 10; // seconds between frames, before the frame cap below
+      const PREVIEW_MAX_FRAMES = 100; // caps sprite size/ffmpeg cost for very long films
+      const frameCount = Math.min(PREVIEW_MAX_FRAMES, Math.max(1, Math.ceil(totalDuration / PREVIEW_INTERVAL_TARGET)));
+      const interval = totalDuration / frameCount;
+      const cols = Math.ceil(Math.sqrt(frameCount));
+      const rows = Math.ceil(frameCount / cols);
+      // Individual frames scaled to a fixed width, tiled into one grid image — the frontend reads
+      // cells back by percentage (cols/rows), so exact pixel size of the sprite doesn't matter.
+      execSync(
+        `ffmpeg -i "${inputPath}" -vf "fps=1/${interval},scale=160:-2,tile=${cols}x${rows}" -frames:v 1 -q:v 4 "${path.join(outputDir, 'preview.jpg')}" -y`,
+        { stdio: 'pipe' }
+      );
+      fs.writeFileSync(path.join(outputDir, 'preview.json'), JSON.stringify({ frames: frameCount, cols, rows, interval }));
+    } catch (e) {
+      console.log(`[STREAM] Preview sprite generation failed for ${videoId}: ${e.message}`);
+    }
   }
 
   // Get duration

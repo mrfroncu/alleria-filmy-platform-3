@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { WatchPartyProvider } from './contexts/WatchPartyContext';
+import { NotificationsProvider } from './contexts/NotificationsContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { UnsavedChangesProvider } from './contexts/UnsavedChangesContext';
@@ -21,6 +22,10 @@ import LogsPage from './pages/LogsPage';
 import ManagePage from './pages/ManagePage';
 import WatchPartyPage from './pages/WatchPartyPage';
 import AuthorPage from './pages/AuthorPage';
+import ShortsPage from './pages/ShortsPage';
+// Lazy: recharts alone adds ~370KB (raw) to the bundle — not worth every visitor paying for
+// on first load when only authors/admins ever open this page.
+const VideoAnalyticsPage = lazy(() => import('./pages/VideoAnalyticsPage'));
 
 function ProtectedRoute({ children, adminOnly, devOnly }) {
   const { user, loading, isAdmin, isDev } = useAuth();
@@ -45,7 +50,7 @@ function GuestRoute({ children }) {
 
 function LoadingScreen() {
   return (
-    <div className="flex items-center justify-center min-h-screen bg-zinc-50 dark:bg-zinc-950">
+    <div className="flex items-center justify-center min-h-dvh bg-zinc-50 dark:bg-zinc-950">
       <div className="w-8 h-8 border-4 border-violet-500 border-t-transparent rounded-full animate-spin" />
     </div>
   );
@@ -60,12 +65,14 @@ export default function App() {
     <ConfirmProvider>
     <UnsavedChangesProvider>
     <AuthProvider>
+      <NotificationsProvider>
       <WatchPartyProvider>
         <TosGate />
         <Routes>
           <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
           <Route path="/" element={<P><VideosPage /></P>} />
           <Route path="/video/:id" element={<P><VideoPage /></P>} />
+          <Route path="/video/:id/analytics" element={<P><Suspense fallback={<LoadingScreen />}><VideoAnalyticsPage /></Suspense></P>} />
           <Route path="/category/:categorySlug" element={<P><VideosPage /></P>} />
           <Route path="/favorites" element={<P><FavoritesPage /></P>} />
           <Route path="/history" element={<P><HistoryPage /></P>} />
@@ -78,9 +85,11 @@ export default function App() {
           <Route path="/author/:authorId" element={<P><AuthorPage /></P>} />
           <Route path="/tag/:tagId" element={<P><VideosPage /></P>} />
           <Route path="/watch-party" element={<P><WatchPartyPage /></P>} />
+          <Route path="/shorts/:categorySlug" element={<P><ShortsPage /></P>} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </WatchPartyProvider>
+      </NotificationsProvider>
     </AuthProvider>
     </UnsavedChangesProvider>
     </ConfirmProvider>

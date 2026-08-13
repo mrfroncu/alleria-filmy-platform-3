@@ -83,7 +83,7 @@ export default function WatchPartyTab() {
       {open && <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={close} />}
 
       {/* Slide-out panel */}
-      <div className={`fixed right-0 top-0 h-full w-80 bg-zinc-900 border-l border-zinc-800 z-50 shadow-2xl flex flex-col transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className={`fixed right-0 top-0 h-full w-full max-w-[22rem] sm:w-80 bg-zinc-900 border-l border-zinc-800 z-50 shadow-2xl flex flex-col transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 shrink-0">
           <div className="flex items-center gap-2.5">
             <Users className="w-4 h-4 text-violet-400" />

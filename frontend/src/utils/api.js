@@ -11,7 +11,11 @@ async function request(url, options = {}) {
   if (res.status === 401) {
     const data = await res.json().catch(() => ({}));
     if (!window.location.pathname.startsWith('/login')) {
-      window.location.href = '/login';
+      // Preserve where the user was headed — this fires as a hard navigation before
+      // ProtectedRoute's own returnTo redirect ever gets a chance to run, so without this
+      // the destination is lost and login always drops back to "/".
+      const returnTo = window.location.pathname + window.location.search;
+      window.location.href = `/login?returnTo=${encodeURIComponent(returnTo)}`;
     }
     throw new Error(data.error || 'Unauthorized');
   }
@@ -62,9 +66,13 @@ export const api = {
     return request(`/videos?${q}`);
   },
   getVideo: (id) => request(`/videos/${id}`),
+  logVideoView: (id) => request(`/videos/${id}/log-view`, { method: 'POST' }),
   createVideo: (formData) => request('/videos', { method: 'POST', body: formData }),
   updateVideo: (id, formData) => request(`/videos/${id}`, { method: 'PUT', body: formData }),
   deleteVideo: (id) => request(`/videos/${id}`, { method: 'DELETE' }),
+  promoteMirrorSource: (id, slot) => request(`/videos/${id}/promote-source`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slot }),
+  }),
 
   // Tags
   getTags: (search) => request(`/tags${search ? `?search=${encodeURIComponent(search)}` : ''}`),
@@ -187,6 +195,10 @@ export const api = {
   }),
   refreshDiscordAvatar: () => request('/profile/refresh-discord', { method: 'POST' }),
 
+  // Active sessions / devices
+  getSessions: () => request('/profile/sessions'),
+  revokeSession: (sid) => request(`/profile/sessions/${encodeURIComponent(sid)}`, { method: 'DELETE' }),
+
   // Browser push notifications
   getVapidPublicKey: () => request('/push/vapid-public-key'),
   subscribePush: (subscription) => request('/push/subscribe', {
@@ -265,6 +277,17 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   }),
+  impersonateUser: (userId) => request(`/debug/impersonate/${userId}`, { method: 'POST' }),
+  stopImpersonating: () => request('/debug/stop-impersonating', { method: 'POST' }),
+
+  // In-app notifications
+  getNotificationsToken: () => request('/notifications/token'),
+  getNotifications: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/notifications${q ? `?${q}` : ''}`);
+  },
+  markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'POST' }),
+  markAllNotificationsRead: () => request('/notifications/read-all', { method: 'POST' }),
 
   // Watch Party
   getWatchPartyToken: () => request('/watch-party/token'),
@@ -286,6 +309,28 @@ export const api = {
   resetProgress: () => request('/progress', { method: 'DELETE' }),
   clearProgress: (videoId) => request(`/progress/${videoId}`, { method: 'DELETE' }),
 
+  // Watched marks — separate from progress (see video_watched table)
+  markWatched: (videoId) => request(`/videos/${videoId}/watched`, { method: 'POST' }),
+  unmarkWatched: (videoId) => request(`/videos/${videoId}/watched`, { method: 'DELETE' }),
+  getAllWatched: () => request('/watched'),
+  resetWatched: () => request('/watched', { method: 'DELETE' }),
+
+  // Video analytics
+  getVideoAnalytics: (videoId, { context, userIds, excludeUserIds, after, before } = {}) => {
+    const q = new URLSearchParams();
+    if (context && context !== 'all') q.set('context', context);
+    if (userIds?.length) q.set('user_ids', userIds.join(','));
+    else if (excludeUserIds?.length) q.set('exclude_user_ids', excludeUserIds.join(','));
+    if (after) q.set('after', after);
+    if (before) q.set('before', before);
+    const qs = q.toString();
+    return request(`/videos/${videoId}/analytics${qs ? `?${qs}` : ''}`);
+  },
+  resetVideoAnalytics: (videoId, { before, after, userIds, excludeUserIds } = {}) => request(`/videos/${videoId}/analytics`, {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ before, after, user_ids: userIds, exclude_user_ids: excludeUserIds }),
+  }),
+
   // Comments
   getComments: (videoId) => request(`/videos/${videoId}/comments`),
   addComment: (videoId, content, parentId) => request(`/videos/${videoId}/comments`, {
@@ -296,6 +341,19 @@ export const api = {
   }),
   deleteComment: (commentId) => request(`/comments/${commentId}`, { method: 'DELETE' }),
   hardDeleteComment: (commentId) => request(`/comments/${commentId}/hard`, { method: 'DELETE' }),
+  reactToComment: (commentId, emoji) => request(`/comments/${commentId}/react`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emoji }),
+  }),
+  reportComment: (commentId, reason, description) => request(`/comments/${commentId}/report`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason, description }),
+  }),
+
+  // Comment moderation queue (admin)
+  getCommentReports: (status) => request(`/admin/comment-reports${status ? `?status=${status}` : ''}`),
+  getCommentReportsPendingCount: () => request('/admin/comment-reports/pending-count'),
+  resolveCommentReport: (id, action) => request(`/admin/comment-reports/${id}/resolve`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }),
+  }),
   getAuditLogs: (params = {}) => {
     const q = new URLSearchParams(params).toString();
     return request(`/audit-logs${q ? `?${q}` : ''}`);

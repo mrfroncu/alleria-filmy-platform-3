@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp, FolderOpen, Loader2 } from 'lucide-react';
+import { useSearchParams, Link } from 'react-router-dom';
+import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp, FolderOpen, Loader2, BarChart3 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import VideoModal from '../components/VideoModal';
@@ -305,6 +305,9 @@ export default function AdminPage() {
                         <td className="px-4 py-3 text-xs text-zinc-500 font-mono whitespace-nowrap">{formatDate(video.publish_date)}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
+                            <Link to={`/video/${video.id}/analytics?from=admin`} className="btn-icon-zinc" title="Analityka">
+                              <BarChart3 className="w-3.5 h-3.5" />
+                            </Link>
                             <button onClick={() => { setEditingVideo(video); setIsModalOpen(true); }} className="btn-icon-violet">
                               <Pencil className="w-3.5 h-3.5" />
                             </button>

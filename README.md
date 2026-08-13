@@ -10,7 +10,7 @@
 
 ---
 
-Uwierzytelnianie Discord/TeamSpeak 3/6, zarządzanie filmami, self-hosted streaming HLS, kategorie, subkategorie (3 poziomy) i system rang, kontrola dostępu oparta na rolach, komentarze, planowane publikacjem,powiadomienia, Watch Party.
+Uwierzytelnianie Discord/TeamSpeak 3/6, zarządzanie filmami, self-hosted streaming HLS, kategorie, subkategorie (3 poziomy) i system rang, kontrola dostępu oparta na rolach, komentarze z moderacją i reakcjami, planowane publikacje, centrum powiadomień w czasie rzeczywistym, analityka wideo, Shorts, Watch Party.
 
 ## 📑 Spis treści
 
@@ -54,6 +54,27 @@ Uwierzytelnianie Discord/TeamSpeak 3/6, zarządzanie filmami, self-hosted stream
 - **Planowane publikacje** — film z datą publikacji w przyszłości jest niewidoczny dla zwykłych użytkowników (widzą go tylko redaktorzy/dev w panelu) do momentu jej nadejścia; z chwilą publikacji automatycznie leci webhook Discord, jeśli kategoria ma go skonfigurowanego
 - **Progres uploadu** — podwójny progress bar: całość + bieżący chunk
 - **Auto-transkodowanie** — backend co 30s sprawdza status, redaktor widzi % postępu i aktualną jakość
+- **Podgląd poklatkowy miniaturki** — najechanie myszką na kafelek filmu (self-hosted, ready) pokazuje "filmstrip" ze sprite'a wygenerowanego przy transkodowaniu (do 100 klatek co ~10-60s zależnie od długości filmu), jak na YouTube; YouTube/embed zostaje przy statycznej miniaturce
+
+### 📊 Analityka wideo *(dla autorów, admin/dev)*
+- Dostępna z poziomu strony filmu (ikonka wykresu, tylko dla autora/redaktora/dev)
+- **Oglądalność w czasie** — dzienny wykres wyświetleń, ostatnie 30 dni
+- **Heatmapa retencji** — jaki odsetek widzów dotarł do danego momentu filmu
+- **Heatmapa interakcji** — najczęstsze pauzy, cofnięcia (ponowne obejrzenie) i pominięcia (skip), rozłożone po osi czasu filmu
+- Działa dla każdego źródła, YouTube włącznie — `SecurePlayer` (self-hosted) raportuje prawdziwe zdarzenia DOM play/pause/seek, a oba odtwarzacze YouTube (IFrame API) wykrywają je w tle: play/pause z `onStateChange`, seek z wykrycia skoku w odpytywanej pozycji (bez własnego playera widocznego dla usera — działa też przy natywnych kontrolkach YT)
+- **Solo vs Watch Party** — każde zdarzenie i wyświetlenie oznaczone kontekstem; przełącznik filtruje widok między „Wszystko" / „Solo" / „Watch Party" (uczestnicy party też trafiają do `watch_logs`, nie tylko osoba sterująca)
+- **Filtr osoby** — zawężenie wszystkich wykresów do sesji jednej wybranej osoby
+- **Statystyki zbiorcze** — unikalni widzowie, średnie ukończenie (%)
+- **Reset danych** — usunięcie zdarzeń/wyświetleń filmu w całości albo zawężone do okresu i/lub jednej osoby; nie rusza zapamiętanej pozycji „Kontynuuj oglądanie"
+
+### 🎞️ Shorts
+- Kategoria oznaczona jako „Kategoria Shortów" (Zarządzanie → Kategorie) — może być ich wiele
+- Przeglądanie kategorii wygląda normalnie (siatka filmów); kliknięcie filmu uruchamia sekwencyjny odtwarzacz pełnoekranowy zamiast strony filmu
+- Format dowolny — Shorty nie muszą być pionowe, mogą być zwykłymi poziomymi filmami w krótkiej, szybkiej kolejce
+- Nawigacja: scroll-snap (swipe na telefonie, scroll na desktopie) + strzałki góra/dół na desktopie, autoplay aktywnego slajdu przez `IntersectionObserver`
+- Domyślnie zapętla bieżący film; przełącznik w playerze zmienia na automatyczne odtwarzanie kolejnego po zakończeniu
+- Wyciszenie pamiętane między filmami; przycisk polubienia (współdzielony z Ulubionymi) w każdym slajdzie
+- Na mobilce: zredukowany interfejs playera (tytuł, przycisk wyciszenia, zawsze widoczny przeciągalny pasek postępu) zamiast pełnych kontrolek desktopowych
 
 ### 🎉 Watch Party *(BETA)*
 - **Wspólne oglądanie** — synchronizacja odtwarzania w czasie rzeczywistym przez WebSocket
@@ -66,6 +87,13 @@ Uwierzytelnianie Discord/TeamSpeak 3/6, zarządzanie filmami, self-hosted stream
 - **HLS Player sync** — synchronizacja SecurePlayera przez bezpośrednie wywołania kontrolera (bez cyklu React)
 - **Auto-dołączanie** — wejście na `/watch-party?join=KOD` automatycznie dołącza do party
 - **Informacje o rozłączeniu** — osobne ekrany dla wyrzucenia i zakończenia party
+
+### 🔔 Centrum powiadomień
+- Dostarczanie w czasie rzeczywistym przez WebSocket (osobny kanał od Watch Party, `/ws/notifications`), nie polling
+- Typy: nowy film w obserwowanej kategorii, odpowiedź na komentarz, wynik żądania RODO, rozstrzygnięcie zgłoszenia komentarza
+- Dzwonek z licznikiem nieprzeczytanych w górnym pasku; „Oznacz wszystkie jako przeczytane"
+- Desktop: dropdown zakotwiczony pod dzwonkiem. Mobile: pełnoekranowy panel (portalowany do `<body>`, żeby nie ucinał go `backdrop-blur` górnego paska)
+- Auto-reconnect przy zerwaniu połączenia
 
 ### 🛡️ Ochrona DRM
 - Szyfrowanie AES-128 HLS
@@ -80,6 +108,9 @@ Uwierzytelnianie Discord/TeamSpeak 3/6, zarządzanie filmami, self-hosted stream
 - Soft-delete (usunięty komentarz zachowany dla integralności wątku)
 - Hard-delete i ciche edycje dla deweloperów (bez śladu)
 - Komentarze redaktora wstawiane przez panel Debug Tools
+- **Reakcje emoji** — dowolna liczba różnych emoji na komentarz, toggle per emoji (jak na Slacku)
+- **Zgłaszanie komentarzy** — powód z listy (spam / nękanie / spoiler / nieodpowiednia treść / inne) lub „inne” z własnym opisem; opis zawsze wymagany
+- **Kolejka moderacyjna** (Zarządzanie → Zgłoszenia, `admin`+`dev`) — trzy akcje jasno rozróżnione: *odrzuć zgłoszenie* (komentarz bez zmian), *ukryj komentarz* (soft-delete, odwracalne przez dev), *usuń trwale* (hard-delete wraz z odpowiedziami, tylko `dev`, nieodwracalne)
 
 ### 🏅 Rangi aplikacji (App Ranks)
 - Własne rangi niezależne od ról Discord — nazwa, kolor, opcjonalny opis
@@ -112,8 +143,9 @@ Uwierzytelnianie Discord/TeamSpeak 3/6, zarządzanie filmami, self-hosted stream
 - Zarządzanie kategoriami, użytkownikami i rangami **nie** znajduje się tutaj — patrz sekcja „Zarządzanie” niżej; logi mają też własną, osobną stronę
 
 ### ⚙️ Zarządzanie *(dev only)*
-- **Kategorie** — drzewo z podkategoriami, osobny tryb dostępu widz/redaktor (publiczny / role Discord / rangi / lista użytkowników), konfiguracja webhooka Discord per kategoria
+- **Kategorie** — drzewo z podkategoriami, osobny tryb dostępu widz/redaktor (publiczny / role Discord / rangi / lista użytkowników), konfiguracja webhooka Discord per kategoria, znacznik „Kategoria Shortów"
 - **Użytkownicy** — podgląd roli i metody logowania, przypisywanie rang aplikacji, podgląd dostępu widza/redaktora per kategoria
+- **Zgłoszenia** — kolejka moderacyjna zgłoszeń komentarzy (patrz sekcja „💬 Komentarze")
 
 ### 📜 Logi systemowe *(dev only)*
 - Cztery zakładki: **Audit Log** (historia akcji redaktorów/deweloperów), **Watch Party** (utworzenia/zakończenia/dołączenia/akcje odtwarzacza), **Wyświetlenia**, **Logowania**
@@ -122,7 +154,7 @@ Uwierzytelnianie Discord/TeamSpeak 3/6, zarządzanie filmami, self-hosted stream
 
 ### 🧰 Dev Tools *(dev only)*
 - **Streaming** — statystyki serwera streamingu, menedżer plików, aktywne transkodowania na żywo
-- **Administracyjne** — zarządzanie aktywnymi Watch Party (wymuszone usuwanie), ręczne tworzenie kont użytkowników
+- **Administracyjne** — zarządzanie aktywnymi Watch Party (wymuszone usuwanie), ręczne tworzenie kont użytkowników, logowanie się jako wybrany użytkownik (do debugowania zgłoszeń) — sesja przyjmuje dokładnie jego uprawnienia, a na każdej stronie pojawia się pasek z powrotem na własne konto
 - **Kategorie** — narzędzie „Sprawdź uprawnienia”: lista użytkowników z dostępem do wybranej kategorii/filmu wraz z powodem dostępu (rola, ranga, publiczna, custom itd.)
 - **Ustawienia** — patrz sekcja niżej
 - **Debug** — konsola SQL, statystyki bazy, eksport/import bazy JSON, czyszczenie bazy danych
@@ -134,6 +166,9 @@ Uwierzytelnianie Discord/TeamSpeak 3/6, zarządzanie filmami, self-hosted stream
 - **Ulubione** — serduszko na filmie, strona ulubionych
 - **Historia** — nieograniczona historia obejrzanych filmów, grupowana po dacie
 - **Kontynuuj oglądanie** — zapamiętana pozycja odtwarzania per film i użytkownik
+- **Oznaczenie „obejrzane"** — automatyczne po przekroczeniu 90% filmu, albo ręczne (checkmark na kafelku); osobne od pozycji wznowienia, więc przeżywa jej wyczyszczenie po ukończeniu filmu. Reset pojedynczy lub zbiorczy (Baza Filmów)
+- **Aktywne sesje** (Profil) — lista zalogowanych urządzeń/przeglądarek z IP i datą utworzenia, oznaczenie bieżącego urządzenia, zdalne wylogowanie pojedynczej sesji
+- **Jakość odtwarzania** — oprócz Auto, opcja „Najlepsza", która zapamiętuje wybór i przy każdym kolejnym filmie od razu ładuje najwyższą dostępną jakość
 - **Statystyki** — KPI, najczęściej oglądane, top widzowie, top autorzy, chmura tagów
 - **Profil** — edycja display name, bio, podgląd statystyk; dla kont Discord: wybór źródła avatara (globalny z konta Discord vs. serwerowy — ten drugi wymaga Discord Nitro); sam avatar zmienia się tylko na Discordzie, nie na stronie
 - **Wersjonowanie** — numer wersji panelu i playera widoczny w sidebarze (`Panel: vX.X.X | Player: vX.X.X`), ze statusem kompatybilności streamera
@@ -145,7 +180,7 @@ Uwierzytelnianie Discord/TeamSpeak 3/6, zarządzanie filmami, self-hosted stream
 
 | Strona | Trasa | Wymagana rola |
 |--------|-------|:---:|
-| Baza filmów, film, ulubione, historia, autor, tag, Watch Party, profil | `/`, `/video/:id`, `/favorites`, `/history`, `/author/:id`, `/tag/:id`, `/watch-party`, `/profile` | `member+` |
+| Baza filmów, film, analityka filmu, ulubione, historia, autor, tag, Shorts, Watch Party, profil | `/`, `/video/:id`, `/video/:id/analytics`, `/favorites`, `/history`, `/author/:id`, `/tag/:id`, `/shorts/:categorySlug`, `/watch-party`, `/profile` | `member+` |
 | 🛠️ Panel Redaktora | `/admin` | `admin`, `dev` |
 | 📊 Statystyki | `/stats` | `admin`, `dev` |
 | ⚙️ Zarządzanie | `/manage` | `dev` |
@@ -352,6 +387,7 @@ alleria-filmy/
 ├── backend/
 │   ├── server.js           # API, auth, proxy streaming, Watch Party REST
 │   ├── watchParty.js       # WebSocket Watch Party — in-memory parties, sync
+│   ├── notifications.js    # WebSocket centrum powiadomień — token auth, per-user rejestr
 │   ├── database.js         # SQLite schema + migracje
 │   ├── versions.js         # Wersja panelu i minimum streamingu
 │   └── package.json
@@ -361,24 +397,29 @@ alleria-filmy/
 │   │   │   ├── Layout.jsx          # Sidebar, opcjonalny górny pasek, wersja
 │   │   │   ├── GlobalSearch.jsx    # Command palette (Cmd/Ctrl+K)
 │   │   │   ├── ProfileMenu.jsx     # Dropdown profilu w górnym pasku
+│   │   │   ├── NotificationBell.jsx # Dzwonek + panel powiadomień (desktop dropdown / mobile full-screen)
 │   │   │   ├── WatchPartyTab.jsx   # Floating tab + slide-out panel Watch Party
 │   │   │   ├── VideoModal.jsx      # Dodawanie/edycja filmów
-│   │   │   ├── SecurePlayer.jsx    # HLS player z DRM + controlRef dla Watch Party
+│   │   │   ├── SecurePlayer.jsx    # HLS player z DRM + controlRef dla Watch Party/Shorts
+│   │   │   ├── HoverScrubThumbnail.jsx # Podgląd poklatkowy miniaturki na hover
 │   │   │   └── DateTimePicker.jsx  # Polski kalendarz
 │   │   ├── pages/
 │   │   │   ├── VideosPage.jsx      # Siatka filmów z paginacją
-│   │   │   ├── VideoPage.jsx       # Odtwarzacz z prev/next, komentarze
+│   │   │   ├── VideoPage.jsx       # Odtwarzacz z prev/next, komentarze, reakcje, zgłoszenia
+│   │   │   ├── VideoAnalyticsPage.jsx # Analityka per film — wykres + heatmapa (lazy-loaded)
+│   │   │   ├── ShortsPage.jsx      # Sekwencyjny odtwarzacz Shorts
 │   │   │   ├── WatchPartyPage.jsx  # Dedykowana strona Watch Party
 │   │   │   ├── AdminPage.jsx       # Panel Redaktora (biblioteka, tagi)
-│   │   │   ├── ManagePage.jsx      # Zarządzanie (kategorie, użytkownicy, rangi) — dev only
+│   │   │   ├── ManagePage.jsx      # Zarządzanie (kategorie, użytkownicy, rangi, zgłoszenia) — dev only
 │   │   │   ├── LogsPage.jsx        # Logi systemowe — dev only
 │   │   │   ├── DebugPage.jsx       # Dev Tools — narzędzia + Ustawienia + audit logi
 │   │   │   ├── StatsPage.jsx       # Statystyki
-│   │   │   ├── ProfilePage.jsx     # Profil, źródło avatara Discord
+│   │   │   ├── ProfilePage.jsx     # Profil, źródło avatara Discord, aktywne sesje
 │   │   │   └── ...
 │   │   ├── contexts/
 │   │   │   ├── AuthContext.jsx
 │   │   │   ├── SettingsContext.jsx    # Ustawienia z /api/config (paginacja, górny pasek...)
+│   │   │   ├── NotificationsContext.jsx # WebSocket powiadomień, auto-reconnect
 │   │   │   └── WatchPartyContext.jsx  # WebSocket + stan party + syncCallbackRef
 │   │   ├── utils/
 │   │   │   ├── api.js
@@ -414,7 +455,7 @@ alleria-filmy/
 |--------|------|
 | `users` | Użytkownicy (Discord/TS/manual), role, `discord_roles` JSON, hashe avatara Discord (globalny + serwerowy), `avatar_source` |
 | `videos` | Filmy, źródła, mirrory (do 5), `category_id`, `access_mode`, `stream_status`, `publish_date`, `webhook_sent` |
-| `categories` | Kategorie z `parent_id` (podkategorie), slug, sort_order, webhook Discord (URL + szablon) |
+| `categories` | Kategorie z `parent_id` (podkategorie), slug, sort_order, webhook Discord (URL + szablon), `is_shorts_category` |
 | `category_access` | Role Discord → kategoria (viewer/editor) |
 | `category_rank_access` | Rangi aplikacji → kategoria (viewer/editor) |
 | `category_user_access` | Ręczna lista użytkowników → kategoria (viewer/editor) |
@@ -424,13 +465,18 @@ alleria-filmy/
 | `tags`, `video_tags` | System tagów |
 | `favorites` | Ulubione per user |
 | `comments` | Komentarze z wątkami (`parent_id`), historia edycji, soft-delete |
-| `watch_logs` | Historia wyświetleń |
+| `comment_reactions` | Reakcje emoji na komentarzach (`comment_id`, `user_id`, `emoji`) |
+| `comment_reports` | Zgłoszenia komentarzy — powód, opis, status (pending/resolved/dismissed) |
+| `notifications` | Powiadomienia in-app per użytkownik (typ, treść, url, `read`) |
+| `video_playback_events` | Próbkowane zdarzenia play/pause/seek (każde źródło, `context`: solo/watch_party) — zasila analitykę/heatmapę |
+| `video_watched` | Jawne oznaczenie „obejrzane" per użytkownik i film — osobne od `watch_progress` |
+| `watch_logs` | Historia wyświetleń (`context`: solo/watch_party) — zasila wykres oglądalności w analityce |
 | `login_logs` | Logi logowania |
 | `watch_party_logs` | Historia zdarzeń Watch Party |
-| `watch_progress` | Zapisana pozycja odtwarzania per użytkownik i film (kontynuuj oglądanie) |
+| `watch_progress` | Zapisana pozycja odtwarzania per użytkownik i film (kontynuuj oglądanie) — zawsze solo, Watch Party jej nie zapisuje |
 | `audit_logs` | Audit trail akcji redaktorów i deweloperów |
 | `app_settings` | Ustawienia runtime edytowalne w Dev Tools → Ustawienia (klucz/wartość) |
-| `sessions` | Sesje express-session |
+| `sessions` | Sesje express-session (z metadanymi urządzenia/IP dla „Aktywnych sesji") |
 
 </details>
 
@@ -471,6 +517,15 @@ alleria-filmy/
 - `DELETE /api/comments/:id` — Soft-delete komentarza
 - `DELETE /api/comments/:id/hard` — Hard-delete (dev only)
 - `POST /api/comments/admin` — Wstaw komentarz jako redaktor (dev only)
+- `POST /api/comments/:id/react` — Toggle reakcji emoji
+- `POST /api/comments/:id/report` — Zgłoś komentarz (powód + wymagany opis)
+- `GET /api/admin/comment-reports` / `GET /api/admin/comment-reports/pending-count` — Kolejka moderacyjna (admin/dev)
+- `POST /api/admin/comment-reports/:id/resolve` — Rozstrzygnij zgłoszenie (`dismiss` / `delete_comment` / `hard_delete` — ostatnie tylko dev)
+
+### Powiadomienia
+- `GET /api/notifications` — Lista (paginacja) + licznik nieprzeczytanych
+- `POST /api/notifications/:id/read` / `POST /api/notifications/read-all` — Oznacz jako przeczytane
+- `WS /ws/notifications` — WebSocket: push nowych powiadomień w czasie rzeczywistym
 
 ### Watch Party
 - `GET /api/watch-party/token` — Jednorazowy token do autoryzacji WebSocket
@@ -494,6 +549,18 @@ alleria-filmy/
 - `PUT /api/progress/:videoId` — Zapisz pozycję
 - `DELETE /api/progress` / `DELETE /api/progress/:videoId` — Wyczyść postęp
 - `GET /api/profile` / `PUT /api/profile` — Profil (display_name, bio, `avatar_source`)
+- `GET /api/profile/sessions` — Lista aktywnych sesji (urządzenie, IP, data)
+- `DELETE /api/profile/sessions/:sid` — Zdalne wylogowanie sesji
+
+### Oznaczenia „obejrzane"
+- `POST /api/videos/:id/watched` / `DELETE /api/videos/:id/watched` — Oznacz / cofnij oznaczenie dla jednego filmu
+- `GET /api/watched` / `DELETE /api/watched` — Lista / zbiorczy reset wszystkich oznaczeń użytkownika
+
+### Analityka wideo
+- `POST /api/videos/:id/playback-events` — Zbiorcze zdarzenia play/pause/seek z playera (`context`: solo/watch_party, każde źródło)
+- `POST /api/videos/:id/log-view` — Zaloguj wyświetlenie bez pełnego pobrania filmu (używane przez uczestników Watch Party)
+- `GET /api/videos/:id/analytics` — Oglądalność w czasie + heatmapa retencji/pauz/cofnięć/pominięć; filtry `?context=solo|watch_party` i `?user_id=`, plus lista widzów i statystyki zbiorcze (autor filmu lub admin/dev)
+- `DELETE /api/videos/:id/analytics` — Reset danych analitycznych, opcjonalnie zawężony do okresu (`before`/`after`) i/lub osoby (`user_id`)
 
 ### Ustawienia i debug (dev only, o ile nie zaznaczono inaczej)
 - `GET /api/config` — Ustawienia widoczne dla każdego zalogowanego (paginacja, limity, `showTopBar`)
@@ -502,6 +569,8 @@ alleria-filmy/
 - `GET /api/debug/access/:type/:id` — Sprawdzenie uprawnień do kategorii/filmu z powodem
 - `GET /api/debug/export` / `POST /api/debug/import` — Eksport/import bazy JSON
 - `POST /api/debug/sql` — Konsola SQL
+- `POST /api/debug/impersonate/:userId` — Zaloguj się jako użytkownik (audytowane)
+- `POST /api/debug/stop-impersonating` — Powrót na własne konto (dostępne dla każdej roli — patrz komentarz w kodzie)
 - `GET /api/audit-logs` / `DELETE /api/audit-logs/clear` — Audit trail
 - `GET /api/logs/watch` / `GET /api/logs/login` / `GET /api/logs/watch-party` — Logi (admin/dev)
 - `DELETE /api/logs/watch/clear` / `DELETE /api/logs/login/clear` / `DELETE /api/logs/watch-party/clear` — Czyszczenie logów
@@ -515,7 +584,7 @@ alleria-filmy/
 
 | Warstwa | Stack |
 |---------|-------|
-| **Frontend** | React 18, Tailwind CSS 3, Vite 6, hls.js, YouTube IFrame API, Lucide icons, React Router 7 |
+| **Frontend** | React 18, Tailwind CSS 3, Vite 6, hls.js, YouTube IFrame API, Lucide icons, React Router 7, Recharts (analityka) |
 | **Backend** | Express.js, better-sqlite3, express-session, multer, ws (WebSocket) |
 | **Streaming** | FFmpeg (Alpine), AES-128 HLS encryption |
 | **Deploy** | Docker, Docker Compose, Cloudflare Tunnel, GitHub Actions |

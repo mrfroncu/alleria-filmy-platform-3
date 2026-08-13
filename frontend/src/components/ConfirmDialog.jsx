@@ -5,7 +5,12 @@ export default function ConfirmDialog({ open, title, message, confirmLabel = 'Po
   if (!open) return null;
   const Icon = danger ? AlertTriangle : HelpCircle;
   return (
-    <div className="modal-overlay">
+    // confirm() is a universal interrupt that can fire from inside any other modal (VideoModal's
+    // unsaved-changes guard, the analytics reset modal, etc.) — it needs to win the stack no
+    // matter what invoked it, so it gets its own z-index above every other modal in the app
+    // (the highest anywhere else is 9999) instead of sharing the generic .modal-overlay (z-50),
+    // which just meant "whichever modal mounted last" decided the winner.
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
       <div className="modal-backdrop" onClick={onCancel} />
       <div className="modal-content max-w-md p-10 text-center" style={{ animation: 'slideUp 0.3s ease-out' }}>
         <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-8 border ${

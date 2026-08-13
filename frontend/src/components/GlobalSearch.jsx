@@ -193,7 +193,6 @@ export default function GlobalSearch({ compact = false }) {
 
   useEffect(() => {
     if (open) {
-      setTimeout(() => inputRef.current?.focus(), 50);
       if (!tagsLoadedRef.current) {
         tagsLoadedRef.current = true;
         api.getTags().then(setAllTags).catch(() => {});
@@ -201,6 +200,21 @@ export default function GlobalSearch({ compact = false }) {
     } else {
       setQuery(''); setResults([]); setSelectedIndex(0);
     }
+  }, [open]);
+
+  // Mobile browsers only raise the on-screen keyboard for a focus() call that's synchronous
+  // within the original tap — deferring it even via a 0ms setTimeout (as this used to, for every
+  // open path including this one) loses that "user gesture" context, so the input technically
+  // gets focus but the keyboard never appears. flushSync forces the input to actually exist in
+  // the DOM before .focus() runs, still inside the same click handler. The Cmd/Ctrl+K shortcut
+  // has no click to piggyback on, so it keeps a plain (non-flushSync) focus below.
+  const openAndFocus = () => {
+    ReactDOM.flushSync(() => setOpen(true));
+    inputRef.current?.focus();
+  };
+
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 50);
   }, [open]);
 
   useEffect(() => { setSelectedIndex(0); }, [trimmed]);
@@ -267,12 +281,12 @@ export default function GlobalSearch({ compact = false }) {
     <>
       {/* Trigger */}
       {compact ? (
-        <button onClick={() => setOpen(true)} className="p-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">
+        <button onClick={openAndFocus} className="btn-icon-zinc">
           <Search className="w-5 h-5" />
         </button>
       ) : (
         <button
-          onClick={() => setOpen(true)}
+          onClick={openAndFocus}
           className="flex items-center gap-2.5 pl-3.5 pr-2.5 py-2 rounded-xl bg-zinc-100/80 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700/60 transition-colors text-left w-full max-w-[280px]"
         >
           <Search className="w-4 h-4 text-violet-500 shrink-0" />

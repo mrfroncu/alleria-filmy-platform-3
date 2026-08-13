@@ -33,6 +33,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const { user: currentUser } = useAuth();
   const toast = useToast();
   const confirm = useConfirm();
+  const [promotingSlot, setPromotingSlot] = useState(null);
   const [title, setTitle] = useState('');
   const [authorId, setAuthorId] = useState('');
   const [mainSource, setMainSource] = useState('');
@@ -465,6 +466,36 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     }
   };
 
+  // Swap main source with a mirror slot in place, no re-upload — only "link"/"streamer" mirrors
+  // have a main-source equivalent (embed/plex don't, see the backend endpoint's own comment).
+  // Reads from the persisted `video` prop, not the form's local draft state, since the backend
+  // operates on the saved row: any unsaved edits in this form aren't included in the swap.
+  const mirrorPromoteEligible = (slot) => {
+    if (!video) return false;
+    const url = video[`mirror${slot}_url`];
+    const type = video[`mirror${slot}_type`] || (video[`mirror${slot}_is_embed`] ? 'embed' : 'link');
+    return !!url && (type === 'link' || type === 'streamer');
+  };
+  const handlePromoteMirror = async (slot) => {
+    const mirrorLabel = video[`mirror${slot}_name`] || `Mirror ${slot}`;
+    const mainLabel = video.main_source_title || (video.main_source_type === 'selfhosted' ? 'Self-hosted' : 'YouTube');
+    if (!(await confirm(
+      `Ustawić „${mirrorLabel}" jako główne źródło? Obecne główne źródło ("${mainLabel}") stanie się mirrorem ${slot}. Działa na już zapisanej wersji filmu — niezapisane zmiany w tym formularzu nie zostaną uwzględnione.`,
+      { confirmLabel: 'Zamień' }
+    ))) return;
+    setPromotingSlot(slot);
+    try {
+      await api.promoteMirrorSource(video.id, slot);
+      toast.success('Źródła zamienione.');
+      onSaved();
+      onClose();
+    } catch (err) {
+      toast.error('Błąd: ' + err.message);
+    } finally {
+      setPromotingSlot(null);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -550,7 +581,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
             <div>
               <label className="label-field">Typ źródła</label>
               <div className="grid grid-cols-2 gap-3">
-                <button type="button" onClick={() => setIsSelfHosted(false)} className={`p-4 rounded-2xl border-2 font-bold text-sm transition-all flex items-center gap-2 ${!isSelfHosted ? 'bg-violet-50 dark:bg-violet-500/10 border-violet-500 text-violet-600 dark:text-violet-300 shadow-lg shadow-violet-500/10' : 'bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700'}`}>
+                <button type="button" onClick={() => { setIsSelfHosted(false); setIsShort(false); }} className={`p-4 rounded-2xl border-2 font-bold text-sm transition-all flex items-center gap-2 ${!isSelfHosted ? 'bg-violet-50 dark:bg-violet-500/10 border-violet-500 text-violet-600 dark:text-violet-300 shadow-lg shadow-violet-500/10' : 'bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700'}`}>
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M21.543 6.498C22 8.28 22 12 22 12s0 3.72-.457 5.502c-.254.985-.997 1.76-1.938 2.022C17.896 20 12 20 12 20s-5.893 0-7.605-.476c-.945-.266-1.687-1.04-1.938-2.022C2 15.72 2 12 2 12s0-3.72.457-5.502c.254-.985.997-1.76 1.938-2.022C6.107 4 12 4 12 4s5.896 0 7.605.476c.945.266 1.687 1.04 1.938 2.022zM10 15.5l6-3.5-6-3.5v7z"/></svg>
                   YouTube / Embed
                 </button>
@@ -702,7 +733,10 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="label-field mb-0">Mirror 1</span>
-                    <button type="button" onClick={() => { setShowMirror1(false); setMirror1Name(''); setMirror1Url(''); setMirror1Type('link'); setMirror1VideoFile(null); setMirror1StreamVideoId(''); }} className="btn-link-red">Usuń</button>
+                    <div className="flex items-center gap-3">
+                      {mirrorPromoteEligible(1) && <button type="button" onClick={() => handlePromoteMirror(1)} disabled={promotingSlot === 1} className="btn-link-violet text-xs disabled:opacity-50">{promotingSlot === 1 ? 'Zamienianie...' : 'Ustaw jako główne źródło'}</button>}
+                      <button type="button" onClick={() => { setShowMirror1(false); setMirror1Name(''); setMirror1Url(''); setMirror1Type('link'); setMirror1VideoFile(null); setMirror1StreamVideoId(''); }} className="btn-link-red">Usuń</button>
+                    </div>
                   </div>
                   <input type="text" value={mirror1Name} onChange={e => setMirror1Name(e.target.value)} className="input-field" placeholder="Nazwa (np. CDA, Mega, Plex)" maxLength={80} />
                   <div className="flex flex-wrap gap-2">
@@ -738,7 +772,10 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="label-field mb-0">Mirror 2</span>
-                    <button type="button" onClick={() => { setShowMirror2(false); setMirror2Name(''); setMirror2Url(''); setMirror2Type('link'); setMirror2VideoFile(null); setMirror2StreamVideoId(''); }} className="btn-link-red">Usuń</button>
+                    <div className="flex items-center gap-3">
+                      {mirrorPromoteEligible(2) && <button type="button" onClick={() => handlePromoteMirror(2)} disabled={promotingSlot === 2} className="btn-link-violet text-xs disabled:opacity-50">{promotingSlot === 2 ? 'Zamienianie...' : 'Ustaw jako główne źródło'}</button>}
+                      <button type="button" onClick={() => { setShowMirror2(false); setMirror2Name(''); setMirror2Url(''); setMirror2Type('link'); setMirror2VideoFile(null); setMirror2StreamVideoId(''); }} className="btn-link-red">Usuń</button>
+                    </div>
                   </div>
                   <input type="text" value={mirror2Name} onChange={e => setMirror2Name(e.target.value)} className="input-field" placeholder="Nazwa (np. Streamable, Plex)" maxLength={80} />
                   <div className="flex flex-wrap gap-2">
@@ -774,7 +811,10 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="label-field mb-0">Mirror 3</span>
-                    <button type="button" onClick={() => { setShowMirror3(false); setMirror3Name(''); setMirror3Url(''); setMirror3Type('link'); setMirror3VideoFile(null); setMirror3StreamVideoId(''); }} className="btn-link-red">Usuń</button>
+                    <div className="flex items-center gap-3">
+                      {mirrorPromoteEligible(3) && <button type="button" onClick={() => handlePromoteMirror(3)} disabled={promotingSlot === 3} className="btn-link-violet text-xs disabled:opacity-50">{promotingSlot === 3 ? 'Zamienianie...' : 'Ustaw jako główne źródło'}</button>}
+                      <button type="button" onClick={() => { setShowMirror3(false); setMirror3Name(''); setMirror3Url(''); setMirror3Type('link'); setMirror3VideoFile(null); setMirror3StreamVideoId(''); }} className="btn-link-red">Usuń</button>
+                    </div>
                   </div>
                   <input type="text" value={mirror3Name} onChange={e => setMirror3Name(e.target.value)} className="input-field" placeholder="Nazwa" maxLength={80} />
                   <div className="flex flex-wrap gap-2">
@@ -810,7 +850,10 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="label-field mb-0">Mirror 4</span>
-                    <button type="button" onClick={() => { setShowMirror4(false); setMirror4Name(''); setMirror4Url(''); setMirror4Type('link'); setMirror4VideoFile(null); setMirror4StreamVideoId(''); }} className="btn-link-red">Usuń</button>
+                    <div className="flex items-center gap-3">
+                      {mirrorPromoteEligible(4) && <button type="button" onClick={() => handlePromoteMirror(4)} disabled={promotingSlot === 4} className="btn-link-violet text-xs disabled:opacity-50">{promotingSlot === 4 ? 'Zamienianie...' : 'Ustaw jako główne źródło'}</button>}
+                      <button type="button" onClick={() => { setShowMirror4(false); setMirror4Name(''); setMirror4Url(''); setMirror4Type('link'); setMirror4VideoFile(null); setMirror4StreamVideoId(''); }} className="btn-link-red">Usuń</button>
+                    </div>
                   </div>
                   <input type="text" value={mirror4Name} onChange={e => setMirror4Name(e.target.value)} className="input-field" placeholder="Nazwa" maxLength={80} />
                   <div className="flex flex-wrap gap-2">
@@ -846,7 +889,10 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="label-field mb-0">Mirror 5</span>
-                    <button type="button" onClick={() => { setShowMirror5(false); setMirror5Name(''); setMirror5Url(''); setMirror5Type('link'); setMirror5VideoFile(null); setMirror5StreamVideoId(''); }} className="btn-link-red">Usuń</button>
+                    <div className="flex items-center gap-3">
+                      {mirrorPromoteEligible(5) && <button type="button" onClick={() => handlePromoteMirror(5)} disabled={promotingSlot === 5} className="btn-link-violet text-xs disabled:opacity-50">{promotingSlot === 5 ? 'Zamienianie...' : 'Ustaw jako główne źródło'}</button>}
+                      <button type="button" onClick={() => { setShowMirror5(false); setMirror5Name(''); setMirror5Url(''); setMirror5Type('link'); setMirror5VideoFile(null); setMirror5StreamVideoId(''); }} className="btn-link-red">Usuń</button>
+                    </div>
                   </div>
                   <input type="text" value={mirror5Name} onChange={e => setMirror5Name(e.target.value)} className="input-field" placeholder="Nazwa" maxLength={80} />
                   <div className="flex flex-wrap gap-2">
