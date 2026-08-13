@@ -19,9 +19,12 @@ services:
     build: ./streaming
     container_name: alleria-streaming
     volumes:
-      # Default: Docker volume. To use custom path (e.g. NFS/Tailscale mount):
-      # Replace with: - /mnt/user/alleria-streaming:/data
-      - stream-data:/data
+      # Set STREAM_HOST_DATA_DIR in .env to point this at a real host path (NFS/Tailscale/array
+      # mount) — NEVER hardcode a custom path directly on the line below. This file gets
+      # re-copied/reset on updates, which would silently reset the mount back to the plain
+      # `stream-data` Docker volume and make the app see an empty library (all existing videos'
+      # HLS files still exist at the real path — the container just isn't looking at it anymore).
+      - ${STREAM_HOST_DATA_DIR:-stream-data}:/data
     environment:
       - STREAM_SECRET=${STREAM_SECRET:-alleria-stream-key}
       - STREAM_PORT=4000

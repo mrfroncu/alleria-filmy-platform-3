@@ -19,9 +19,13 @@ services:
     env_file:
       - .env
     volumes:
-      # Storage volume — change path to your preferred location
-      # e.g. /mnt/storage/alleria-streaming:/data
-      - stream-data:/data
+      # Set STREAM_HOST_DATA_DIR in .env to point this at a real host path (NFS/Tailscale/array
+      # mount) — NEVER hardcode a custom path directly on the line below. This file gets
+      # re-copied/reset on updates (see the "Usage" note at the top of this file), which would
+      # silently reset the mount back to the plain `stream-data` Docker volume and make the app
+      # see an empty library (all existing videos' HLS files still exist at the real path — the
+      # container just isn't looking at it anymore).
+      - ${STREAM_HOST_DATA_DIR:-stream-data}:/data
     environment:
       - STREAM_SECRET=${STREAM_SECRET:-change-me}
       - STREAM_PORT=4000
