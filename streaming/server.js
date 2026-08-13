@@ -202,6 +202,9 @@ function runTranscription(videoId, audioSourcePath) {
       return reject(new Error('Audio extraction failed: ' + e.message));
     }
 
+    const wavStat = fs.statSync(wavPath);
+    console.log(`[TRANSCRIPT] ${videoId}: extracted audio ${(wavStat.size / 1024 / 1024).toFixed(2)} MB, running whisper-cli...`);
+
     const args = ['-m', WHISPER_MODEL_PATH, '-f', wavPath, '-l', 'auto', '-np', '-oj', '-of', outBase];
     const proc = spawn(WHISPER_BIN, args);
     let stderr = '';
@@ -215,6 +218,12 @@ function runTranscription(videoId, audioSourcePath) {
         const segments = (raw.transcription || [])
           .map(t => ({ start: t.offsets.from / 1000, end: t.offsets.to / 1000, text: (t.text || '').trim() }))
           .filter(s => s.text);
+        // Logged unconditionally (not just on failure) — a "succeeded but empty" run previously
+        // left zero visibility into what whisper actually saw, which is exactly the case that
+        // needs diagnosing (silence/VAD-filtered audio vs. a real pipeline bug look identical
+        // from the outside otherwise).
+        console.log(`[TRANSCRIPT] ${videoId}: whisper detected language=${raw.result?.language || '?'}, ${segments.length} segment(s)`);
+        if (segments.length === 0) console.log(`[TRANSCRIPT] ${videoId}: whisper stderr tail: ${stderr.slice(-500)}`);
         fs.writeFileSync(path.join(dir, 'transcript.json'), JSON.stringify({ language: raw.result?.language || null, segments }));
         try { fs.unlinkSync(`${outBase}.json`); } catch (e) {}
         patchStatus(videoId, { transcript_status: 'ready' });
