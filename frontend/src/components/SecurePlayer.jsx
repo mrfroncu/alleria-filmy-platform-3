@@ -857,7 +857,7 @@ export default function SecurePlayer({
       )}
 
       {/* DRM Watermark overlay */}
-      {drmEnhanced && user && (
+      {!!drmEnhanced && user && (
         <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden opacity-[0.03]" style={{ mixBlendMode: 'difference' }}>
           <div className="absolute inset-0 flex flex-wrap items-center justify-center gap-24 -rotate-12">
             {Array(12).fill(null).map((_, i) => (
@@ -910,7 +910,7 @@ export default function SecurePlayer({
       )}
 
       {/* DRM badge */}
-      {drmEnhanced && (
+      {!!drmEnhanced && (
         <div className="absolute top-4 left-4 z-20 flex items-center gap-1.5 px-3 py-1.5 bg-black/60 backdrop-blur rounded-xl">
           <Shield className="w-3.5 h-3.5 text-emerald-400" />
           <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">DRM Protected</span>

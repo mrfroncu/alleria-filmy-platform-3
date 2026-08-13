@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { ArrowLeft, Loader2, RotateCcw, Users, TrendingUp, X } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { ArrowLeft, Loader2, RotateCcw, Users, TrendingUp, X, ChevronDown } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Brush } from 'recharts';
 import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
 import { useConfirm } from '../contexts/ConfirmContext';
@@ -101,80 +101,105 @@ function HeatmapStrip({ label, color, values, duration }) {
   );
 }
 
-const DAY_MS = 86400000;
+const USER_FILTER_MODES = [
+  { key: 'all', label: 'Wszyscy' },
+  { key: 'include', label: 'Tylko wybrani' },
+  { key: 'exclude', label: 'Wszyscy oprócz' },
+];
 
-// SQLite's own datetime('now') columns are "YYYY-MM-DD HH:MM:SS" (space, no 'T') — comparing a
-// bare "YYYY-MM-DD" string against that lexicographically still works (same separators, and a
-// shorter date-only string sorts before any same-day timestamp), which is exactly why this stays
-// plain padded digits instead of toISOString() (whose 'T' would break that comparison — the
-// backend hit this same class of bug before with datetime(...) normalization elsewhere).
-function toSqliteDate(date) {
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
+// Include/exclude viewer picker — e.g. a DEV testing playback can exclude themselves so their own
+// scrubbing doesn't pollute the real audience's analytics.
+function UserFilterControl({ viewers, mode, setMode, selectedIds, setSelectedIds }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
 
-// Two overlapping <input type="range"> on one track (see .range-slider-thumb in index.css) —
-// dayFrom/dayTo are integer day offsets from minDate, always spanning [0, totalDays].
-function DateRangeSlider({ minDate, totalDays, dayFrom, dayTo, onChange }) {
-  const fmt = (day) => new Date(minDate.getTime() + day * DAY_MS).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const pctFrom = (dayFrom / totalDays) * 100;
-  const pctTo = (dayTo / totalDays) * 100;
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  const toggle = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const label = mode === 'all'
+    ? 'Wszyscy widzowie'
+    : mode === 'include'
+      ? `Tylko wybrani (${selectedIds.length})`
+      : `Wszyscy oprócz (${selectedIds.length})`;
+
   return (
-    <div>
-      <div className="flex items-center justify-between text-xs font-semibold text-zinc-600 dark:text-zinc-300 mb-3">
-        <span>{fmt(dayFrom)}</span>
-        <span>{fmt(dayTo)}</span>
-      </div>
-      <div className="relative h-4 flex items-center">
-        <div className="absolute inset-x-0 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
-        <div className="absolute h-1.5 bg-violet-500 rounded-full" style={{ left: `${pctFrom}%`, right: `${100 - pctTo}%` }} />
-        <input
-          type="range" min={0} max={totalDays} value={dayFrom}
-          onChange={e => onChange(Math.min(Number(e.target.value), dayTo), dayTo)}
-          className="range-slider-thumb absolute inset-x-0 w-full h-4"
-        />
-        <input
-          type="range" min={0} max={totalDays} value={dayTo}
-          onChange={e => onChange(dayFrom, Math.max(Number(e.target.value), dayFrom))}
-          className="range-slider-thumb absolute inset-x-0 w-full h-4"
-        />
-      </div>
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="input-field !w-auto !py-1.5 text-xs font-semibold flex items-center gap-2"
+      >
+        <Users className="w-3.5 h-3.5 text-zinc-400" />
+        {label}
+        <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-2 w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl p-3">
+          <div className="flex gap-1 p-1 bg-zinc-100 dark:bg-zinc-800/50 rounded-lg mb-3">
+            {USER_FILTER_MODES.map(m => (
+              <button
+                key={m.key}
+                onClick={() => setMode(m.key)}
+                className={`flex-1 px-2 py-1 rounded-md text-[11px] font-bold transition-all ${mode === m.key ? 'bg-white dark:bg-zinc-900 text-violet-600 dark:text-violet-400 shadow-sm' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          {mode === 'all' ? (
+            <p className="text-xs text-zinc-400 px-1 py-2">Uwzględniani są wszyscy widzowie.</p>
+          ) : viewers.length === 0 ? (
+            <p className="text-xs text-zinc-400 px-1 py-2">Brak widzów do wyboru.</p>
+          ) : (
+            <div className="max-h-48 overflow-y-auto space-y-0.5">
+              {viewers.map(v => (
+                <label key={v.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800/60 cursor-pointer text-xs">
+                  <input type="checkbox" checked={selectedIds.includes(v.id)} onChange={() => toggle(v.id)} className="accent-violet-500" />
+                  <span className="truncate text-zinc-700 dark:text-zinc-200">{v.display_name || v.username}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function ResetModal({ videoId, viewers, oldestActivity, onClose, onDone }) {
+function describeUserFilter(mode, selectedIds, viewers) {
+  if (mode === 'all' || selectedIds.length === 0) return 'wszystkich widzów';
+  const names = selectedIds.map(id => viewers.find(v => v.id === id)).filter(Boolean).map(v => v.display_name || v.username);
+  const list = names.length <= 3 ? names.join(', ') : `${names.slice(0, 3).join(', ')} i ${names.length - 3} innych`;
+  return mode === 'include' ? `tylko: ${list}` : `wszystkich oprócz: ${list}`;
+}
+
+// Reset modal deletes exactly what the page's own filters (context + drag-selected date range +
+// user filter) currently show — no separate range/user picker to keep in sync with the charts.
+function ResetModal({ videoId, context, activeRange, userFilterMode, selectedUserIds, viewers, onClose, onDone }) {
   const confirm = useConfirm();
   const toast = useToast();
-
-  // Slider spans from the earliest recorded activity (or 90 days back if there's none yet) to
-  // today — recomputed only once per modal open, not on every render.
-  const [{ minDate, totalDays }] = useState(() => {
-    const min = oldestActivity ? new Date(oldestActivity.replace(' ', 'T')) : new Date(Date.now() - 90 * DAY_MS);
-    min.setHours(0, 0, 0, 0);
-    const max = new Date();
-    max.setHours(0, 0, 0, 0);
-    return { minDate: min, totalDays: Math.max(1, Math.round((max - min) / DAY_MS)) };
-  });
-  const [dayFrom, setDayFrom] = useState(0);
-  const [dayTo, setDayTo] = useState(totalDays);
-  const [userId, setUserId] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const rangeNarrowed = dayFrom > 0 || dayTo < totalDays;
+  const rangeActive = !!(activeRange.after || activeRange.before);
+  const scoped = rangeActive || userFilterMode !== 'all' || context !== 'all';
 
   const handleSubmit = async () => {
-    const scoped = userId || rangeNarrowed;
     const msg = scoped
-      ? 'Usunąć wybrany zakres danych analitycznych? Tej operacji nie można cofnąć.'
+      ? 'Usunąć dane analityczne dla aktualnie zastosowanych filtrów? Tej operacji nie można cofnąć.'
       : 'Usunąć WSZYSTKIE dane analityczne tego filmu (cały wykres oglądalności i heatmapa)? Tej operacji nie można cofnąć.';
     if (!(await confirm(msg, { danger: true, confirmLabel: 'Usuń dane' }))) return;
     setBusy(true);
     try {
       const r = await api.resetVideoAnalytics(videoId, {
-        after: dayFrom > 0 ? toSqliteDate(new Date(minDate.getTime() + dayFrom * DAY_MS)) : undefined,
-        before: dayTo < totalDays ? `${toSqliteDate(new Date(minDate.getTime() + dayTo * DAY_MS))} 23:59:59` : undefined,
-        userId: userId || undefined,
+        after: activeRange.after || undefined,
+        before: activeRange.before || undefined,
+        userIds: userFilterMode === 'include' ? selectedUserIds : undefined,
+        excludeUserIds: userFilterMode === 'exclude' ? selectedUserIds : undefined,
       });
       toast.success(`Usunięto ${r.deletedEvents} zdarzeń i ${r.deletedViews} wyświetleń.`);
       onDone();
@@ -192,24 +217,26 @@ function ResetModal({ videoId, viewers, oldestActivity, onClose, onDone }) {
             <button onClick={onClose} className="btn-icon-zinc"><X className="w-4 h-4" /></button>
           </div>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-5">
-            Przeciągnij suwak, by zawęzić do okresu, i/lub wybierz jedną osobę. Pełny zakres = usuwa wszystko. Nie dotyka zapamiętanej pozycji "Kontynuuj oglądanie".
+            Usuwane są dokładnie te dane, które widać teraz na wykresach — zamknij to okno i zmień filtry/zakres na stronie, jeśli chcesz usunąć inny zestaw. Nie dotyka zapamiętanej pozycji "Kontynuuj oglądanie".
           </p>
-          <div className="space-y-5">
-            <div>
-              <label className="label-field">Zakres dat</label>
-              <DateRangeSlider minDate={minDate} totalDays={totalDays} dayFrom={dayFrom} dayTo={dayTo} onChange={(f, t) => { setDayFrom(f); setDayTo(t); }} />
+          <div className="space-y-2 mb-4 text-xs bg-zinc-50 dark:bg-zinc-800/40 rounded-2xl p-4">
+            <div className="flex justify-between gap-3">
+              <span className="text-zinc-400">Kontekst</span>
+              <span className="font-semibold text-zinc-700 dark:text-zinc-200">{CONTEXT_OPTIONS.find(o => o.key === context)?.label}</span>
             </div>
-            <div>
-              <label className="label-field">Osoba</label>
-              <select value={userId} onChange={e => setUserId(e.target.value)} className="input-field">
-                <option value="">Wszyscy</option>
-                {viewers.map(v => (
-                  <option key={v.id} value={v.id}>{v.display_name || v.username}</option>
-                ))}
-              </select>
+            <div className="flex justify-between gap-3">
+              <span className="text-zinc-400">Zakres dat</span>
+              <span className="font-semibold text-zinc-700 dark:text-zinc-200">{rangeActive ? `${activeRange.after || '...'} – ${(activeRange.before || '').split(' ')[0] || '...'}` : 'cała historia'}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-zinc-400 shrink-0">Widzowie</span>
+              <span className="font-semibold text-zinc-700 dark:text-zinc-200 text-right">{describeUserFilter(userFilterMode, selectedUserIds, viewers)}</span>
             </div>
           </div>
-          <div className="flex gap-3 mt-6">
+          {!scoped && (
+            <p className="text-xs text-red-500 dark:text-red-400 font-semibold mb-4">Brak aktywnych filtrów — to usunie wszystkie dane tego filmu.</p>
+          )}
+          <div className="flex gap-3 mt-2">
             <button onClick={onClose} className="btn-ghost text-sm flex-1">Anuluj</button>
             <button onClick={handleSubmit} disabled={busy} className="btn-sm-danger text-sm flex-1 disabled:opacity-50">
               {busy ? 'Usuwanie...' : 'Usuń dane'}
@@ -230,20 +257,42 @@ export default function VideoAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [context, setContext] = useState('all');
-  const [selectedUserId, setSelectedUserId] = useState('');
+  const [userFilterMode, setUserFilterMode] = useState('all');
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [showReset, setShowReset] = useState(false);
+  // Drag-selected date window from the views chart's <Brush> — null/null = full history. Feeds
+  // every other chart (heatmap/retention share the same fetch) and the reset modal, Grafana-style.
+  const [activeRange, setActiveRange] = useState({ after: null, before: null });
+  const [pendingRange, setPendingRange] = useState(null);
 
   useEffect(() => { api.getVideo(id).then(setVideo).catch(() => {}); }, [id]);
 
+  // Debounce the brush→fetch commit so a drag-in-progress doesn't fire a request per pixel; it
+  // settles ~400ms after the last onChange, which in practice means right after mouseup.
+  useEffect(() => {
+    if (!pendingRange) return;
+    const t = setTimeout(() => setActiveRange(pendingRange), 400);
+    return () => clearTimeout(t);
+  }, [pendingRange]);
+
   const loadAnalytics = useCallback(() => {
     setLoading(true); setError(null);
-    api.getVideoAnalytics(id, { context, userId: selectedUserId || undefined })
+    api.getVideoAnalytics(id, {
+      context,
+      userIds: userFilterMode === 'include' ? selectedUserIds : undefined,
+      excludeUserIds: userFilterMode === 'exclude' ? selectedUserIds : undefined,
+      after: activeRange.after || undefined,
+      before: activeRange.before || undefined,
+    })
       .then(setData)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, [id, context, selectedUserId]);
+  }, [id, context, userFilterMode, selectedUserIds, activeRange]);
 
   useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
+
+  const rangeActive = !!(activeRange.after || activeRange.before);
+  const resetRange = () => { setPendingRange(null); setActiveRange({ after: null, before: null }); };
 
   if (loading && !data) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-violet-500 animate-spin" /></div>;
@@ -284,16 +333,22 @@ export default function VideoAnalyticsPage() {
             </button>
           ))}
         </div>
-        <select
-          value={selectedUserId}
-          onChange={e => setSelectedUserId(e.target.value)}
-          className="input-field !w-auto !py-1.5 text-xs font-semibold"
-        >
-          <option value="">Wszyscy widzowie</option>
-          {viewers.map(v => (
-            <option key={v.id} value={v.id}>{v.display_name || v.username}</option>
-          ))}
-        </select>
+        <UserFilterControl
+          viewers={viewers}
+          mode={userFilterMode}
+          setMode={setUserFilterMode}
+          selectedIds={selectedUserIds}
+          setSelectedIds={setSelectedUserIds}
+        />
+        {rangeActive && (
+          <button
+            onClick={resetRange}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-50 dark:bg-violet-500/10 hover:bg-violet-100 dark:hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-xs font-bold transition-colors"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Resetuj zakres
+          </button>
+        )}
         <button
           onClick={() => setShowReset(true)}
           className="btn-link-red flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-zinc-400 text-xs font-bold ml-auto"
@@ -314,12 +369,19 @@ export default function VideoAnalyticsPage() {
       </div>
 
       <div className="space-y-6" style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 0.15s' }}>
-        <ChartCard title="Oglądalność w czasie" subtitle="Liczba wyświetleń dziennie, ostatnie 30 dni">
+        <ChartCard
+          title="Oglądalność w czasie"
+          subtitle={
+            dailyViews.length > 1
+              ? (rangeActive ? 'Zawężono zakres — przeciągnij pasek ponownie lub kliknij „Resetuj zakres"' : 'Liczba wyświetleń dziennie, cała historia — przeciągnij pasek pod wykresem, by zawęzić zakres (dotyczy też pozostałych wykresów poniżej)')
+              : 'Liczba wyświetleń dziennie'
+          }
+        >
           {dailyViews.length === 0 ? (
             <p className="text-sm text-zinc-400 py-8 text-center">Brak wyświetleń w tym okresie.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={dailyViews} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+            <ResponsiveContainer width="100%" height={dailyViews.length > 1 ? 260 : 220}>
+              <AreaChart key={`${activeRange.after || ''}-${activeRange.before || ''}-${dailyViews.length}`} data={dailyViews} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                 <defs>
                   <linearGradient id="viewsFill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={COLORS.retention} stopOpacity={0.35} />
@@ -331,6 +393,23 @@ export default function VideoAnalyticsPage() {
                 <YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
                 <Tooltip content={<ViewsTooltip />} cursor={{ stroke: '#3f3f46', strokeWidth: 1 }} />
                 <Area type="monotone" dataKey="views" stroke={COLORS.retention} strokeWidth={2} fill="url(#viewsFill)" />
+                {dailyViews.length > 1 && (
+                  <Brush
+                    dataKey="dayLabel"
+                    height={28}
+                    travellerWidth={8}
+                    stroke="#8b5cf6"
+                    fill="#18181b"
+                    onChange={(range) => {
+                      if (range?.startIndex == null || range?.endIndex == null) return;
+                      if (range.startIndex === 0 && range.endIndex === dailyViews.length - 1) { setPendingRange(null); return; }
+                      const startDay = dailyViews[range.startIndex]?.day;
+                      const endDay = dailyViews[range.endIndex]?.day;
+                      if (!startDay || !endDay) return;
+                      setPendingRange({ after: startDay, before: `${endDay} 23:59:59` });
+                    }}
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -376,8 +455,11 @@ export default function VideoAnalyticsPage() {
       {showReset && (
         <ResetModal
           videoId={id}
+          context={context}
+          activeRange={activeRange}
+          userFilterMode={userFilterMode}
+          selectedUserIds={selectedUserIds}
           viewers={viewers}
-          oldestActivity={data?.oldestActivity}
           onClose={() => setShowReset(false)}
           onDone={() => { setShowReset(false); loadAnalytics(); }}
         />

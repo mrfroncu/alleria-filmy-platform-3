@@ -2612,18 +2612,54 @@ function bucketPositions(positions, duration, bucketCount) {
 
 const ANALYTICS_BUCKETS = 50;
 
-// Distinct viewers for a video under a given context filter — powers both the per-user picker
-// and the unique-viewers summary stat. watch_progress is solo-only by construction (Watch Party
+// Parses a "1,2,3" query-string param into an int array, or null if absent/empty.
+function parseIdListParam(raw) {
+  if (!raw) return null;
+  const ids = String(raw).split(',').map(s => parseInt(s.trim(), 10)).filter(Number.isInteger);
+  return ids.length ? ids : null;
+}
+
+// Same, but for a JSON body value that may already be an array.
+function sanitizeIdList(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const ids = raw.map(n => parseInt(n, 10)).filter(Number.isInteger);
+  return ids.length ? ids : null;
+}
+
+// Builds a "AND user_id ..." SQL fragment + its params for an include-list or exclude-list of
+// users. The two modes are mutually exclusive radio choices on the frontend; if both somehow
+// arrive, include wins.
+function buildUserIdFilter(includeIds, excludeIds) {
+  if (includeIds) return { sql: `AND user_id IN (${includeIds.map(() => '?').join(',')})`, params: includeIds };
+  if (excludeIds) return { sql: `AND user_id NOT IN (${excludeIds.map(() => '?').join(',')})`, params: excludeIds };
+  return { sql: '', params: [] };
+}
+
+function buildDateCond(column, after, before) {
+  let sql = '';
+  const params = [];
+  if (after) { sql += ` AND ${column} >= ?`; params.push(after); }
+  if (before) { sql += ` AND ${column} <= ?`; params.push(before); }
+  return { sql, params };
+}
+
+// Distinct viewers for a video under a given context+date-range filter — powers both the per-user
+// picker and the unique-viewers summary stat. Deliberately NOT filtered by the include/exclude
+// user selection itself — this list is what that picker is built FROM, so filtering it by the
+// picker's own state would be circular. watch_progress is solo-only by construction (Watch Party
 // never writes to it), so it's excluded entirely once 'watch_party' is asked for specifically.
-function getVideoViewerUsers(videoId, context) {
+function getVideoViewerUsers(videoId, context, after, before) {
   const ids = new Set();
   if (context !== 'watch_party') {
-    for (const r of db.prepare('SELECT DISTINCT user_id FROM watch_progress WHERE video_id = ?').all(videoId)) ids.add(r.user_id);
+    const d = buildDateCond('updated_at', after, before);
+    for (const r of db.prepare(`SELECT DISTINCT user_id FROM watch_progress WHERE video_id = ?${d.sql}`).all(videoId, ...d.params)) ids.add(r.user_id);
   }
   const ctxCond = context === 'all' ? '' : 'AND context = ?';
-  const ctxParams = context === 'all' ? [videoId] : [videoId, context];
-  for (const r of db.prepare(`SELECT DISTINCT user_id FROM watch_logs WHERE video_id = ? ${ctxCond}`).all(...ctxParams)) ids.add(r.user_id);
-  for (const r of db.prepare(`SELECT DISTINCT user_id FROM video_playback_events WHERE video_id = ? ${ctxCond}`).all(...ctxParams)) ids.add(r.user_id);
+  const ctxParams = context === 'all' ? [] : [context];
+  const dLogs = buildDateCond('watched_at', after, before);
+  const dEvents = buildDateCond('created_at', after, before);
+  for (const r of db.prepare(`SELECT DISTINCT user_id FROM watch_logs WHERE video_id = ? ${ctxCond}${dLogs.sql}`).all(videoId, ...ctxParams, ...dLogs.params)) ids.add(r.user_id);
+  for (const r of db.prepare(`SELECT DISTINCT user_id FROM video_playback_events WHERE video_id = ? ${ctxCond}${dEvents.sql}`).all(videoId, ...ctxParams, ...dEvents.params)) ids.add(r.user_id);
   if (ids.size === 0) return [];
   const placeholders = [...ids].map(() => '?').join(',');
   return db.prepare(`SELECT id, username, display_name FROM users WHERE id IN (${placeholders})`).all(...ids);
@@ -2638,14 +2674,22 @@ app.get('/api/videos/:id/analytics', requireAuth, (req, res) => {
     if (!isOwner && !isAdmin) return res.status(403).json({ error: 'Brak uprawnień.' });
 
     const context = ['solo', 'watch_party'].includes(req.query.context) ? req.query.context : 'all';
-    const userId = req.query.user_id ? parseInt(req.query.user_id) : null;
+    const includeIds = parseIdListParam(req.query.user_ids);
+    const excludeIds = includeIds ? null : parseIdListParam(req.query.exclude_user_ids);
+    const userFilter = buildUserIdFilter(includeIds, excludeIds);
+    const after = req.query.after || null;
+    const before = req.query.before || null;
     const ctxCond = context === 'all' ? '' : 'AND context = ?';
 
-    // Watch-time-over-time — daily view count, last 30 days.
+    // Watch-time-over-time — daily view count. Unbounded by default (full history, so the chart's
+    // own drag-to-select brush has the whole picture to narrow from); after/before scope it to the
+    // range selected via that brush.
     const dailyParams = [video.id];
-    let dailySql = `SELECT DATE(watched_at) AS day, COUNT(*) AS views FROM watch_logs WHERE video_id = ? AND watched_at >= datetime('now', '-30 days')`;
+    let dailySql = `SELECT DATE(watched_at) AS day, COUNT(*) AS views FROM watch_logs WHERE video_id = ?`;
     if (context !== 'all') { dailySql += ' AND context = ?'; dailyParams.push(context); }
-    if (userId) { dailySql += ' AND user_id = ?'; dailyParams.push(userId); }
+    if (after) { dailySql += ' AND watched_at >= ?'; dailyParams.push(after); }
+    if (before) { dailySql += ' AND watched_at <= ?'; dailyParams.push(before); }
+    if (userFilter.sql) { dailySql += ' ' + userFilter.sql; dailyParams.push(...userFilter.params); }
     dailySql += ' GROUP BY DATE(watched_at) ORDER BY day ASC';
     const dailyViews = db.prepare(dailySql).all(...dailyParams);
 
@@ -2653,27 +2697,29 @@ app.get('/api/videos/:id/analytics', requireAuth, (req, res) => {
     const duration = getVideoDuration(video.id);
     if (duration > 0) {
       const evParams = context === 'all' ? [video.id] : [video.id, context];
-      const userCond = userId ? 'AND user_id = ?' : '';
-      const withUser = (params) => userId ? [...params, userId] : params;
+      const evDate = buildDateCond('created_at', after, before);
+      const withExtra = (params) => [...params, ...userFilter.params, ...evDate.params];
 
-      const pauses = db.prepare(`SELECT position FROM video_playback_events WHERE video_id = ? ${ctxCond} AND event_type = 'pause' ${userCond}`)
-        .all(...withUser(evParams)).map(r => r.position);
-      const rewinds = db.prepare(`SELECT position FROM video_playback_events WHERE video_id = ? ${ctxCond} AND event_type = 'seek' AND from_position IS NOT NULL AND position < from_position ${userCond}`)
-        .all(...withUser(evParams)).map(r => r.position);
-      const skips = db.prepare(`SELECT from_position AS position FROM video_playback_events WHERE video_id = ? ${ctxCond} AND event_type = 'seek' AND from_position IS NOT NULL AND position > from_position ${userCond}`)
-        .all(...withUser(evParams)).map(r => r.position);
+      const pauses = db.prepare(`SELECT position FROM video_playback_events WHERE video_id = ? ${ctxCond} AND event_type = 'pause' ${userFilter.sql}${evDate.sql}`)
+        .all(...withExtra(evParams)).map(r => r.position);
+      const rewinds = db.prepare(`SELECT position FROM video_playback_events WHERE video_id = ? ${ctxCond} AND event_type = 'seek' AND from_position IS NOT NULL AND position < from_position ${userFilter.sql}${evDate.sql}`)
+        .all(...withExtra(evParams)).map(r => r.position);
+      const skips = db.prepare(`SELECT from_position AS position FROM video_playback_events WHERE video_id = ? ${ctxCond} AND event_type = 'seek' AND from_position IS NOT NULL AND position > from_position ${userFilter.sql}${evDate.sql}`)
+        .all(...withExtra(evParams)).map(r => r.position);
 
       // Retention curve: for each bucket, the fraction of viewers whose furthest-ever position
       // reached at least that point — the standard simplified retention-graph definition (not
       // true frame-by-frame "were they actively watching" reconstruction).
+      const progressDate = buildDateCond('updated_at', after, before);
       const progressPositions = context === 'watch_party' ? [] : (() => {
         let sql = 'SELECT user_id, MAX(position) AS position FROM watch_progress WHERE video_id = ?';
         const params = [video.id];
-        if (userId) { sql += ' AND user_id = ?'; params.push(userId); }
+        if (userFilter.sql) { sql += ' ' + userFilter.sql; params.push(...userFilter.params); }
+        sql += progressDate.sql; params.push(...progressDate.params);
         return db.prepare(sql + ' GROUP BY user_id').all(...params);
       })();
-      const eventPositions = db.prepare(`SELECT user_id, MAX(position) AS position FROM video_playback_events WHERE video_id = ? ${ctxCond} ${userCond} GROUP BY user_id`)
-        .all(...withUser(evParams));
+      const eventPositions = db.prepare(`SELECT user_id, MAX(position) AS position FROM video_playback_events WHERE video_id = ? ${ctxCond} ${userFilter.sql}${evDate.sql} GROUP BY user_id`)
+        .all(...withExtra(evParams));
       const furthestByUser = {};
       for (const r of [...progressPositions, ...eventPositions]) {
         furthestByUser[r.user_id] = Math.max(furthestByUser[r.user_id] || 0, r.position || 0);
@@ -2699,21 +2745,33 @@ app.get('/api/videos/:id/analytics', requireAuth, (req, res) => {
       };
     }
 
-    const viewers = getVideoViewerUsers(video.id, context);
+    // Full, unfiltered-by-user-selection viewer list — this is what the include/exclude picker is
+    // built from, so it only respects context+date range, not the user selection itself.
+    const viewers = getVideoViewerUsers(video.id, context, after, before);
+    // uniqueViewers reflects the applied user filter too, computed directly against the id set
+    // rather than re-querying.
+    const filteredViewerCount = includeIds
+      ? viewers.filter(v => includeIds.includes(v.id)).length
+      : excludeIds
+        ? viewers.filter(v => !excludeIds.includes(v.id)).length
+        : viewers.length;
     const summary = {
-      uniqueViewers: viewers.length,
+      uniqueViewers: filteredViewerCount,
       avgCompletionPct: (heatmap && heatmap.viewers > 0)
         ? Math.round((heatmap.retention.reduce((a, b) => a + b, 0) / ANALYTICS_BUCKETS) * 100)
         : null,
     };
 
-    // Earliest recorded activity — lets the reset UI size its date-range slider to when data
-    // actually starts, instead of guessing a fixed window.
+    // Earliest recorded activity — informational only now (the views chart itself covers full
+    // history and exposes its own drag-to-select range).
     const oldestEvent = db.prepare('SELECT MIN(created_at) AS d FROM video_playback_events WHERE video_id = ?').get(video.id)?.d;
     const oldestView = db.prepare('SELECT MIN(watched_at) AS d FROM watch_logs WHERE video_id = ?').get(video.id)?.d;
     const oldestActivity = [oldestEvent, oldestView].filter(Boolean).sort()[0] || null;
 
-    res.json({ dailyViews, heatmap, summary, viewers, context, userId, oldestActivity });
+    res.json({
+      dailyViews, heatmap, summary, viewers, context, oldestActivity,
+      includeUserIds: includeIds, excludeUserIds: excludeIds, after, before,
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -2730,21 +2788,26 @@ app.delete('/api/videos/:id/analytics', requireAuth, (req, res) => {
     const isAdmin = req.session.user.role === 'admin' || req.session.user.role === 'dev';
     if (!isOwner && !isAdmin) return res.status(403).json({ error: 'Brak uprawnień.' });
 
-    const { before, after, user_id } = req.body || {};
+    const { before, after, user_id, user_ids, exclude_user_ids } = req.body || {};
+    const includeIds = sanitizeIdList(user_ids) || (user_id ? [parseInt(user_id, 10)] : null);
+    const excludeIds = includeIds ? null : sanitizeIdList(exclude_user_ids);
+    const userFilter = buildUserIdFilter(includeIds, excludeIds);
+
     const conds = ['video_id = ?'];
     const params = [video.id];
-    if (user_id) { conds.push('user_id = ?'); params.push(parseInt(user_id)); }
     if (after) { conds.push('created_at >= ?'); params.push(after); }
     if (before) { conds.push('created_at <= ?'); params.push(before); }
-    const where = conds.join(' AND ');
+    const where = conds.join(' AND ') + (userFilter.sql ? ' ' + userFilter.sql : '');
+    const evParams = [...params, ...userFilter.params];
 
-    const evInfo = db.prepare(`DELETE FROM video_playback_events WHERE ${where}`).run(...params);
+    const evInfo = db.prepare(`DELETE FROM video_playback_events WHERE ${where}`).run(...evParams);
     // watch_logs uses watched_at, not created_at — same filter values, different column name.
     const logsWhere = where.replace(/created_at/g, 'watched_at');
-    const logsInfo = db.prepare(`DELETE FROM watch_logs WHERE ${logsWhere}`).run(...params);
+    const logsInfo = db.prepare(`DELETE FROM watch_logs WHERE ${logsWhere}`).run(...evParams);
 
+    const userDesc = includeIds ? ` (tylko: ${includeIds.join(', ')})` : excludeIds ? ` (wszyscy oprócz: ${excludeIds.join(', ')})` : '';
     audit(req.session.user.id, 'delete', 'video_analytics', video.id,
-      `usunięto ${evInfo.changes} zdarzeń i ${logsInfo.changes} wyświetleń${user_id ? ` (użytkownik #${user_id})` : ''}${after || before ? ` (okres: ${after || '...'} – ${before || '...'})` : ''}`);
+      `usunięto ${evInfo.changes} zdarzeń i ${logsInfo.changes} wyświetleń${userDesc}${after || before ? ` (okres: ${after || '...'} – ${before || '...'})` : ''}`);
     res.json({ success: true, deletedEvents: evInfo.changes, deletedViews: logsInfo.changes });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

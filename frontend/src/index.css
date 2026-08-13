@@ -361,33 +361,3 @@
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 
-/* Dual-handle range slider — two overlapping <input type="range"> stacked on the same track.
-   The track itself ignores pointer events so clicks always reach a thumb, never the track of
-   whichever input happens to be on top; only the thumb pseudo-elements re-enable them. */
-.range-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  background: transparent;
-  pointer-events: none;
-}
-.range-slider-thumb::-webkit-slider-runnable-track { -webkit-appearance: none; background: transparent; }
-.range-slider-thumb::-moz-range-track { background: transparent; border: none; }
-.range-slider-thumb::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  pointer-events: auto;
-  width: 16px; height: 16px;
-  border-radius: 9999px;
-  background: rgb(139, 92, 246);
-  border: 2px solid white;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
-  cursor: pointer;
-}
-.range-slider-thumb::-moz-range-thumb {
-  pointer-events: auto;
-  width: 16px; height: 16px;
-  border-radius: 9999px;
-  background: rgb(139, 92, 246);
-  border: 2px solid white;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
-  cursor: pointer;
-}

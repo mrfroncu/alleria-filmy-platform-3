@@ -1094,9 +1094,9 @@ export default function ManagePage() {
                           <span className="text-sm font-bold text-zinc-900 dark:text-white">{opt.depth > 0 ? '↳ ' : ''}{cat.name}</span>
                           <span className="text-xs text-zinc-400">({cat.videoCount || 0} filmów)</span>
                           {(cat.access_mode || '').includes('custom') && <span className="text-[9px] bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5"><Users className="w-2.5 h-2.5" /> NIESTANDARDOWE</span>}
-                          {cat.webhook_enabled && cat.webhook_url && <span className="text-[9px] bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 rounded font-bold">WEBHOOK</span>}
-                          {cat.email_enabled && <span className="text-[9px] bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 px-1.5 py-0.5 rounded font-bold">EMAIL</span>}
-                          {cat.is_shorts_category && <span className="text-[9px] bg-pink-100 dark:bg-pink-500/10 text-pink-600 dark:text-pink-300 px-1.5 py-0.5 rounded font-bold">SHORTS</span>}
+                          {!!cat.webhook_enabled && cat.webhook_url && <span className="text-[9px] bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 rounded font-bold">WEBHOOK</span>}
+                          {!!cat.email_enabled && <span className="text-[9px] bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 px-1.5 py-0.5 rounded font-bold">EMAIL</span>}
+                          {!!cat.is_shorts_category && <span className="text-[9px] bg-pink-100 dark:bg-pink-500/10 text-pink-600 dark:text-pink-300 px-1.5 py-0.5 rounded font-bold">SHORTS</span>}
                         </div>
                         {cat.description && <p className="text-xs text-zinc-400 mt-0.5">{cat.description}</p>}
                         {((cat.access && cat.access.length > 0) || (cat.rank_access && cat.rank_access.length > 0)) && (

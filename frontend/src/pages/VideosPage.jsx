@@ -162,25 +162,25 @@ export default function VideosPage() {
               ? (currentCategory?.description || 'Filmy w tej kategorii.')
               : 'Przeglądaj materiały wideo społeczności.'}
           </p>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap">
             {continueWatching.length > 0 && (
               <button
                 onClick={handleResetProgress}
                 disabled={resetting}
-                className="btn-link-red flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 text-zinc-400"
+                className="btn-link-red flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 text-zinc-400 text-xs sm:text-sm whitespace-nowrap"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Resetuj postęp oglądania
+                <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                Resetuj postęp
               </button>
             )}
             {hasWatchedAny && (
               <button
                 onClick={handleResetWatched}
                 disabled={resettingWatched}
-                className="btn-link-red flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 text-zinc-400"
+                className="btn-link-red flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 text-zinc-400 text-xs sm:text-sm whitespace-nowrap"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Resetuj oznaczenia obejrzanych
+                <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                Resetuj obejrzane
               </button>
             )}
           </div>
@@ -208,34 +208,39 @@ export default function VideosPage() {
             )}
           </div>
 
-          {/* Sort */}
-          <div className="relative min-w-[200px]">
-            <select
-              value={sort}
-              onChange={e => setSort(e.target.value)}
-              className="input-field appearance-none pr-12 cursor-pointer"
-            >
-              <option value="newest">Najnowsze</option>
-              <option value="oldest">Najstarsze</option>
-              <option value="title_asc">Tytuł A-Z</option>
-              <option value="title_desc">Tytuł Z-A</option>
-            </select>
-            <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
-          </div>
+          {/* Sort + Author — grid-2 on mobile so they share one row instead of stacking full-width;
+              sm:contents drops this wrapper from layout at the sm breakpoint so both selects fall
+              back into the parent's own flex row unchanged (each still sm:min-w-[200px] there). */}
+          <div className="grid grid-cols-2 gap-3 sm:contents">
+            {/* Sort */}
+            <div className="relative sm:min-w-[200px]">
+              <select
+                value={sort}
+                onChange={e => setSort(e.target.value)}
+                className="input-field appearance-none pr-10 sm:pr-12 cursor-pointer"
+              >
+                <option value="newest">Najnowsze</option>
+                <option value="oldest">Najstarsze</option>
+                <option value="title_asc">Tytuł A-Z</option>
+                <option value="title_desc">Tytuł Z-A</option>
+              </select>
+              <ChevronDown className="absolute right-3 sm:right-5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+            </div>
 
-          {/* Author filter */}
-          <div className="relative min-w-[200px]">
-            <select
-              value={selectedAuthor}
-              onChange={e => setSelectedAuthor(e.target.value)}
-              className="input-field appearance-none pr-12 cursor-pointer"
-            >
-              <option value="">Wszyscy autorzy</option>
-              {authors.map(a => (
-                <option key={a.id} value={a.id}>{a.display_name || a.username}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+            {/* Author filter */}
+            <div className="relative sm:min-w-[200px]">
+              <select
+                value={selectedAuthor}
+                onChange={e => setSelectedAuthor(e.target.value)}
+                className="input-field appearance-none pr-10 sm:pr-12 cursor-pointer"
+              >
+                <option value="">Wszyscy autorzy</option>
+                {authors.map(a => (
+                  <option key={a.id} value={a.id}>{a.display_name || a.username}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 sm:right-5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+            </div>
           </div>
 
           {/* Filter toggle */}

@@ -313,16 +313,19 @@ export const api = {
   resetWatched: () => request('/watched', { method: 'DELETE' }),
 
   // Video analytics
-  getVideoAnalytics: (videoId, { context, userId } = {}) => {
+  getVideoAnalytics: (videoId, { context, userIds, excludeUserIds, after, before } = {}) => {
     const q = new URLSearchParams();
     if (context && context !== 'all') q.set('context', context);
-    if (userId) q.set('user_id', userId);
+    if (userIds?.length) q.set('user_ids', userIds.join(','));
+    else if (excludeUserIds?.length) q.set('exclude_user_ids', excludeUserIds.join(','));
+    if (after) q.set('after', after);
+    if (before) q.set('before', before);
     const qs = q.toString();
     return request(`/videos/${videoId}/analytics${qs ? `?${qs}` : ''}`);
   },
-  resetVideoAnalytics: (videoId, { before, after, userId } = {}) => request(`/videos/${videoId}/analytics`, {
+  resetVideoAnalytics: (videoId, { before, after, userIds, excludeUserIds } = {}) => request(`/videos/${videoId}/analytics`, {
     method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ before, after, user_id: userId }),
+    body: JSON.stringify({ before, after, user_ids: userIds, exclude_user_ids: excludeUserIds }),
   }),
 
   // Comments

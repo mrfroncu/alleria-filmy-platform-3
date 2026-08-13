@@ -130,7 +130,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="min-h-dvh flex flex-col lg:flex-row">
 
       {/* ══════════════════════════════════════
           LEFT PANEL — branding (desktop only)
@@ -211,7 +211,7 @@ export default function LoginPage() {
       {/* ══════════════════════════════════════
           RIGHT PANEL — login form
           ══════════════════════════════════════ */}
-      <div className="flex-1 flex flex-col items-center justify-center min-h-screen lg:min-h-0 bg-white dark:bg-zinc-950 px-6 py-12 relative">
+      <div className="flex-1 flex flex-col items-center justify-center min-h-dvh lg:min-h-0 bg-white dark:bg-zinc-950 px-6 py-12 relative">
 
         {/* Mobile background blobs */}
         <div className="lg:hidden absolute inset-0 pointer-events-none overflow-hidden">

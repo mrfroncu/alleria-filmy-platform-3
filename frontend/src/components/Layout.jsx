@@ -197,8 +197,15 @@ export default function Layout({ children }) {
   const allFilmsActive = (location.pathname === '/' || location.pathname.startsWith('/video') || location.pathname.startsWith('/author') || location.pathname.startsWith('/tag')) && !anyCatActive;
   const pageTitle = getPageTitle(location.pathname, categories);
 
+  // h-dvh, not h-screen: 100vh is measured against the *largest* possible mobile viewport
+  // (toolbar collapsed), so on load (toolbar visible) this div is taller than what's actually on
+  // screen — body/html then grow to match and gain their own, unintended scroll region stacked
+  // behind <main>'s own overflow-y-auto. A touch starting outside <main> (e.g. the floating
+  // WatchPartyTab) scrolls that outer surface instead, which is what "swiping the watch party tab
+  // scrolls the whole page, then the middle only scrolls a little" was. 100dvh tracks the actual
+  // visible viewport instead, so this outer surface never exists.
   return (
-    <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950 font-sans selection:bg-violet-100 selection:text-violet-900 relative overflow-hidden transition-colors duration-300">
+    <div className="flex h-dvh bg-zinc-50 dark:bg-zinc-950 font-sans selection:bg-violet-100 selection:text-violet-900 relative overflow-hidden transition-colors duration-300">
       {sidebarOpen && (
         <div className="fixed inset-0 bg-zinc-950/60 backdrop-blur-sm z-40 lg:hidden animate-fade-in" onClick={() => setSidebarOpen(false)} />
       )}
