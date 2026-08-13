@@ -194,7 +194,12 @@ function runTranscription(videoId, audioSourcePath) {
     const dir = path.join(MEDIA_DIR, videoId);
     fs.mkdirSync(dir, { recursive: true });
     const wavPath = path.join(dir, 'transcript_audio.wav');
-    const outBase = path.join(dir, 'transcript');
+    // MUST NOT be "transcript" — whisper-cli's -of appends .json itself, and the final clean
+    // output below is written to dir/transcript.json too; same name meant the cleanup unlink
+    // right after deleted the very file we'd just written (confirmed with a real end-to-end
+    // run: transcript_status ended up 'ready' with the file physically gone, 404 on fetch,
+    // silently coerced into 0 segments by the panel poll loop — no error surfaced anywhere).
+    const outBase = path.join(dir, 'transcript_raw');
 
     try {
       extractAudio(audioSourcePath, wavPath);

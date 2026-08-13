@@ -5230,14 +5230,30 @@ if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
               headers: { 'X-Stream-Token': STREAM_SECRET }
             });
             const transcript = await tr.json();
+            // The streaming service reporting 'ready' but the file being missing/malformed is a
+            // definitive inconsistency, not a transient network blip — retrying won't fix it, so
+            // this is marked as an error immediately instead of falling into the generic outer
+            // catch below (which assumes "unreachable, try again next tick" and would otherwise
+            // retry forever while silently never actually transcribing). This is exactly how a
+            // real bug (transcript.json colliding with whisper's own raw output filename, since
+            // fixed) went undetected before: status showed 'ready' everywhere with zero segments
+            // and zero visible error.
+            if (!tr.ok || !Array.isArray(transcript.segments)) {
+              const msg = transcript.error || `GET /transcript returned ${tr.status} with no segments array`;
+              db.prepare(`
+                UPDATE video_transcripts SET status = 'error', error_message = ?, updated_at = datetime('now') WHERE video_id = ?
+              `).run(msg, row.video_id);
+              console.log(`[TRANSCRIPT] ❌ Video ${row.video_id} "${row.title}" → error fetching transcript: ${msg}`);
+              continue;
+            }
             const insertSeg = db.prepare('INSERT INTO transcript_segments (video_id, start_time, end_time, text) VALUES (?, ?, ?, ?)');
             db.prepare('DELETE FROM transcript_segments WHERE video_id = ?').run(row.video_id); // clears any stale segments from a prior run
             const insertAll = db.transaction((segments) => { for (const s of segments) insertSeg.run(row.video_id, s.start, s.end, s.text); });
-            insertAll(transcript.segments || []);
+            insertAll(transcript.segments);
             db.prepare(`
               UPDATE video_transcripts SET status = 'ready', language = ?, error_message = NULL, updated_at = datetime('now') WHERE video_id = ?
             `).run(transcript.language || null, row.video_id);
-            console.log(`[TRANSCRIPT] ✅ Video ${row.video_id} "${row.title}" → ready (${(transcript.segments || []).length} segments)`);
+            console.log(`[TRANSCRIPT] ✅ Video ${row.video_id} "${row.title}" → ready (${transcript.segments.length} segments)`);
           } else if (data.transcript_status === 'error') {
             db.prepare(`
               UPDATE video_transcripts SET status = 'error', error_message = ?, updated_at = datetime('now') WHERE video_id = ?

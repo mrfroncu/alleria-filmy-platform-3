@@ -7,3 +7,4 @@ backend/data/
 *.db-wal
 .DS_Store
 .claude/
+tmp/
