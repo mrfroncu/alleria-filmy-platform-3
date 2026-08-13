@@ -172,6 +172,7 @@ export const api = {
   }),
   streamToken: (videoId) => request(`/stream/token/${videoId}`),
   streamCastToken: (videoId) => request(`/stream/cast-token/${videoId}`),
+  getStreamErrors: () => request('/debug/stream-errors'),
   deleteStream: (videoId) => request(`/stream/video/${videoId}`, { method: 'DELETE' }),
 
   // Favorites

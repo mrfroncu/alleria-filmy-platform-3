@@ -3980,6 +3980,34 @@ app.delete('/api/logs/watch-party/clear', requireAdmin, (req, res) => {
 // ============ STREAMING PROXY ============
 const STREAM_URL = process.env.STREAM_URL || 'http://streaming:4000';
 
+// Recent streaming-service connection errors, surfaced in Dev Tools so a "player unavailable"
+// report can be cross-checked without digging through container logs. In-memory only (resets on
+// restart) and capped so it can't grow unbounded. Rapid repeats of the same context (e.g. every
+// HLS segment failing during an outage) collapse into one entry every few seconds instead of
+// flooding the list.
+const STREAM_ERROR_LOG_MAX = 50;
+const STREAM_ERROR_DEDUPE_MS = 5000;
+const streamErrorLog = [];
+function logStreamError(context, err) {
+  const now = Date.now();
+  const last = streamErrorLog[0];
+  if (last && last.context === context && now - last._ts < STREAM_ERROR_DEDUPE_MS) return;
+  streamErrorLog.unshift({ time: new Date().toISOString(), context, message: err?.message || String(err), _ts: now });
+  if (streamErrorLog.length > STREAM_ERROR_LOG_MAX) streamErrorLog.length = STREAM_ERROR_LOG_MAX;
+}
+
+// Network-level failure (service down/unreachable) vs. an application error response from the
+// streaming service itself — lets the token endpoint respond with a generic, friendly "temporarily
+// unavailable" message instead of leaking connection internals like ECONNREFUSED/host/port.
+function isStreamUnreachable(err) {
+  const code = err?.cause?.code || err?.code;
+  return code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'ETIMEDOUT' || err?.name === 'AbortError';
+}
+
+app.get('/api/debug/stream-errors', requireDev, (req, res) => {
+  res.json({ errors: streamErrorLog.map(({ _ts, ...e }) => e) });
+});
+
 // Chunked upload temp dir
 const chunksDir = path.join(__dirname, 'data', 'chunks');
 if (!fs.existsSync(chunksDir)) fs.mkdirSync(chunksDir, { recursive: true });
@@ -4158,7 +4186,10 @@ app.get('/api/stream/status/:videoId', requireAdmin, async (req, res) => {
       headers: { 'X-Stream-Token': STREAM_SECRET }
     });
     res.json(await r.json());
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    logStreamError('status', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Generate playback token for user
@@ -4170,7 +4201,11 @@ app.get('/api/stream/token/:videoId', requireAuth, async (req, res) => {
       body: JSON.stringify({ video_id: req.params.videoId, user_id: String(req.session.user.id) })
     });
     res.json(await r.json());
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    logStreamError('token', err);
+    if (isStreamUnreachable(err)) return res.status(503).json({ error: 'Odtwarzacz jest tymczasowo niedostępny. Spróbuj ponownie za chwilę.' });
+    res.status(500).json({ error: 'Nie udało się przygotować odtwarzania. Spróbuj ponownie.' });
+  }
 });
 
 // Mint a short-lived cast token for Chromecast/AirPlay — lets the receiver device
@@ -4191,7 +4226,10 @@ app.get('/stream/keys/*', requireAuthOrCastToken, async (req, res) => {
     const buf = await r.arrayBuffer();
     res.set({ 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store' });
     res.send(Buffer.from(buf));
-  } catch (err) { res.status(500).send('Key proxy error'); }
+  } catch (err) {
+    logStreamError('keys', err);
+    res.status(500).send('Key proxy error');
+  }
 });
 
 app.get('/stream/media/*', requireAuthOrCastToken, async (req, res) => {
@@ -4274,7 +4312,10 @@ app.get('/stream/media/*', requireAuthOrCastToken, async (req, res) => {
       const buf = await r.arrayBuffer();
       res.send(Buffer.from(buf));
     }
-  } catch (err) { res.status(500).send('Media proxy error'); }
+  } catch (err) {
+    logStreamError('media', err);
+    res.status(500).send('Media proxy error');
+  }
 });
 
 // Delete streaming video

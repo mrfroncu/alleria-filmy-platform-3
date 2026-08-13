@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
-import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Settings, Cast, Airplay, PictureInPicture2, RotateCcw, RotateCw } from 'lucide-react';
+import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Settings, Cast, Airplay, PictureInPicture2, RotateCcw, RotateCw, WifiOff } from 'lucide-react';
 
 /*
  * SecurePlayer — encrypted HLS player with DRM protections
@@ -245,13 +245,30 @@ export default function SecurePlayer({
     };
   }, [streamVideoId, token, user, title]);
 
-  // Get playback token
-  useEffect(() => {
+  // Get playback token. The backend now sends an already-friendly Polish message (not the raw
+  // "connect ECONNREFUSED host:port" it used to leak), so it's shown as-is — the technical detail
+  // still goes to the console for anyone actually debugging, and to the Dev Tools error log
+  // server-side (see /api/debug/stream-errors).
+  const fetchToken = useCallback(() => {
     if (!streamVideoId) return;
+    setError(null);
     api.streamToken(streamVideoId)
       .then(t => setToken(t.token))
-      .catch(err => setError('Nie udało się uzyskać tokenu: ' + err.message));
+      .catch(err => {
+        console.error('[SecurePlayer] Token fetch failed:', err);
+        setError(err.message);
+      });
   }, [streamVideoId]);
+
+  useEffect(() => { fetchToken(); }, [fetchToken]);
+
+  // Retry button: clear the token too so the HLS-init effect below re-attaches fresh once the
+  // new token arrives, covering both "token fetch failed" and "HLS hit a fatal error" cases.
+  const retry = () => {
+    setToken(null);
+    setLoading(true);
+    fetchToken();
+  };
 
   // Initialize HLS player
   useEffect(() => {
@@ -312,7 +329,7 @@ export default function SecurePlayer({
       hls.on(window.Hls.Events.ERROR, (e, data) => {
         if (data.fatal) {
           console.error('[SecurePlayer] Fatal HLS error:', data);
-          setError('Błąd odtwarzania: ' + data.details);
+          setError('Wystąpił problem z odtwarzaniem. Spróbuj ponownie za chwilę.');
         }
       });
 
@@ -807,8 +824,15 @@ export default function SecurePlayer({
     return (
       <div className={`${containerClassName || 'aspect-video rounded-[32px]'} bg-black flex items-center justify-center`}>
         <div className="text-center p-8">
-          <Shield className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <p className="text-red-300 text-sm font-medium">{error}</p>
+          <WifiOff className="w-12 h-12 text-zinc-500 mx-auto mb-4" />
+          <p className="text-zinc-200 text-base font-bold mb-1">Odtwarzacz tymczasowo niedostępny</p>
+          <p className="text-zinc-500 text-sm">{error}</p>
+          <button
+            onClick={retry}
+            className="mt-5 px-5 py-2.5 bg-violet-500 hover:bg-violet-600 text-white rounded-xl font-bold text-sm transition-colors"
+          >
+            Spróbuj ponownie
+          </button>
         </div>
       </div>
     );

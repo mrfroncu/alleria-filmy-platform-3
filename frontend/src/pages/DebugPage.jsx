@@ -92,6 +92,11 @@ export default function DebugPage() {
 
   const loadDbSize = () => api.dbStats().then(setDbSize).catch(() => {});
 
+  // Recent streaming-service connection errors (see backend's streamErrorLog) — null = not yet
+  // loaded, so the loading/empty states below can tell "hasn't checked yet" from "checked, clean".
+  const [streamErrors, setStreamErrors] = useState(null);
+  const loadStreamErrors = () => api.getStreamErrors().then(r => setStreamErrors(r.errors)).catch(() => setStreamErrors([]));
+
   // Live transcoding from streaming server
   const [liveTranscoding, setLiveTranscoding] = useState(null); // null = not yet loaded
   const [transcodingLoading, setTranscodingLoading] = useState(false);
@@ -154,11 +159,12 @@ export default function DebugPage() {
     loadTranscoding();
     loadLiveTranscoding();
     loadDbSize();
+    loadStreamErrors();
   }, []);
 
-  // Poll live transcoding every 5s
+  // Poll live transcoding + connection errors every 5s
   useEffect(() => {
-    const interval = setInterval(loadLiveTranscoding, 5000);
+    const interval = setInterval(() => { loadLiveTranscoding(); loadStreamErrors(); }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -402,6 +408,50 @@ export default function DebugPage() {
           <p className="text-2xl font-bold text-zinc-900 dark:text-white font-display">{streamStats?.videoCount ?? '—'}</p>
           <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-1">Plików wideo ({streamStats?.fileCount ?? 0} segmentów)</p>
         </div>
+      </div>
+
+      {/* Streaming connection errors — recent failures talking to the streaming service (token/
+          status/keys/media proxy), so a viewer's "player unavailable" report can be cross-checked
+          without digging through container logs. In-memory on the backend, resets on restart. */}
+      <div className="card p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display flex items-center gap-2">
+            <AlertTriangle className={`w-4 h-4 ${streamErrors?.length > 0 ? 'text-red-500' : 'text-zinc-400'}`} />
+            Błędy połączenia ze streamingiem
+            {streamErrors?.length > 0 && (
+              <span className="text-xs font-mono px-2 py-0.5 rounded-lg bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400">
+                {streamErrors.length}
+              </span>
+            )}
+          </h3>
+          <button onClick={loadStreamErrors} className="btn-ghost flex items-center gap-1.5">
+            <RefreshCw className="w-3.5 h-3.5" /> Odśwież
+          </button>
+        </div>
+
+        {streamErrors === null && (
+          <p className="text-zinc-400 text-sm text-center py-4 flex items-center justify-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" /> Ładowanie...
+          </p>
+        )}
+
+        {streamErrors?.length === 0 && (
+          <p className="text-zinc-400 text-sm text-center py-4">Brak błędów — połączenie ze streamingiem działa poprawnie.</p>
+        )}
+
+        {streamErrors?.length > 0 && (
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {streamErrors.map((e, i) => (
+              <div key={i} className="p-3 bg-red-50/50 dark:bg-red-500/5 rounded-xl border border-red-200 dark:border-red-500/20">
+                <div className="flex items-center justify-between gap-3 mb-1">
+                  <span className="text-[10px] font-bold px-2 py-0.5 bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400 rounded-lg font-mono uppercase">{e.context}</span>
+                  <span className="text-[10px] text-zinc-400 font-mono shrink-0">{new Date(e.time).toLocaleString('pl')}</span>
+                </div>
+                <p className="text-xs font-mono text-zinc-600 dark:text-zinc-300 break-words">{e.message}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Transcoding Monitor — full width */}
