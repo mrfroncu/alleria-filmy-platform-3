@@ -4222,7 +4222,10 @@ app.get('/stream/keys/*', requireAuthOrCastToken, async (req, res) => {
   try {
     const url = `${STREAM_URL}/keys/${req.params[0]}?t=${req.query.t || ''}&uid=${req.query.uid || ''}`;
     const r = await fetch(url);
-    if (!r.ok) return res.status(r.status).send('Key error');
+    // Explicit no-store on the miss path — Cloudflare caches by file extension when no
+    // Cache-Control is present at all, including error responses, so a key requested one
+    // second before it exists would otherwise 404 at the edge for hours afterward too.
+    if (!r.ok) { res.set('Cache-Control', 'no-store'); return res.status(r.status).send('Key error'); }
     const buf = await r.arrayBuffer();
     res.set({ 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store' });
     res.send(Buffer.from(buf));
@@ -4236,7 +4239,13 @@ app.get('/stream/media/*', requireAuthOrCastToken, async (req, res) => {
   try {
     const url = `${STREAM_URL}/media/${req.params[0]}`;
     const r = await fetch(url);
-    if (!r.ok) return res.status(r.status).send('Media error');
+    // Explicit no-store on the miss path — without ANY Cache-Control, Cloudflare falls back to
+    // caching by file extension at the edge, including error responses. A thumbnail/segment
+    // requested one second before ffmpeg finishes writing it would 404 there forever after —
+    // this is exactly the "no thumbnail after upload" bug: generation succeeds, but the very
+    // first (premature) request for thumb.jpg gets cached as a 404 for hours, masking the real,
+    // now-ready file for everyone since the CDN never revalidates.
+    if (!r.ok) { res.set('Cache-Control', 'no-store'); return res.status(r.status).send('Media error'); }
 
     const contentType = r.headers.get('content-type') || 'application/octet-stream';
     const isPlaylist = req.params[0].endsWith('.m3u8');
