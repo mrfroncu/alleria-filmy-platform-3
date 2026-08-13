@@ -5,7 +5,7 @@ import {
   Search, Film, Loader2, Heart, Clock, Users, User, Tag as TagIcon,
   Shield, BarChart3, FolderOpen, FileText, Wrench, CornerDownLeft,
   Eye, LogIn, HardDrive, UserPlus, ShieldCheck, Settings, Download,
-  Upload, Trash2, AlertTriangle, Terminal, Mail, Lock, Captions,
+  Upload, Trash2, AlertTriangle, Terminal, Mail, Lock,
 } from 'lucide-react';
 import { api } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -102,13 +102,6 @@ function matchReason(video, query) {
   return null;
 }
 
-function formatTimestamp(seconds) {
-  const s = Math.max(0, Math.floor(seconds));
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${m}:${sec.toString().padStart(2, '0')}`;
-}
-
 function SectionLabel({ children }) {
   return <p className="px-4 pt-2 pb-1.5 text-[10px] font-bold text-zinc-400 dark:text-zinc-600 uppercase tracking-[0.2em]">{children}</p>;
 }
@@ -138,8 +131,6 @@ export default function GlobalSearch({ compact = false }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [transcriptResults, setTranscriptResults] = useState([]);
-  const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [allTags, setAllTags] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
@@ -176,7 +167,7 @@ export default function GlobalSearch({ compact = false }) {
 
   const videoSearchActive = trimmed.length >= 2;
   const flatCount = isSearching
-    ? matchedPages.length + matchedSettings.length + matchedTags.length + results.length + transcriptResults.length
+    ? matchedPages.length + matchedSettings.length + matchedTags.length + results.length
     : shortcuts.length;
   const nothingMatchedYet = isSearching && !videoSearchActive && matchedPages.length + matchedSettings.length + matchedTags.length === 0;
 
@@ -230,16 +221,12 @@ export default function GlobalSearch({ compact = false }) {
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
-    if (trimmed.length < 2) { setResults([]); setLoading(false); setTranscriptResults([]); setTranscriptLoading(false); return; }
+    if (trimmed.length < 2) { setResults([]); setLoading(false); return; }
     setLoading(true);
-    setTranscriptLoading(true);
     debounceRef.current = setTimeout(() => {
       api.getVideos({ search: trimmed, limit: 6 })
         .then(v => { setResults(v); setLoading(false); })
         .catch(() => { setResults([]); setLoading(false); });
-      api.searchTranscripts(trimmed)
-        .then(r => { setTranscriptResults(r.results || []); setTranscriptLoading(false); })
-        .catch(() => { setTranscriptResults([]); setTranscriptLoading(false); });
     }, 300);
     return () => clearTimeout(debounceRef.current);
   }, [trimmed]);
@@ -249,7 +236,6 @@ export default function GlobalSearch({ compact = false }) {
     guardNav(() => {
       if (type === 'tag') navigate(`/tag/${item.id}`);
       else if (type === 'video') navigate(`/video/${item.id}`);
-      else if (type === 'transcript') navigate(`/video/${item.videoId}?t=${Math.floor(item.startTime)}`);
       else navigate(item.to);
     });
   };
@@ -281,8 +267,6 @@ export default function GlobalSearch({ compact = false }) {
       if (idx < matchedTags.length) { activate('tag', matchedTags[idx]); return; }
       idx -= matchedTags.length;
       if (idx < results.length) { activate('video', results[idx]); return; }
-      idx -= results.length;
-      if (idx < transcriptResults.length) { activate('transcript', transcriptResults[idx]); return; }
       viewAllResults();
     }
   };
@@ -473,37 +457,6 @@ export default function GlobalSearch({ compact = false }) {
                       >
                         Zobacz wszystkie wyniki dla „{trimmed}"
                       </button>
-                    )}
-                  </div>
-                  )}
-
-                  {videoSearchActive && (transcriptLoading || transcriptResults.length > 0) && (
-                  <div>
-                    <SectionLabel>W transkrypcji</SectionLabel>
-                    {transcriptLoading ? (
-                      <div className="px-4 py-4 flex items-center gap-2 text-sm text-zinc-400">
-                        <Loader2 className="w-4 h-4 animate-spin" /> Szukanie w transkrypcjach...
-                      </div>
-                    ) : (
-                      transcriptResults.map((r, i) => {
-                        const idx = matchedPages.length + matchedSettings.length + matchedTags.length + results.length + i;
-                        return (
-                          <ResultRow
-                            key={`${r.videoId}-${r.startTime}`}
-                            active={idx === selectedIndex}
-                            onMouseEnter={() => setSelectedIndex(idx)}
-                            onClick={() => activate('transcript', r)}
-                            iconBox={
-                              <div className="w-12 h-8 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-800 shrink-0 flex items-center justify-center relative">
-                                {r.thumbnail ? <img src={r.thumbnail} alt="" className="w-full h-full object-cover" /> : <Captions className="w-3.5 h-3.5 text-zinc-300 dark:text-zinc-700" />}
-                                <span className="absolute bottom-0 right-0 px-1 text-[9px] font-mono font-bold bg-black/70 text-white leading-tight">{formatTimestamp(r.startTime)}</span>
-                              </div>
-                            }
-                            title={<span className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate block">{r.title}</span>}
-                            subtitle={<span className="text-[11px] text-zinc-400 truncate block">"<Highlighted text={r.snippet} query={trimmed} />"</span>}
-                          />
-                        );
-                      })
                     )}
                   </div>
                   )}

@@ -4,7 +4,6 @@ const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const { execSync, spawn } = require('child_process');
 
 const app = express();
@@ -83,10 +82,9 @@ app.post('/upload', requireToken, upload.single('video'), async (req, res) => {
 
   const videoId = req.body.video_id || uuidv4();
   const enableDrm = req.body.drm_enhanced === 'true';
-  const wantsTranscription = req.body.transcribe === 'true';
 
   console.log(`[STREAM] Upload received: ${req.file.originalname} (${(req.file.size / 1024 / 1024).toFixed(1)} MB)`);
-  console.log(`[STREAM] Video ID: ${videoId}, Enhanced DRM: ${enableDrm}, Transcribe: ${wantsTranscription}`);
+  console.log(`[STREAM] Video ID: ${videoId}, Enhanced DRM: ${enableDrm}`);
 
   // Start transcoding in background
   res.json({
@@ -105,13 +103,8 @@ app.post('/upload', requireToken, upload.single('video'), async (req, res) => {
     const statusPath = path.join(MEDIA_DIR, videoId, 'status.json');
     fs.writeFileSync(statusPath, JSON.stringify({ status: 'error', error: err.message }));
   } finally {
-    // The raw upload is still needed as the transcription source when the checkbox was checked —
-    // handed off to the queue, which deletes it once done (success or error) instead of here.
-    if (wantsTranscription) {
-      enqueueTranscription(videoId, req.file.path);
-    } else {
-      try { fs.unlinkSync(req.file.path); } catch (e) {}
-    }
+    // Clean up uploaded file
+    try { fs.unlinkSync(req.file.path); } catch (e) {}
   }
 });
 
@@ -120,164 +113,6 @@ app.get('/status/:videoId', requireToken, (req, res) => {
   const statusPath = path.join(MEDIA_DIR, req.params.videoId, 'status.json');
   if (!fs.existsSync(statusPath)) return res.json({ status: 'not_found' });
   res.json(JSON.parse(fs.readFileSync(statusPath, 'utf8')));
-});
-
-// ============ TRANSCRIPTION (offline speech-to-text via whisper.cpp, PL/EN auto-detect) ============
-// Runs entirely on this server — no external API, no per-minute cost. Sequential in-memory queue
-// (transcoding itself has zero concurrency control today; this at least keeps transcription jobs
-// from all fighting each other — and a live transcode — for CPU at once).
-const WHISPER_BIN = process.env.WHISPER_BIN || '/opt/whisper/bin/whisper-cli';
-const WHISPER_MODEL_PATH = process.env.WHISPER_MODEL_PATH || '/opt/whisper/model.bin';
-
-function readStatus(videoId) {
-  const statusPath = path.join(MEDIA_DIR, videoId, 'status.json');
-  if (!fs.existsSync(statusPath)) return {};
-  try { return JSON.parse(fs.readFileSync(statusPath, 'utf8')); } catch (e) { return {}; }
-}
-// Merges into the existing status.json rather than overwriting wholesale — transcoding's own
-// writes (progress/quality) happen sequentially before transcription ever starts for a given
-// video, so there's no concurrent-writer race, but merging keeps this safe regardless.
-function patchStatus(videoId, patch) {
-  const dir = path.join(MEDIA_DIR, videoId);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify({ ...readStatus(videoId), ...patch }));
-}
-
-const transcriptionQueue = [];
-let transcriptionBusy = false;
-
-function enqueueTranscription(videoId, audioSourcePath) {
-  patchStatus(videoId, { transcript_status: 'pending' });
-  transcriptionQueue.push({ videoId, audioSourcePath });
-  processTranscriptionQueue();
-}
-
-async function processTranscriptionQueue() {
-  if (transcriptionBusy) return;
-  const job = transcriptionQueue.shift();
-  if (!job) return;
-  transcriptionBusy = true;
-  try {
-    await runTranscription(job.videoId, job.audioSourcePath);
-    console.log(`[STREAM] ✅ Transcription complete: ${job.videoId}`);
-  } catch (err) {
-    console.error(`[STREAM] ❌ Transcription failed: ${job.videoId}`, err.message);
-    patchStatus(job.videoId, { transcript_status: 'error', transcript_error: err.message });
-  } finally {
-    // audioSourcePath is either the raw upload (large video file — must not leak disk space) or
-    // the retroactive path's rewritten index.decrypt.m3u8 (small, but sits inside MEDIA_DIR which
-    // is statically served under /media — it embeds a local file:// path to the decryption key,
-    // so leaving it in place would expose that path). Both must be removed either way.
-    try { fs.unlinkSync(job.audioSourcePath); } catch (e) {}
-    transcriptionBusy = false;
-    processTranscriptionQueue();
-  }
-}
-
-function extractAudio(inputPath, wavPath) {
-  // protocol_whitelist/allowed_extensions are needed for the retroactive path's rewritten m3u8
-  // (its file:// key URI won't open otherwise — verified via a real encode+decrypt round-trip).
-  // NOT harmless to apply universally as once assumed: verified with a real run that ffmpeg
-  // rejects -allowed_extensions outright ("Option not found") against a plain video file, since
-  // it's an HLS-demuxer-specific option the mov/mp4 demuxer doesn't recognize at all.
-  const isHls = inputPath.endsWith('.m3u8');
-  const hlsFlags = isHls ? '-protocol_whitelist file,crypto,data,http,https,tcp,tls -allowed_extensions ALL ' : '';
-  execSync(
-    `ffmpeg -y ${hlsFlags}-i "${inputPath}" -ar 16000 -ac 1 -c:a pcm_s16le -vn "${wavPath}"`,
-    { stdio: 'pipe' }
-  );
-}
-
-function runTranscription(videoId, audioSourcePath) {
-  return new Promise((resolve, reject) => {
-    patchStatus(videoId, { transcript_status: 'processing' });
-    const dir = path.join(MEDIA_DIR, videoId);
-    fs.mkdirSync(dir, { recursive: true });
-    const wavPath = path.join(dir, 'transcript_audio.wav');
-    const outBase = path.join(dir, 'transcript');
-
-    try {
-      extractAudio(audioSourcePath, wavPath);
-    } catch (e) {
-      return reject(new Error('Audio extraction failed: ' + e.message));
-    }
-
-    const args = ['-m', WHISPER_MODEL_PATH, '-f', wavPath, '-l', 'auto', '-np', '-oj', '-of', outBase];
-    const proc = spawn(WHISPER_BIN, args);
-    let stderr = '';
-    proc.stderr.on('data', d => { stderr += d.toString(); });
-    proc.on('error', err => { try { fs.unlinkSync(wavPath); } catch (e) {} reject(err); });
-    proc.on('close', (code) => {
-      try { fs.unlinkSync(wavPath); } catch (e) {}
-      if (code !== 0) return reject(new Error(`whisper-cli exited ${code}: ${stderr.slice(-500)}`));
-      try {
-        const raw = JSON.parse(fs.readFileSync(`${outBase}.json`, 'utf8'));
-        const segments = (raw.transcription || [])
-          .map(t => ({ start: t.offsets.from / 1000, end: t.offsets.to / 1000, text: (t.text || '').trim() }))
-          .filter(s => s.text);
-        fs.writeFileSync(path.join(dir, 'transcript.json'), JSON.stringify({ language: raw.result?.language || null, segments }));
-        try { fs.unlinkSync(`${outBase}.json`); } catch (e) {}
-        patchStatus(videoId, { transcript_status: 'ready' });
-        resolve();
-      } catch (e) {
-        reject(new Error('Failed to parse whisper output: ' + e.message));
-      }
-    });
-  });
-}
-
-// Rewrites an HLS rendition's #EXT-X-KEY URI (and every segment reference) to absolute local
-// file:// paths so ffmpeg can decrypt it directly from disk — needed for the retroactive path
-// below, where the original raw upload is long gone and the only remaining source is this
-// server's own encrypted HLS output. Written to os.tmpdir(), NOT under MEDIA_DIR — that directory
-// is statically served at /media, and this rewritten file embeds a local filesystem path to the
-// decryption key, so it must never sit anywhere web-reachable even briefly. Verified against this
-// exact key/keyinfo generation (see transcodeToHLS above) with a real encode+decrypt round-trip,
-// including from a location outside the served directory: ffmpeg needs -protocol_whitelist
-// including "file" and -allowed_extensions ALL to accept the rewritten URIs, or it refuses to
-// open them.
-function decryptedM3u8Path(videoId, qualityName) {
-  const qDir = path.join(MEDIA_DIR, videoId, qualityName);
-  const original = fs.readFileSync(path.join(qDir, 'index.m3u8'), 'utf8');
-  const keyFileAbs = path.join(KEYS_DIR, videoId, 'enc.key');
-  const lines = original
-    .replace(/URI="[^"]*"/, `URI="file://${keyFileAbs}"`)
-    .split('\n')
-    .map(line => (line && !line.startsWith('#')) ? `file://${path.join(qDir, line.trim())}` : line);
-  const outPath = path.join(os.tmpdir(), `transcribe-${videoId}.m3u8`);
-  fs.writeFileSync(outPath, lines.join('\n'));
-  return outPath;
-}
-
-// Kick off transcription — either for a fresh upload (raw file still on disk, POSTed here by the
-// /upload handler below with the checkbox checked) or retroactively for an already-transcoded
-// video (reconstructs a local-decryptable audio source from its own smallest HLS rendition, since
-// the raw source no longer exists by then).
-app.post('/transcribe/:videoId', requireToken, (req, res) => {
-  const videoId = req.params.videoId;
-  const status = readStatus(videoId);
-  if (!status.status) return res.status(404).json({ error: 'Video not found' });
-  if (status.status !== 'ready') return res.status(409).json({ error: 'Video is not ready yet' });
-  if (status.transcript_status === 'pending' || status.transcript_status === 'processing') {
-    return res.json({ success: true, status: status.transcript_status }); // already in flight
-  }
-
-  const lowestQuality = (status.qualities || [])[(status.qualities || []).length - 1];
-  if (!lowestQuality) return res.status(500).json({ error: 'No renditions available to transcribe from' });
-
-  try {
-    const localM3u8 = decryptedM3u8Path(videoId, lowestQuality);
-    enqueueTranscription(videoId, localM3u8);
-    res.json({ success: true, status: 'pending' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/transcript/:videoId', requireToken, (req, res) => {
-  const transcriptPath = path.join(MEDIA_DIR, req.params.videoId, 'transcript.json');
-  if (!fs.existsSync(transcriptPath)) return res.status(404).json({ error: 'Transcript not found' });
-  res.sendFile(transcriptPath);
 });
 
 // ============ DELETE VIDEO ============
