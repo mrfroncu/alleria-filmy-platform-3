@@ -4023,6 +4023,11 @@ async function pullThumbnailLocally(video) {
     return true;
   } catch (e) { return false; }
 }
+// One-time migration flag for the backfill batch in the poll loop below — flips true the first
+// time a sweep finds nothing left to migrate, so that loop stops querying for it on every future
+// tick forever. Videos created after that point never need backfill anyway (their thumbnail gets
+// pulled locally directly on the transcoding→ready transition), so this is safe to leave off.
+let thumbnailBackfillDone = false;
 
 app.get('/api/debug/stream-errors', requireDev, (req, res) => {
   res.json({ errors: streamErrorLog.map(({ _ts, ...e }) => e) });
@@ -5115,14 +5120,21 @@ if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
       // Gradually backfill existing videos whose thumbnail is still a live proxy URL to the
       // streaming server (predates this feature, or was created while it was unreachable) — a
       // small batch per tick rather than all at once, so a big library doesn't thunder the
-      // streaming server with requests right after a deploy.
-      const stale = db.prepare(`
-        SELECT * FROM videos
-        WHERE stream_video_id IS NOT NULL AND stream_status = 'ready'
-          AND custom_thumbnail = 0 AND thumbnail LIKE '/stream/media/%'
-        LIMIT 3
-      `).all();
-      for (const video of stale) await pullThumbnailLocally(video);
+      // streaming server with requests right after a deploy. One-time migration: stops querying
+      // for this at all once a sweep comes up empty (see thumbnailBackfillDone above).
+      if (!thumbnailBackfillDone) {
+        const stale = db.prepare(`
+          SELECT * FROM videos
+          WHERE stream_video_id IS NOT NULL AND stream_status = 'ready'
+            AND custom_thumbnail = 0 AND thumbnail LIKE '/stream/media/%'
+          LIMIT 3
+        `).all();
+        if (stale.length === 0) {
+          thumbnailBackfillDone = true;
+        } else {
+          for (const video of stale) await pullThumbnailLocally(video);
+        }
+      }
     } catch (e) { /* DB error — skip */ }
   }, 30000);
 
