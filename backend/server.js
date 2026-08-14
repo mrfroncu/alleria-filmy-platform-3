@@ -4004,6 +4004,26 @@ function isStreamUnreachable(err) {
   return code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'ETIMEDOUT' || err?.name === 'AbortError';
 }
 
+// Copies a self-hosted video's auto-generated thumb.jpg from the streaming server down to this
+// server's own uploads dir (same place a manually-uploaded thumbnail already lives) and repoints
+// the DB at the local copy — so the thumbnail keeps working even if the streaming server later
+// goes offline, instead of staying a live proxy fetch to it forever. No-op (silently) if the
+// streaming service doesn't have the file yet, or is unreachable — just retried on a later tick.
+// Top-level (not nested in the listen() callback) so both the poll loop below and the manual
+// regenerate-thumbnail route can call it.
+async function pullThumbnailLocally(video) {
+  try {
+    const r = await fetch(`${STREAM_URL}/media/${video.stream_video_id}/thumb.jpg`);
+    if (!r.ok) return false;
+    const buf = Buffer.from(await r.arrayBuffer());
+    const filename = `thumb-${video.stream_video_id}.jpg`;
+    fs.writeFileSync(path.join(uploadsDir, filename), buf);
+    db.prepare("UPDATE videos SET thumbnail = ? WHERE id = ?").run(`/api/uploads/${filename}`, video.id);
+    console.log(`[THUMB] Copied local thumbnail for video ${video.id} "${video.title}"`);
+    return true;
+  } catch (e) { return false; }
+}
+
 app.get('/api/debug/stream-errors', requireDev, (req, res) => {
   res.json({ errors: streamErrorLog.map(({ _ts, ...e }) => e) });
 });
@@ -4189,6 +4209,34 @@ app.get('/api/stream/status/:videoId', requireAdmin, async (req, res) => {
   } catch (err) {
     logStreamError('status', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Manually re-derives a self-hosted video's thumbnail from its own encrypted HLS output (the raw
+// upload is long gone by now) and immediately pulls the fresh copy down locally — for videos whose
+// auto-thumbnail generation failed originally, or that just need a different frame.
+app.post('/api/videos/:id/regenerate-thumbnail', requireAdmin, async (req, res) => {
+  try {
+    const video = db.prepare('SELECT id, title, stream_video_id, main_source_type FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).json({ error: 'Nie znaleziono filmu.' });
+    if (video.main_source_type !== 'selfhosted' || !video.stream_video_id) {
+      return res.status(400).json({ error: 'Regeneracja miniaturki dostępna tylko dla filmów hostowanych na własnym serwerze.' });
+    }
+    const r = await fetch(`${STREAM_URL}/regenerate-thumbnail/${video.stream_video_id}`, {
+      method: 'POST', headers: { 'X-Stream-Token': STREAM_SECRET },
+    });
+    const data = await r.json();
+    if (!r.ok) return res.status(r.status).json(data);
+
+    const pulled = await pullThumbnailLocally(video);
+    if (!pulled) return res.status(500).json({ error: 'Miniaturka wygenerowana, ale nie udało się jej pobrać lokalnie. Spróbuj ponownie za chwilę.' });
+
+    audit(req.session.user.id, 'edit', 'video', video.id, `zregenerowano miniaturkę filmu "${video.title}"`);
+    const updated = db.prepare('SELECT thumbnail FROM videos WHERE id = ?').get(video.id);
+    res.json({ success: true, thumbnail: updated.thumbnail });
+  } catch (err) {
+    logStreamError('regenerate-thumbnail', err);
+    res.status(500).json({ error: 'Nie udało się zregenerować miniaturki. Spróbuj ponownie.' });
   }
 });
 
@@ -5056,12 +5104,25 @@ if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
           if (data.status === 'ready') {
             db.prepare("UPDATE videos SET stream_status = 'ready' WHERE id = ?").run(video.id);
             console.log(`[TRANSCODE] ✅ Video ${video.id} "${video.title}" → ready`);
+            if (!video.custom_thumbnail) pullThumbnailLocally(video);
           } else if (data.status === 'error') {
             db.prepare("UPDATE videos SET stream_status = 'error' WHERE id = ?").run(video.id);
             console.log(`[TRANSCODE] ❌ Video ${video.id} "${video.title}" → error`);
           }
         } catch (e) { /* streaming service unreachable — skip */ }
       }
+
+      // Gradually backfill existing videos whose thumbnail is still a live proxy URL to the
+      // streaming server (predates this feature, or was created while it was unreachable) — a
+      // small batch per tick rather than all at once, so a big library doesn't thunder the
+      // streaming server with requests right after a deploy.
+      const stale = db.prepare(`
+        SELECT * FROM videos
+        WHERE stream_video_id IS NOT NULL AND stream_status = 'ready'
+          AND custom_thumbnail = 0 AND thumbnail LIKE '/stream/media/%'
+        LIMIT 3
+      `).all();
+      for (const video of stale) await pullThumbnailLocally(video);
     } catch (e) { /* DB error — skip */ }
   }, 30000);
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp, FolderOpen, Loader2, BarChart3 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp, FolderOpen, Loader2, BarChart3, Image as ImageIcon } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import VideoModal from '../components/VideoModal';
@@ -47,6 +47,19 @@ export default function AdminPage() {
   };
 
   useEffect(() => { loadData(); }, []);
+
+  const [regeneratingThumb, setRegeneratingThumb] = useState(null); // video id currently regenerating
+  const handleRegenerateThumbnail = async (video) => {
+    setRegeneratingThumb(video.id);
+    try {
+      await api.regenerateThumbnail(video.id);
+      toast.success(`Miniaturka "${video.title}" zregenerowana.`);
+      loadData();
+    } catch (err) {
+      toast.error('Błąd: ' + err.message);
+    }
+    setRegeneratingThumb(null);
+  };
 
   // Auto-poll transcode status every 15 seconds
   const [transcodeProgress, setTranscodeProgress] = useState({});
@@ -305,6 +318,16 @@ export default function AdminPage() {
                         <td className="px-4 py-3 text-xs text-zinc-500 font-mono whitespace-nowrap">{formatDate(video.publish_date)}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
+                            {video.stream_video_id && video.stream_status === 'ready' && (
+                              <button
+                                onClick={() => handleRegenerateThumbnail(video)}
+                                disabled={regeneratingThumb === video.id}
+                                className="btn-icon-zinc disabled:opacity-50"
+                                title="Regeneruj miniaturkę"
+                              >
+                                {regeneratingThumb === video.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImageIcon className="w-3.5 h-3.5" />}
+                              </button>
+                            )}
                             <Link to={`/video/${video.id}/analytics?from=admin`} className="btn-icon-zinc" title="Analityka">
                               <BarChart3 className="w-3.5 h-3.5" />
                             </Link>

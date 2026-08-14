@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { execSync, spawn } = require('child_process');
 
 const app = express();
@@ -113,6 +114,71 @@ app.get('/status/:videoId', requireToken, (req, res) => {
   const statusPath = path.join(MEDIA_DIR, req.params.videoId, 'status.json');
   if (!fs.existsSync(statusPath)) return res.json({ status: 'not_found' });
   res.json(JSON.parse(fs.readFileSync(statusPath, 'utf8')));
+});
+
+// ============ REGENERATE THUMBNAIL ============
+// The raw upload is long gone by the time someone wants to re-generate a thumbnail (deleted right
+// after transcoding), so this re-derives one from the video's own encrypted HLS output instead —
+// same local-decrypt trick used elsewhere: rewrite the rendition's #EXT-X-KEY URI (and every
+// segment reference) to absolute local file:// paths so ffmpeg can read it straight off disk, no
+// network/auth round-trip needed. Written to os.tmpdir(), never under MEDIA_DIR — that directory
+// is statically served at /media, and this rewritten file embeds a local filesystem path to the
+// decryption key, so it must never sit anywhere web-reachable even briefly.
+function decryptedM3u8Path(videoId, qualityName) {
+  const qDir = path.join(MEDIA_DIR, videoId, qualityName);
+  const original = fs.readFileSync(path.join(qDir, 'index.m3u8'), 'utf8');
+  const keyFileAbs = path.join(KEYS_DIR, videoId, 'enc.key');
+  const lines = original
+    .replace(/URI="[^"]*"/, `URI="file://${keyFileAbs}"`)
+    .split('\n')
+    .map(line => (line && !line.startsWith('#')) ? `file://${path.join(qDir, line.trim())}` : line);
+  const outPath = path.join(os.tmpdir(), `thumb-src-${videoId}.m3u8`);
+  fs.writeFileSync(outPath, lines.join('\n'));
+  return outPath;
+}
+
+app.post('/regenerate-thumbnail/:videoId', requireToken, (req, res) => {
+  const videoId = req.params.videoId;
+  const statusPath = path.join(MEDIA_DIR, videoId, 'status.json');
+  if (!fs.existsSync(statusPath)) return res.status(404).json({ error: 'Video not found' });
+  const status = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
+  if (status.status !== 'ready') return res.status(409).json({ error: 'Video is not ready yet' });
+
+  const quality = (status.qualities || [])[(status.qualities || []).length - 1];
+  if (!quality) return res.status(500).json({ error: 'No renditions available to extract from' });
+
+  let localM3u8;
+  try {
+    localM3u8 = decryptedM3u8Path(videoId, quality);
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to prepare decrypted source: ' + err.message });
+  }
+
+  // Same multi-timestamp fallback as the original generation in transcodeToHLS() — a short
+  // rendition (or one with an unreadable frame at a given offset) can fail every attempt except
+  // 0:00, the first decodable frame.
+  const thumbPath = path.join(MEDIA_DIR, videoId, 'thumb.jpg');
+  let thumbOk = false;
+  let lastErr = null;
+  for (const ts of ['00:00:05', '00:00:01', '00:00:00']) {
+    try {
+      execSync(
+        `ffmpeg -y -protocol_whitelist file,crypto,data,http,https,tcp,tls -allowed_extensions ALL ` +
+        `-ss ${ts} -i "${localM3u8}" -vframes 1 -q:v 3 "${thumbPath}" -y`,
+        { stdio: 'pipe' }
+      );
+      thumbOk = true;
+      break;
+    } catch (e) { lastErr = e; }
+  }
+  try { fs.unlinkSync(localM3u8); } catch (e) {}
+
+  if (!thumbOk) {
+    console.log(`[STREAM] Thumbnail regeneration failed for ${videoId} at every attempted timestamp: ${lastErr?.message}`);
+    return res.status(500).json({ error: 'Thumbnail extraction failed at every attempted timestamp' });
+  }
+  console.log(`[STREAM] ✅ Thumbnail regenerated for ${videoId}`);
+  res.json({ success: true });
 });
 
 // ============ DELETE VIDEO ============

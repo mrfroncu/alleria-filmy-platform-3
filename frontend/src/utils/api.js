@@ -70,6 +70,7 @@ export const api = {
   createVideo: (formData) => request('/videos', { method: 'POST', body: formData }),
   updateVideo: (id, formData) => request(`/videos/${id}`, { method: 'PUT', body: formData }),
   deleteVideo: (id) => request(`/videos/${id}`, { method: 'DELETE' }),
+  regenerateThumbnail: (id) => request(`/videos/${id}/regenerate-thumbnail`, { method: 'POST' }),
   promoteMirrorSource: (id, slot) => request(`/videos/${id}/promote-source`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slot }),
   }),
