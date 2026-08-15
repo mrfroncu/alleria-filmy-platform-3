@@ -6,12 +6,18 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
 
   useEffect(() => {
-    api.getMe()
-      .then(u => setUser(u))
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.getMe().catch(() => null),
+      // Public, unauthenticated — fetched in parallel so maintenance mode never adds an
+      // extra perceived-loading step beyond the auth check that already runs on every load.
+      fetch('/api/health').then(r => r.json()).catch(() => ({})),
+    ]).then(([u, health]) => {
+      setUser(u);
+      setMaintenanceMode(!!health.maintenance_mode);
+    }).finally(() => setLoading(false));
   }, []);
 
   const logout = async () => {
@@ -24,7 +30,7 @@ export function AuthProvider({ children }) {
   const isDev = user && user.role === 'dev';
 
   return (
-    <AuthContext.Provider value={{ user, loading, logout, isAdmin, isDev }}>
+    <AuthContext.Provider value={{ user, loading, logout, isAdmin, isDev, maintenanceMode }}>
       {children}
     </AuthContext.Provider>
   );

@@ -4,11 +4,13 @@ import { api } from '../utils/api';
 import { getCurrentYear, parseTsError } from '../utils/helpers';
 import { renderMarkdown } from '../utils/markdown';
 import TsChallengeModal from '../components/TsChallengeModal';
+import { MaintenanceNotice } from '../components/Maintenance';
 
 export default function LoginPage() {
   const [tsLoading, setTsLoading]   = useState(false);
   const [ts3Loading, setTs3Loading] = useState(false);
   const [configOk, setConfigOk]     = useState(true);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [regulaminOpen, setRegulaminOpen] = useState(false);
   const [tos, setTos] = useState(null);
   const [tsInfoOpen, setTsInfoOpen] = useState(false);
@@ -46,7 +48,10 @@ export default function LoginPage() {
   useEffect(() => {
     fetch('/api/health')
       .then(r => r.json())
-      .then(data => { if (!data.discord_configured) setConfigOk(false); })
+      .then(data => {
+        if (!data.discord_configured) setConfigOk(false);
+        setMaintenanceMode(!!data.maintenance_mode);
+      })
       .catch(() => setConfigOk(false));
   }, []);
 
@@ -128,6 +133,8 @@ export default function LoginPage() {
     setChallengeCode('');
     setChallengeError(null);
   };
+
+  if (maintenanceMode) return <MaintenanceNotice />;
 
   return (
     <div className="min-h-dvh flex flex-col lg:flex-row">
