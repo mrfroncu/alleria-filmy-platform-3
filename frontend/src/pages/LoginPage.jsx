@@ -5,12 +5,17 @@ import { getCurrentYear, parseTsError } from '../utils/helpers';
 import { renderMarkdown } from '../utils/markdown';
 import TsChallengeModal from '../components/TsChallengeModal';
 import { MaintenanceNotice } from '../components/Maintenance';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginPage() {
+  // Read from AuthContext, not a fresh local fetch — GuestRoute (the wrapper that renders
+  // this page) already waits for AuthContext's own loading to clear before mounting us, so
+  // this value is correct from the very first render. A separate local fetch here used to
+  // default to false and flash the normal login form for a moment before flipping over.
+  const { maintenanceMode } = useAuth();
   const [tsLoading, setTsLoading]   = useState(false);
   const [ts3Loading, setTs3Loading] = useState(false);
   const [configOk, setConfigOk]     = useState(true);
-  const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [regulaminOpen, setRegulaminOpen] = useState(false);
   const [tos, setTos] = useState(null);
   const [tsInfoOpen, setTsInfoOpen] = useState(false);
@@ -48,10 +53,7 @@ export default function LoginPage() {
   useEffect(() => {
     fetch('/api/health')
       .then(r => r.json())
-      .then(data => {
-        if (!data.discord_configured) setConfigOk(false);
-        setMaintenanceMode(!!data.maintenance_mode);
-      })
+      .then(data => { if (!data.discord_configured) setConfigOk(false); })
       .catch(() => setConfigOk(false));
   }, []);
 
