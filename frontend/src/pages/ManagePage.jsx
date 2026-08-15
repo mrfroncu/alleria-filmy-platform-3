@@ -511,6 +511,19 @@ export default function ManagePage() {
     setSavingSettings(false);
   };
 
+  const toggleMaintenanceMode = async () => {
+    if (!settings) return;
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ maintenance_mode: !settings.maintenance_mode });
+      setSettingsState(s => ({ ...s, maintenance_mode: r.maintenance_mode }));
+      setStatus({ type: 'success', msg: `Przerwa techniczna: ${r.maintenance_mode ? 'WŁĄCZONA' : 'WYŁĄCZONA'}` });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
   const saveBotNickname = async () => {
     setSavingSettings(true);
     try {
@@ -1783,6 +1796,29 @@ export default function ManagePage() {
         {/* ============ BEZPIECZEŃSTWO I PRYWATNOŚĆ ============ */}
         <SettingsSectionHeader id="settings-section-security" icon={ShieldCheck} label="Bezpieczeństwo i prywatność" />
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          {/* Maintenance mode */}
+          <div className="card p-8 h-full flex flex-col xl:col-span-2">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6 text-amber-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Tryb przerwy technicznej</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  <b>WŁĄCZONY</b>: strona logowania pokazuje komunikat "Przerwa techniczna" zamiast formularza, dostęp do appki ma wyłącznie rola DEV.
+                  <br />
+                  Zalogowani spoza roli DEV widzą ekran "Brak dostępu" z przyciskiem wylogowania — API też ich odrzuca, więc nie da się nic wyciągnąć z appki obchodząc interfejs.
+                </p>
+                <ToggleSwitch
+                  checked={!!settings?.maintenance_mode}
+                  onChange={toggleMaintenanceMode}
+                  disabled={!settings || savingSettings}
+                  label={settings == null ? 'Ładowanie...' : (settings.maintenance_mode ? 'Przerwa techniczna: WŁĄCZONA' : 'Przerwa techniczna: WYŁĄCZONA')}
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Webhook domain restriction */}
           <div className="card p-8 h-full flex flex-col">
             <div className="flex items-start gap-4">
