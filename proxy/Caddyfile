@@ -1,0 +1,13 @@
+{
+	admin off
+}
+
+:80 {
+	root * /srv
+	reverse_proxy alleria-filmy:3000
+
+	handle_errors {
+		rewrite * /maintenance.html
+		file_server
+	}
+}
