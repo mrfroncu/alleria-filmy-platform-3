@@ -270,6 +270,30 @@ cloudflared tunnel --url http://localhost:3000
 
 Lub konfiguracja permanentna w `~/.cloudflared/config.yml`.
 
+### 6. Ekran przerwy technicznej podczas deployu (opcjonalnie)
+
+Domyślnie `cloudflared` łączy się bezpośrednio z kontenerem appki — gdy ten restartuje się
+podczas deployu (`docker-compose.panel-only.yml down/build/up`), na porcie `3000` przez chwilę
+nikt nie nasłuchuje i Cloudflare pokazuje użytkownikom swój własny, ogólny ekran błędu
+(`502 Bad Gateway`).
+
+`docker-compose.proxy.yml` dodaje kontener Caddy, który przejmuje port `3000` i przez cały czas
+coś na nim wystawia — appce jedynie reverse-proxuje ruch. Gdy `alleria-filmy` jest niedostępna,
+Caddy sam serwuje statyczną stronę „Przerwa techniczna” (`proxy/maintenance.html`) zamiast
+przepuszczać błąd dalej, więc Cloudflare zawsze dostaje realną odpowiedź HTTP i pokazuje ją
+użytkownikom zamiast swojego brandowanego 502.
+
+Uruchamiany **raz, ręcznie**, osobno od zwykłego deployu:
+
+```bash
+docker compose -f docker-compose.proxy.yml up -d
+```
+
+Tworzy to sieć Dockera `alleria-edge`, do której `docker-compose.panel-only.yml` też dołącza
+(stąd zależność: proxy musi wystartować przed pierwszym `up` appki). Workflow deployu
+(`.github/workflows/deploy.yml`) operuje wyłącznie na `docker-compose.panel-only.yml`, więc
+kontener proxy nigdy nie jest przez niego zatrzymywany ani przebudowywany.
+
 ---
 
 ## 🔧 Konfiguracja `.env`
