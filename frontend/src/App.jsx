@@ -10,7 +10,6 @@ import { UnsavedChangesProvider } from './contexts/UnsavedChangesContext';
 import LoginPage from './pages/LoginPage';
 import Layout from './components/Layout';
 import TosGate from './components/TosGate';
-import { MaintenanceBlocked } from './components/Maintenance';
 import VideosPage from './pages/VideosPage';
 import VideoPage from './pages/VideoPage';
 import AdminPage from './pages/AdminPage';
@@ -29,7 +28,7 @@ import ShortsPage from './pages/ShortsPage';
 const VideoAnalyticsPage = lazy(() => import('./pages/VideoAnalyticsPage'));
 
 function ProtectedRoute({ children, adminOnly, devOnly }) {
-  const { user, loading, isAdmin, isDev, maintenanceMode, logout } = useAuth();
+  const { user, loading, isAdmin, isDev } = useAuth();
   const location = useLocation();
   if (loading) return <LoadingScreen />;
   if (!user) {
@@ -37,9 +36,6 @@ function ProtectedRoute({ children, adminOnly, devOnly }) {
     const returnTo = location.pathname + location.search;
     return <Navigate to={`/login?returnTo=${encodeURIComponent(returnTo)}`} />;
   }
-  // Maintenance mode: only role 'dev' gets past this point, everyone else is logged in but
-  // blocked — matches the server-side /api/* gate, so blocked users can't get partial data.
-  if (maintenanceMode && !isDev) return <MaintenanceBlocked onLogout={logout} />;
   if (adminOnly && !isAdmin) return <Navigate to="/" />;
   if (devOnly && !isDev) return <Navigate to="/" />;
   return children;

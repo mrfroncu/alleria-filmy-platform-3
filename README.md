@@ -283,18 +283,16 @@ Caddy sam serwuje statyczną stronę „Przerwa techniczna” (`proxy/maintenanc
 przepuszczać błąd dalej, więc Cloudflare zawsze dostaje realną odpowiedź HTTP i pokazuje ją
 użytkownikom zamiast swojego brandowanego 502.
 
-Tworzy to sieć Dockera `alleria-edge`, do której `docker-compose.panel-only.yml` też dołącza —
-appka bez niej się nie uruchomi. Dlatego `.github/workflows/deploy.yml` przed każdym deployem
-najpierw robi `docker compose -f docker-compose.proxy.yml up -d` (idempotentne: jeśli proxy już
-działa i nic się nie zmieniło, to no-op — nie restartuje kontenera), a dopiero potem
-`down/build/up` appki. Dzięki temu sieć i proxy zawsze istnieją, nawet przy pierwszym deployu na
-nowym serwerze, a workflow nigdy nie zatrzymuje ani nie przebudowuje samego proxy.
-
-Ręczne uruchomienie jest potrzebne tylko lokalnie/dev:
+Uruchamiany **raz, ręcznie**, osobno od zwykłego deployu:
 
 ```bash
 docker compose -f docker-compose.proxy.yml up -d
 ```
+
+Tworzy to sieć Dockera `alleria-edge`, do której `docker-compose.panel-only.yml` też dołącza
+(stąd zależność: proxy musi wystartować przed pierwszym `up` appki). Workflow deployu
+(`.github/workflows/deploy.yml`) operuje wyłącznie na `docker-compose.panel-only.yml`, więc
+kontener proxy nigdy nie jest przez niego zatrzymywany ani przebudowywany.
 
 ---
 
@@ -382,7 +380,6 @@ Poniższe ustawienia **nie** są w `.env` — są zapisane w bazie (tabela `app_
 | Wysyłka kodu logowania (TS3) | wiadomość | Jak bot dostarcza kod logowania: wiadomość prywatna / poke / oba |
 | Osadzanie w iframe | ❌ wyłączone | Zezwala na osadzanie odtwarzacza na domenach z listy dozwolonych domen (dodawanych/usuwanych tuż obok, bez `.env`) |
 | Górny pasek | ✅ włączony | Pokazuje/ukrywa górny pasek (tytuł + smart search + profil); wyłączenie przywraca klasyczny układ z tytułem strony i profilem w sidebarze |
-| Tryb przerwy technicznej | ❌ wyłączony | Gdy włączony: tylko rola DEV ma dostęp do appki (API i UI). Niezalogowani widzą na `/login` komunikat "Przerwa techniczna" z małym przyciskiem logowania Discord; zalogowani spoza roli DEV widzą ekran "Brak dostępu" z przyciskiem wylogowania |
 
 > [!TIP]
 > Zakładka Ustawienia pokazuje też ostrzeżenie, jeśli w `.env` znajdują się **zmienne przeniesione do bazy** (np. stare `VIDEOS_PER_PAGE`) albo **nazwy przypominające literówkę** znanej zmiennej (np. `DISCORD_GULID_ID` zamiast `DISCORD_GUILD_ID`) — bezpieczne do sprawdzenia bez ujawniania wartości.

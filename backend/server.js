@@ -202,25 +202,7 @@ app.get('/api/health', (req, res) => {
     member_role_set: !!process.env.DISCORD_MEMBER_ROLE_ID,
     admin_role_set: !!process.env.DISCORD_ADMIN_ROLE_ID,
     dev_role_set: !!process.env.DISCORD_DEV_ROLE_ID,
-    // Public on purpose — the login page reads this pre-auth to decide whether to show the
-    // normal login form or the maintenance notice.
-    maintenance_mode: getSetting('maintenance_mode', '0') === '1',
   });
-});
-
-// ============ MAINTENANCE MODE GATE ============
-// While ON, only role 'dev' may use the API. Auth/health/tos stay reachable so anyone can
-// still log in (to prove they're dev) and the frontend can tell what's going on; every other
-// /api/* route 503s for anonymous visitors and non-dev sessions. Static/SPA assets are served
-// outside /api and are never touched here, so the React app (and its maintenance screens)
-// always loads.
-const MAINTENANCE_ALLOWED_PREFIXES = ['/api/health', '/api/auth/', '/api/tos'];
-app.use((req, res, next) => {
-  if (!req.path.startsWith('/api/')) return next();
-  if (getSetting('maintenance_mode', '0') !== '1') return next();
-  if (MAINTENANCE_ALLOWED_PREFIXES.some(p => req.path.startsWith(p))) return next();
-  if (req.session.user && req.session.user.role === 'dev') return next();
-  res.status(503).json({ error: 'maintenance', maintenance: true });
 });
 
 // Public config for frontend display settings
@@ -3523,7 +3505,6 @@ function settingsPayload() {
     show_top_bar: getSetting('show_top_bar', '1') === '1',
     youtube_custom_player: getSetting('youtube_custom_player', '0') === '1',
     gdpr_region: getSetting('gdpr_region', 'off'),
-    maintenance_mode: getSetting('maintenance_mode', '0') === '1',
 
     // SMTP — dev-only payload, so the raw password is returned here same as ts3/ts6 passwords below.
     smtp_host: getSetting('smtp_host', ''),
@@ -3684,13 +3665,6 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
     setSetting('youtube_custom_player', req.body.youtube_custom_player ? '1' : '0');
     audit(req.session.user.id, 'edit', 'settings', null,
       `youtube_custom_player → ${req.body.youtube_custom_player ? 'ON' : 'OFF'}`);
-  }
-  // Maintenance mode — while ON, only role 'dev' can use the app (see the /api/* gate
-  // near the top of the file); everyone else sees a "back soon" / "no access" screen.
-  if (req.body.maintenance_mode !== undefined) {
-    setSetting('maintenance_mode', req.body.maintenance_mode ? '1' : '0');
-    audit(req.session.user.id, 'edit', 'settings', null,
-      `maintenance_mode → ${req.body.maintenance_mode ? 'ON' : 'OFF'}`);
   }
   // TeamSpeak 3/6 connection config — always writable here regardless of TS_CONFIG_SOURCE, so
   // values can be pre-staged in the panel before flipping the .env flag over to 'panel'.

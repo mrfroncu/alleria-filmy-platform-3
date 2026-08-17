@@ -39,12 +39,6 @@ jobs:
           sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -o StrictHostKeyChecking=no deploy@${{ secrets.SSH_HOST }} << 'EOF'
             cd /home/deploy/video-platform/
 
-            # Idempotent: only creates/starts the maintenance proxy + alleria-edge network if
-            # they're missing, never touches an already-running proxy. Guarantees
-            # docker-compose.panel-only.yml always has the network it depends on, even on a
-            # fresh server.
-            docker compose -f docker-compose.proxy.yml up -d
-
             docker compose -f docker-compose.panel-only.yml down
             docker compose -f docker-compose.panel-only.yml build --no-cache
             docker compose -f docker-compose.panel-only.yml up -d
