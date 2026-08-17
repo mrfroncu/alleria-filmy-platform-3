@@ -659,6 +659,11 @@ export default function VideoPage() {
   const [video, setVideo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeSource, setActiveSource] = useState('main');
+  // Which movie version is selected ('main' or a video_versions.id as a string), and which mirror
+  // within that version's own list — separate from activeSource, which only tracks the main
+  // version's mirror tabs (main_source/mirror1-5).
+  const [activeVersion, setActiveVersion] = useState('main');
+  const [activeVersionMirror, setActiveVersionMirror] = useState(0);
   const [error, setError] = useState(null);
   const [isFav, setIsFav] = useState(false);
   const [favCount, setFavCount] = useState(0);
@@ -710,6 +715,7 @@ export default function VideoPage() {
 
   useEffect(() => {
     setActiveSource('main');
+    setActiveVersion('main'); setActiveVersionMirror(0);
     setPrevVideo(null); setNextVideo(null);
     setEditingComment(null); setEditContent('');
     setComments([]); setReplyTo(null);
@@ -893,7 +899,11 @@ export default function VideoPage() {
   if (loading && !video) return <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-fade-in"><div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[32px] skeleton mb-6" /><div className="h-8 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-2/3 mb-4" /><div className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-1/3" /></div>;
   if (error || !video) return <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-scale-in"><div className="card p-16 text-center"><p className="text-red-500 font-bold text-lg mb-2">Błąd</p><p className="text-zinc-500">{error || 'Film nie znaleziony.'}</p><Link to="/" className="btn-primary mt-6 inline-block">Wróć</Link></div></div>;
 
-  const src = activeSource === 'mirror1'
+  // Non-main version currently selected (if any) — its own mirror list is fully independent of
+  // the main version's main_source/mirror1-5 below.
+  const activeVersionObj = activeVersion !== 'main' ? (video.versions || []).find(v => String(v.id) === activeVersion) : null;
+
+  const mainSrc = activeSource === 'mirror1'
     ? { url: video.mirror1_url, type: video.mirror1_type || (video.mirror1_is_embed ? 'embed' : 'link') }
     : activeSource === 'mirror2'
     ? { url: video.mirror2_url, type: video.mirror2_type || (video.mirror2_is_embed ? 'embed' : 'link') }
@@ -904,12 +914,7 @@ export default function VideoPage() {
     : activeSource === 'mirror5'
     ? { url: video.mirror5_url, type: video.mirror5_type || 'link' }
     : { url: video.main_source, type: video.main_source_type };
-  const isStreamer = src.type === 'streamer';
-  const streamerVideoId = isStreamer ? src.url?.replace('self-hosted:', '') : null;
-  const isPlex = src.type === 'plex';
-  const isHtml = src.type === 'embed' || src.type === 'html';
-  const embedUrl = (isHtml || isPlex || isStreamer) ? null : youtubeToEmbed(src.url);
-  const sources = [
+  const mainSources = [
     { key: 'main', label: video.main_source_title || 'Główne źródło' },
     ...(video.mirror1_url ? [{ key: 'mirror1', label: video.mirror1_name || 'Mirror 1' }] : []),
     ...(video.mirror2_url ? [{ key: 'mirror2', label: video.mirror2_name || 'Mirror 2' }] : []),
@@ -917,9 +922,26 @@ export default function VideoPage() {
     ...(video.mirror4_url ? [{ key: 'mirror4', label: video.mirror4_name || 'Mirror 4' }] : []),
     ...(video.mirror5_url ? [{ key: 'mirror5', label: video.mirror5_name || 'Mirror 5' }] : []),
   ];
+
+  // When a non-main version is active, src/sources come entirely from its own mirror list instead.
+  const src = activeVersionObj
+    ? { url: activeVersionObj.mirrors[activeVersionMirror]?.url, type: activeVersionObj.mirrors[activeVersionMirror]?.type || 'link' }
+    : mainSrc;
+  const sources = activeVersionObj
+    ? activeVersionObj.mirrors.map((m, i) => ({ key: i, label: m.name || `Mirror ${i + 1}` }))
+    : mainSources;
+  const activeSourceKey = activeVersionObj ? activeVersionMirror : activeSource;
+  const selectSource = (key) => activeVersionObj ? setActiveVersionMirror(key) : setActiveSource(key);
+
+  const isStreamer = src.type === 'streamer';
+  const streamerVideoId = isStreamer ? src.url?.replace('self-hosted:', '') : null;
+  const isPlex = src.type === 'plex';
+  const isHtml = src.type === 'embed' || src.type === 'html';
+  const embedUrl = (isHtml || isPlex || isStreamer) ? null : youtubeToEmbed(src.url);
   // Passed to SecurePlayer so a broken source's own error state offers a one-click way out
-  // instead of only the tab row further down the page.
-  const otherSources = sources.filter(s => s.key !== activeSource);
+  // instead of only the tab row further down the page — scoped to the active version's own
+  // mirrors, never mixing a Backstage version's fallback list with the main movie's, or vice versa.
+  const otherSources = sources.filter(s => s.key !== activeSourceKey);
   const isDev = user?.role === 'dev';
   const activeCount = comments.filter(c => !c.deleted).length;
   // Animation class based on phase
@@ -955,11 +977,11 @@ export default function VideoPage() {
           </div>
         </div>
 
-        <div className="mb-2 anim-stagger-2" key={`player-${activeSource}`}>
-          {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
-            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={setActiveSource} />
+        <div className="mb-2 anim-stagger-2" key={`player-${activeVersion}-${activeSourceKey}`}>
+          {video.stream_video_id && video.stream_status === 'ready' && activeVersion === 'main' && activeSource === 'main' ? (
+            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={selectSource} />
           ) : isStreamer && streamerVideoId ? (
-            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={setActiveSource} />
+            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={selectSource} />
           ) : isPlex && src.url ? (
             <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in plex-container flex items-center justify-center">
               {/* Floating particles */}
@@ -1011,9 +1033,18 @@ export default function VideoPage() {
           </div>
         )}
 
+        {video.versions?.length > 0 && (
+          <div className="flex gap-2 mb-3 anim-stagger-3">
+            <button onClick={() => { setActiveVersion('main'); setActiveVersionMirror(0); }} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeVersion === 'main' ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>Główna wersja</button>
+            {video.versions.map(v => (
+              <button key={v.id} onClick={() => { setActiveVersion(String(v.id)); setActiveVersionMirror(0); }} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeVersion === String(v.id) ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>{v.name}</button>
+            ))}
+          </div>
+        )}
+
         {sources.length > 1 && (
           <div className="flex gap-2 mb-6 anim-stagger-3">
-            {sources.map(s => <button key={s.key} onClick={() => setActiveSource(s.key)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeSource === s.key ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>{s.label}</button>)}
+            {sources.map(s => <button key={s.key} onClick={() => selectSource(s.key)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeSourceKey === s.key ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>{s.label}</button>)}
           </div>
         )}
 
