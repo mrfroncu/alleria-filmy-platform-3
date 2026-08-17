@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Upload, Plus } from 'lucide-react';
+import { X, Upload, Plus, GripVertical } from 'lucide-react';
 import { api } from '../utils/api';
 import { extractYoutubeId, buildCategoryTreeOptions } from '../utils/helpers';
 import DateTimePicker from './DateTimePicker';
@@ -34,6 +34,8 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const toast = useToast();
   const confirm = useConfirm();
   const [promotingSlot, setPromotingSlot] = useState(null);
+  const [draggedMirrorIndex, setDraggedMirrorIndex] = useState(null);
+  const [dragOverMirrorIndex, setDragOverMirrorIndex] = useState(null);
   const [title, setTitle] = useState('');
   const [authorId, setAuthorId] = useState('');
   const [mainSource, setMainSource] = useState('');
@@ -507,6 +509,40 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     }
   };
 
+  // Reorders mirror slots by moving one slot's whole content (name/url/type/file/etc.) into
+  // another slot's position, shifting the slots in between — the slots themselves stay fixed
+  // (mirror1-5), only what's stored in each one moves. Purely local form state until Save, same
+  // as every other field here; mirrorPromoteEligible/handlePromoteMirror above are unaffected
+  // since they read the already-saved `video` prop, not this in-progress reordering.
+  const moveMirror = (fromIndex, toIndex) => {
+    if (fromIndex === toIndex) return;
+    const slots = [
+      { name: mirror1Name, url: mirror1Url, type: mirror1Type, videoFile: mirror1VideoFile, streamVideoId: mirror1StreamVideoId, isAlt: mirror1IsAlt, show: showMirror1 },
+      { name: mirror2Name, url: mirror2Url, type: mirror2Type, videoFile: mirror2VideoFile, streamVideoId: mirror2StreamVideoId, isAlt: mirror2IsAlt, show: showMirror2 },
+      { name: mirror3Name, url: mirror3Url, type: mirror3Type, videoFile: mirror3VideoFile, streamVideoId: mirror3StreamVideoId, isAlt: mirror3IsAlt, show: showMirror3 },
+      { name: mirror4Name, url: mirror4Url, type: mirror4Type, videoFile: mirror4VideoFile, streamVideoId: mirror4StreamVideoId, isAlt: mirror4IsAlt, show: showMirror4 },
+      { name: mirror5Name, url: mirror5Url, type: mirror5Type, videoFile: mirror5VideoFile, streamVideoId: mirror5StreamVideoId, isAlt: mirror5IsAlt, show: showMirror5 },
+    ];
+    const [moved] = slots.splice(fromIndex, 1);
+    slots.splice(toIndex, 0, moved);
+    const setters = [
+      { setName: setMirror1Name, setUrl: setMirror1Url, setType: setMirror1Type, setVideoFile: setMirror1VideoFile, setStreamVideoId: setMirror1StreamVideoId, setIsAlt: setMirror1IsAlt, setShow: setShowMirror1 },
+      { setName: setMirror2Name, setUrl: setMirror2Url, setType: setMirror2Type, setVideoFile: setMirror2VideoFile, setStreamVideoId: setMirror2StreamVideoId, setIsAlt: setMirror2IsAlt, setShow: setShowMirror2 },
+      { setName: setMirror3Name, setUrl: setMirror3Url, setType: setMirror3Type, setVideoFile: setMirror3VideoFile, setStreamVideoId: setMirror3StreamVideoId, setIsAlt: setMirror3IsAlt, setShow: setShowMirror3 },
+      { setName: setMirror4Name, setUrl: setMirror4Url, setType: setMirror4Type, setVideoFile: setMirror4VideoFile, setStreamVideoId: setMirror4StreamVideoId, setIsAlt: setMirror4IsAlt, setShow: setShowMirror4 },
+      { setName: setMirror5Name, setUrl: setMirror5Url, setType: setMirror5Type, setVideoFile: setMirror5VideoFile, setStreamVideoId: setMirror5StreamVideoId, setIsAlt: setMirror5IsAlt, setShow: setShowMirror5 },
+    ];
+    slots.forEach((slot, i) => {
+      setters[i].setName(slot.name);
+      setters[i].setUrl(slot.url);
+      setters[i].setType(slot.type);
+      setters[i].setVideoFile(slot.videoFile);
+      setters[i].setStreamVideoId(slot.streamVideoId);
+      setters[i].setIsAlt(slot.isAlt);
+      setters[i].setShow(slot.show);
+    });
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -744,9 +780,19 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 </button>
               )}
               {showMirror1 && (
-                <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
+                <div
+                  className={`p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border space-y-3 transition-colors ${dragOverMirrorIndex === 0 && draggedMirrorIndex !== null && draggedMirrorIndex !== 0 ? 'border-violet-500 ring-2 ring-violet-500/50' : 'border-zinc-200 dark:border-zinc-800'}`}
+                  onDragOver={e => { e.preventDefault(); setDragOverMirrorIndex(0); }}
+                  onDragLeave={() => setDragOverMirrorIndex(p => p === 0 ? null : p)}
+                  onDrop={e => { e.preventDefault(); if (draggedMirrorIndex !== null && draggedMirrorIndex !== 0) moveMirror(draggedMirrorIndex, 0); setDraggedMirrorIndex(null); setDragOverMirrorIndex(null); }}
+                >
                   <div className="flex items-center justify-between">
-                    <span className="label-field mb-0">Mirror 1</span>
+                    <div className="flex items-center gap-2">
+                      <span draggable onDragStart={() => setDraggedMirrorIndex(0)} onDragEnd={() => { setDraggedMirrorIndex(null); setDragOverMirrorIndex(null); }} className="cursor-grab active:cursor-grabbing text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300" title="Przeciągnij, aby zmienić kolejność">
+                        <GripVertical className="w-4 h-4" />
+                      </span>
+                      <span className="label-field mb-0">Mirror 1</span>
+                    </div>
                     <div className="flex items-center gap-3">
                       {mirrorPromoteEligible(1) && <button type="button" onClick={() => handlePromoteMirror(1)} disabled={promotingSlot === 1} className="btn-link-violet text-xs disabled:opacity-50">{promotingSlot === 1 ? 'Zamienianie...' : 'Ustaw jako główne źródło'}</button>}
                       <button type="button" onClick={() => { setShowMirror1(false); setMirror1Name(''); setMirror1Url(''); setMirror1Type('link'); setMirror1VideoFile(null); setMirror1StreamVideoId(''); }} className="btn-link-red">Usuń</button>
@@ -792,9 +838,19 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 </button>
               )}
               {showMirror2 && (
-                <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
+                <div
+                  className={`p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border space-y-3 transition-colors ${dragOverMirrorIndex === 1 && draggedMirrorIndex !== null && draggedMirrorIndex !== 1 ? 'border-violet-500 ring-2 ring-violet-500/50' : 'border-zinc-200 dark:border-zinc-800'}`}
+                  onDragOver={e => { e.preventDefault(); setDragOverMirrorIndex(1); }}
+                  onDragLeave={() => setDragOverMirrorIndex(p => p === 1 ? null : p)}
+                  onDrop={e => { e.preventDefault(); if (draggedMirrorIndex !== null && draggedMirrorIndex !== 1) moveMirror(draggedMirrorIndex, 1); setDraggedMirrorIndex(null); setDragOverMirrorIndex(null); }}
+                >
                   <div className="flex items-center justify-between">
-                    <span className="label-field mb-0">Mirror 2</span>
+                    <div className="flex items-center gap-2">
+                      <span draggable onDragStart={() => setDraggedMirrorIndex(1)} onDragEnd={() => { setDraggedMirrorIndex(null); setDragOverMirrorIndex(null); }} className="cursor-grab active:cursor-grabbing text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300" title="Przeciągnij, aby zmienić kolejność">
+                        <GripVertical className="w-4 h-4" />
+                      </span>
+                      <span className="label-field mb-0">Mirror 2</span>
+                    </div>
                     <div className="flex items-center gap-3">
                       {mirrorPromoteEligible(2) && <button type="button" onClick={() => handlePromoteMirror(2)} disabled={promotingSlot === 2} className="btn-link-violet text-xs disabled:opacity-50">{promotingSlot === 2 ? 'Zamienianie...' : 'Ustaw jako główne źródło'}</button>}
                       <button type="button" onClick={() => { setShowMirror2(false); setMirror2Name(''); setMirror2Url(''); setMirror2Type('link'); setMirror2VideoFile(null); setMirror2StreamVideoId(''); }} className="btn-link-red">Usuń</button>
@@ -840,9 +896,19 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 </button>
               )}
               {showMirror3 && (
-                <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
+                <div
+                  className={`p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border space-y-3 transition-colors ${dragOverMirrorIndex === 2 && draggedMirrorIndex !== null && draggedMirrorIndex !== 2 ? 'border-violet-500 ring-2 ring-violet-500/50' : 'border-zinc-200 dark:border-zinc-800'}`}
+                  onDragOver={e => { e.preventDefault(); setDragOverMirrorIndex(2); }}
+                  onDragLeave={() => setDragOverMirrorIndex(p => p === 2 ? null : p)}
+                  onDrop={e => { e.preventDefault(); if (draggedMirrorIndex !== null && draggedMirrorIndex !== 2) moveMirror(draggedMirrorIndex, 2); setDraggedMirrorIndex(null); setDragOverMirrorIndex(null); }}
+                >
                   <div className="flex items-center justify-between">
-                    <span className="label-field mb-0">Mirror 3</span>
+                    <div className="flex items-center gap-2">
+                      <span draggable onDragStart={() => setDraggedMirrorIndex(2)} onDragEnd={() => { setDraggedMirrorIndex(null); setDragOverMirrorIndex(null); }} className="cursor-grab active:cursor-grabbing text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300" title="Przeciągnij, aby zmienić kolejność">
+                        <GripVertical className="w-4 h-4" />
+                      </span>
+                      <span className="label-field mb-0">Mirror 3</span>
+                    </div>
                     <div className="flex items-center gap-3">
                       {mirrorPromoteEligible(3) && <button type="button" onClick={() => handlePromoteMirror(3)} disabled={promotingSlot === 3} className="btn-link-violet text-xs disabled:opacity-50">{promotingSlot === 3 ? 'Zamienianie...' : 'Ustaw jako główne źródło'}</button>}
                       <button type="button" onClick={() => { setShowMirror3(false); setMirror3Name(''); setMirror3Url(''); setMirror3Type('link'); setMirror3VideoFile(null); setMirror3StreamVideoId(''); }} className="btn-link-red">Usuń</button>
@@ -888,9 +954,19 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 </button>
               )}
               {showMirror4 && (
-                <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
+                <div
+                  className={`p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border space-y-3 transition-colors ${dragOverMirrorIndex === 3 && draggedMirrorIndex !== null && draggedMirrorIndex !== 3 ? 'border-violet-500 ring-2 ring-violet-500/50' : 'border-zinc-200 dark:border-zinc-800'}`}
+                  onDragOver={e => { e.preventDefault(); setDragOverMirrorIndex(3); }}
+                  onDragLeave={() => setDragOverMirrorIndex(p => p === 3 ? null : p)}
+                  onDrop={e => { e.preventDefault(); if (draggedMirrorIndex !== null && draggedMirrorIndex !== 3) moveMirror(draggedMirrorIndex, 3); setDraggedMirrorIndex(null); setDragOverMirrorIndex(null); }}
+                >
                   <div className="flex items-center justify-between">
-                    <span className="label-field mb-0">Mirror 4</span>
+                    <div className="flex items-center gap-2">
+                      <span draggable onDragStart={() => setDraggedMirrorIndex(3)} onDragEnd={() => { setDraggedMirrorIndex(null); setDragOverMirrorIndex(null); }} className="cursor-grab active:cursor-grabbing text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300" title="Przeciągnij, aby zmienić kolejność">
+                        <GripVertical className="w-4 h-4" />
+                      </span>
+                      <span className="label-field mb-0">Mirror 4</span>
+                    </div>
                     <div className="flex items-center gap-3">
                       {mirrorPromoteEligible(4) && <button type="button" onClick={() => handlePromoteMirror(4)} disabled={promotingSlot === 4} className="btn-link-violet text-xs disabled:opacity-50">{promotingSlot === 4 ? 'Zamienianie...' : 'Ustaw jako główne źródło'}</button>}
                       <button type="button" onClick={() => { setShowMirror4(false); setMirror4Name(''); setMirror4Url(''); setMirror4Type('link'); setMirror4VideoFile(null); setMirror4StreamVideoId(''); }} className="btn-link-red">Usuń</button>
@@ -936,9 +1012,19 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 </button>
               )}
               {showMirror5 && (
-                <div className="p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-3">
+                <div
+                  className={`p-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border space-y-3 transition-colors ${dragOverMirrorIndex === 4 && draggedMirrorIndex !== null && draggedMirrorIndex !== 4 ? 'border-violet-500 ring-2 ring-violet-500/50' : 'border-zinc-200 dark:border-zinc-800'}`}
+                  onDragOver={e => { e.preventDefault(); setDragOverMirrorIndex(4); }}
+                  onDragLeave={() => setDragOverMirrorIndex(p => p === 4 ? null : p)}
+                  onDrop={e => { e.preventDefault(); if (draggedMirrorIndex !== null && draggedMirrorIndex !== 4) moveMirror(draggedMirrorIndex, 4); setDraggedMirrorIndex(null); setDragOverMirrorIndex(null); }}
+                >
                   <div className="flex items-center justify-between">
-                    <span className="label-field mb-0">Mirror 5</span>
+                    <div className="flex items-center gap-2">
+                      <span draggable onDragStart={() => setDraggedMirrorIndex(4)} onDragEnd={() => { setDraggedMirrorIndex(null); setDragOverMirrorIndex(null); }} className="cursor-grab active:cursor-grabbing text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300" title="Przeciągnij, aby zmienić kolejność">
+                        <GripVertical className="w-4 h-4" />
+                      </span>
+                      <span className="label-field mb-0">Mirror 5</span>
+                    </div>
                     <div className="flex items-center gap-3">
                       {mirrorPromoteEligible(5) && <button type="button" onClick={() => handlePromoteMirror(5)} disabled={promotingSlot === 5} className="btn-link-violet text-xs disabled:opacity-50">{promotingSlot === 5 ? 'Zamienianie...' : 'Ustaw jako główne źródło'}</button>}
                       <button type="button" onClick={() => { setShowMirror5(false); setMirror5Name(''); setMirror5Url(''); setMirror5Type('link'); setMirror5VideoFile(null); setMirror5StreamVideoId(''); }} className="btn-link-red">Usuń</button>

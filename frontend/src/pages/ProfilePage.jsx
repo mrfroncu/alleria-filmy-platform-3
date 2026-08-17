@@ -8,6 +8,7 @@ import { useConfirm } from '../contexts/ConfirmContext';
 import { useToast } from '../contexts/ToastContext';
 import { useUnsavedForm } from '../contexts/UnsavedChangesContext';
 import TsChallengeModal from '../components/TsChallengeModal';
+import AvatarCropModal from '../components/AvatarCropModal';
 
 export default function ProfilePage() {
   const { config: siteConfig } = useSettings();
@@ -21,6 +22,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [savingAvatarSource, setSavingAvatarSource] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarCropFile, setAvatarCropFile] = useState(null);
   const avatarFileRef = useRef(null);
   const [refreshingDiscord, setRefreshingDiscord] = useState(false);
   // Was an inline banner near the Discord-refresh button — now a floating toast, easier to
@@ -209,15 +211,24 @@ export default function ProfilePage() {
     setSavingAvatarSource(false);
   };
 
-  const handleAvatarUpload = async (file) => {
-    if (!file || uploadingAvatar) return;
+  // Selecting a file only opens the crop popup — the actual upload happens once the user
+  // confirms the crop (handleCropSave), never straight from the file input.
+  const handleAvatarFileSelected = (file) => { if (file) setAvatarCropFile(file); };
+
+  const handleCropCancel = () => {
+    setAvatarCropFile(null);
+    if (avatarFileRef.current) avatarFileRef.current.value = '';
+  };
+
+  const handleCropSave = async (blob) => {
     setUploadingAvatar(true);
     try {
       const fd = new FormData();
-      fd.append('avatar_file', file);
+      fd.append('avatar_file', blob, 'avatar.jpg');
       await api.uploadAvatar(fd);
       await load();
       toast.success('Avatar zaktualizowany.');
+      setAvatarCropFile(null);
     } catch (err) {
       toast.error('Błąd: ' + err.message);
     }
@@ -555,7 +566,7 @@ export default function ProfilePage() {
                         Zmień plik
                       </button>
                     )}
-                    <input ref={avatarFileRef} type="file" accept="image/*" className="hidden" onChange={e => handleAvatarUpload(e.target.files?.[0])} />
+                    <input ref={avatarFileRef} type="file" accept="image/*" className="hidden" onChange={e => handleAvatarFileSelected(e.target.files?.[0])} />
                   </>
                 )}
               </div>
@@ -959,6 +970,14 @@ export default function ProfilePage() {
         error={tsLinkError}
         multipleCandidates={tsLinkChallenge?.multipleCandidates}
         count={tsLinkChallenge?.count}
+      />
+
+      {/* Avatar crop popup — shown right after picking a file, before it's uploaded */}
+      <AvatarCropModal
+        file={avatarCropFile}
+        onCancel={handleCropCancel}
+        onSave={handleCropSave}
+        saving={uploadingAvatar}
       />
 
       {/* Merge confirmation — shown when the identity being linked already belongs to a
