@@ -12,6 +12,7 @@ const DEFAULT_CONFIG = {
   limitBio: 1000,
   limitComment: 3000,
   showTopBar: true,
+  allowCustomAvatars: false,
   customYoutubePlayer: false,
   gdprRegion: 'off',
 };

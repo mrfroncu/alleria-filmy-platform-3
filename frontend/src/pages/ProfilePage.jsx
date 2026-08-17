@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink, Download, Trash2, Clock, ShieldCheck, Mail, Bell, Monitor, Smartphone, LogOut } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink, Download, Trash2, Clock, ShieldCheck, Mail, Bell, Monitor, Smartphone, LogOut, Upload } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, parseTsError, urlBase64ToUint8Array } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
@@ -20,6 +20,8 @@ export default function ProfilePage() {
   const [editBio, setEditBio] = useState('');
   const [saving, setSaving] = useState(false);
   const [savingAvatarSource, setSavingAvatarSource] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarFileRef = useRef(null);
   const [refreshingDiscord, setRefreshingDiscord] = useState(false);
   // Was an inline banner near the Discord-refresh button — now a floating toast, easier to
   // notice regardless of scroll position. Success/error decided by the old "Błąd" prefix check.
@@ -205,6 +207,22 @@ export default function ProfilePage() {
       toast.error('Błąd: ' + err.message);
     }
     setSavingAvatarSource(false);
+  };
+
+  const handleAvatarUpload = async (file) => {
+    if (!file || uploadingAvatar) return;
+    setUploadingAvatar(true);
+    try {
+      const fd = new FormData();
+      fd.append('avatar_file', file);
+      await api.uploadAvatar(fd);
+      await load();
+      toast.success('Avatar zaktualizowany.');
+    } catch (err) {
+      toast.error('Błąd: ' + err.message);
+    }
+    setUploadingAvatar(false);
+    if (avatarFileRef.current) avatarFileRef.current.value = '';
   };
 
   const handleSaveEmail = async () => {
@@ -461,8 +479,9 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Avatar source (accounts with a linked Discord identity only) */}
-      {profile.has_discord && (
+      {/* Avatar source — Discord global/guild for linked-Discord accounts, plus a custom-upload
+          option for dev/admin (always) or members when the "Własne avatary" setting allows it. */}
+      {(profile.has_discord || profile.can_upload_avatar) && (
         <div className="card p-6 mb-6">
           <div className="flex items-start gap-4">
             <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl flex items-center justify-center shrink-0">
@@ -471,51 +490,81 @@ export default function ProfilePage() {
             <div className="flex-1">
               <div className="flex items-center justify-between gap-3 mb-1">
                 <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Źródło avatara</h3>
-                <button
-                  type="button"
-                  onClick={handleRefreshDiscord}
-                  disabled={refreshingDiscord}
-                  className="btn-link-violet inline-flex items-center gap-1.5 text-xs shrink-0 disabled:opacity-50"
-                  title="Pobierz aktualne avatary z Discorda (przydatne, jeśli od ostatniego logowania coś się zmieniło)"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${refreshingDiscord ? 'animate-spin' : ''}`} />
-                  {refreshingDiscord ? 'Odświeżanie...' : 'Odśwież dane z Discorda'}
-                </button>
+                {profile.has_discord && (
+                  <button
+                    type="button"
+                    onClick={handleRefreshDiscord}
+                    disabled={refreshingDiscord}
+                    className="btn-link-violet inline-flex items-center gap-1.5 text-xs shrink-0 disabled:opacity-50"
+                    title="Pobierz aktualne avatary z Discorda (przydatne, jeśli od ostatniego logowania coś się zmieniło)"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${refreshingDiscord ? 'animate-spin' : ''}`} />
+                    {refreshingDiscord ? 'Odświeżanie...' : 'Odśwież dane z Discorda'}
+                  </button>
+                )}
               </div>
               <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
-                Możesz wybrać źródło avatara, aby zmienić sam avatar musisz zrobić to na Discordzie.
+                {profile.has_discord ? 'Możesz wybrać źródło avatara, aby zmienić sam avatar Discord musisz zrobić to na Discordzie.' : 'Prześlij własny avatar.'}
               </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleAvatarSourceChange('global')}
-                  disabled={savingAvatarSource}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors disabled:opacity-50 ${
-                    (profile.avatar_source || 'global') !== 'guild'
-                      ? 'bg-violet-500 text-white'
-                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
-                  }`}
-                >
-                  <Globe className="w-3.5 h-3.5" /> Globalny (konto Discord)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleAvatarSourceChange('guild')}
-                  disabled={savingAvatarSource || !profile.has_guild_avatar}
-                  title={!profile.has_guild_avatar ? 'Brak avatara serwerowego - wymaga Discord Nitro i ustawionego avatara na tym serwerze.' : undefined}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                    profile.avatar_source === 'guild'
-                      ? 'bg-violet-500 text-white'
-                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
-                  }`}
-                >
-                  <Server className="w-3.5 h-3.5" /> Serwerowy (ten serwer)
-                </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {profile.has_discord && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleAvatarSourceChange('global')}
+                      disabled={savingAvatarSource}
+                      className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors disabled:opacity-50 ${
+                        (profile.avatar_source || 'global') === 'global'
+                          ? 'bg-violet-500 text-white'
+                          : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Globe className="w-3.5 h-3.5" /> Globalny (konto Discord)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAvatarSourceChange('guild')}
+                      disabled={savingAvatarSource || !profile.has_guild_avatar}
+                      title={!profile.has_guild_avatar ? 'Brak avatara serwerowego - wymaga Discord Nitro i ustawionego avatara na tym serwerze.' : undefined}
+                      className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                        profile.avatar_source === 'guild'
+                          ? 'bg-violet-500 text-white'
+                          : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Server className="w-3.5 h-3.5" /> Serwerowy (ten serwer)
+                    </button>
+                  </>
+                )}
+                {profile.can_upload_avatar && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => profile.has_custom_avatar ? handleAvatarSourceChange('custom') : avatarFileRef.current?.click()}
+                      disabled={savingAvatarSource || uploadingAvatar}
+                      className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors disabled:opacity-50 ${
+                        profile.avatar_source === 'custom'
+                          ? 'bg-violet-500 text-white'
+                          : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Upload className="w-3.5 h-3.5" /> {uploadingAvatar ? 'Przesyłanie...' : 'Własny (przesłany plik)'}
+                    </button>
+                    {profile.has_custom_avatar && (
+                      <button type="button" onClick={() => avatarFileRef.current?.click()} disabled={uploadingAvatar} className="btn-link-violet text-xs disabled:opacity-50">
+                        Zmień plik
+                      </button>
+                    )}
+                    <input ref={avatarFileRef} type="file" accept="image/*" className="hidden" onChange={e => handleAvatarUpload(e.target.files?.[0])} />
+                  </>
+                )}
               </div>
-              <p className="text-[11px] text-zinc-400 mt-3">
-                Avatar serwerowy (ustawiony osobno serwerze Discord społeczności) jest dostępny tylko dla użytkowników z Discord Nitro
-                {!profile.has_guild_avatar ? ' - obecnie nie masz ustawionego avatara serwerowego.' : '.'}
-              </p>
+              {profile.has_discord && (
+                <p className="text-[11px] text-zinc-400 mt-3">
+                  Avatar serwerowy (ustawiony osobno serwerze Discord społeczności) jest dostępny tylko dla użytkowników z Discord Nitro
+                  {!profile.has_guild_avatar ? ' - obecnie nie masz ustawionego avatara serwerowego.' : '.'}
+                </p>
+              )}
             </div>
           </div>
         </div>

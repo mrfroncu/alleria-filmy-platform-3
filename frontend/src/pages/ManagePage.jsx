@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { FolderOpen, Plus, Pencil, Trash2, Users, Shield, Lock, FileText, Settings, ShieldCheck, LayoutGrid, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail, Play, AlertTriangle, Flag, ExternalLink, Loader2 } from 'lucide-react';
+import { FolderOpen, Plus, Pencil, Trash2, Users, Shield, Lock, FileText, Settings, ShieldCheck, LayoutGrid, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail, Play, AlertTriangle, Flag, ExternalLink, Loader2, Image } from 'lucide-react';
 import { api } from '../utils/api';
 import { buildCategoryTreeOptions, formatDate } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
@@ -505,6 +505,19 @@ export default function ManagePage() {
       const r = await api.setSettings({ show_top_bar: !settings.show_top_bar });
       setSettingsState(s => ({ ...s, show_top_bar: r.show_top_bar }));
       setStatus({ type: 'success', msg: `Górny pasek: ${r.show_top_bar ? 'WŁĄCZONY' : 'WYŁĄCZONY'}` });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const toggleCustomAvatars = async () => {
+    if (!settings) return;
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ allow_custom_avatars: !settings.allow_custom_avatars });
+      setSettingsState(s => ({ ...s, allow_custom_avatars: r.allow_custom_avatars }));
+      setStatus({ type: 'success', msg: `Własne avatary: ${r.allow_custom_avatars ? 'WŁĄCZONE' : 'WYŁĄCZONE'}` });
     } catch (e) {
       setStatus({ type: 'error', msg: e.message });
     }
@@ -1774,6 +1787,27 @@ export default function ManagePage() {
                   onChange={toggleTopBar}
                   disabled={!settings || savingSettings}
                   label={settings == null ? 'Ładowanie...' : (settings.show_top_bar ? 'Górny pasek: WŁĄCZONY' : 'Górny pasek: WYŁĄCZONY')}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Custom avatars */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-lime-50 dark:bg-lime-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <Image className="w-6 h-6 text-lime-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Własne avatary</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Zezwól zwykłym userom (member) na przesyłanie własnego zdjęcia profilowego. Redaktorzy i devowie mogą zawsze.
+                </p>
+                <ToggleSwitch
+                  checked={!!settings?.allow_custom_avatars}
+                  onChange={toggleCustomAvatars}
+                  disabled={!settings || savingSettings}
+                  label={settings == null ? 'Ładowanie...' : (settings.allow_custom_avatars ? 'Własne avatary: WŁĄCZONE' : 'Własne avatary: WYŁĄCZONE')}
                 />
               </div>
             </div>

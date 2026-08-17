@@ -217,6 +217,7 @@ app.get('/api/config', requireAuth, (req, res) => {
     limitBio: s.limit_bio,
     limitComment: s.limit_comment,
     showTopBar: s.show_top_bar,
+    allowCustomAvatars: s.allow_custom_avatars,
     customYoutubePlayer: s.youtube_custom_player,
     gdprRegion: s.gdpr_region,
   });
@@ -573,7 +574,10 @@ async function discordCallbackHandler(req, res) {
     }
 
     const avatarSource = existing?.avatar_source || 'global';
-    const avatarUrl = (avatarSource === 'guild' && discordGuildAvatarHash)
+    // A custom-uploaded avatar must survive future Discord logins — don't let this rebuild clobber it.
+    const avatarUrl = avatarSource === 'custom'
+      ? existing.avatar
+      : (avatarSource === 'guild' && discordGuildAvatarHash)
       ? `https://cdn.discordapp.com/guilds/${process.env.DISCORD_GUILD_ID}/users/${discordUser.id}/avatars/${discordGuildAvatarHash}.png`
       : (discordAvatarHash
         ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordAvatarHash}.png`
@@ -1798,13 +1802,17 @@ app.post('/api/videos/:id/log-view', requireAuth, (req, res) => {
 app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res) => {
   try {
     const { title, author_id, main_source, main_source_type, main_source_title,
-      thumbnail, mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type,
-      mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type,
-      mirror3_name, mirror3_url, mirror3_type,
-      mirror4_name, mirror4_url, mirror4_type,
-      mirror5_name, mirror5_url, mirror5_type,
+      thumbnail, mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type, mirror1_is_alt,
+      mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type, mirror2_is_alt,
+      mirror3_name, mirror3_url, mirror3_type, mirror3_is_alt,
+      mirror4_name, mirror4_url, mirror4_type, mirror4_is_alt,
+      mirror5_name, mirror5_url, mirror5_type, mirror5_is_alt,
       description, publish_date, tags,
       stream_video_id, drm_enhanced, category_id } = req.body;
+
+    if (!stream_video_id && !(main_source && main_source.trim())) {
+      return res.status(400).json({ error: 'Musisz podać główne źródło (link lub przesłany plik).' });
+    }
 
     let thumbUrl = thumbnail || extractYoutubeThumbnail(main_source);
     let customThumb = 0;
@@ -1829,18 +1837,20 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
 
     const result = db.prepare(`
       INSERT INTO videos (title, author_id, main_source, main_source_type, main_source_title, thumbnail, custom_thumbnail,
-        mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type, mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type,
-        mirror3_name, mirror3_url, mirror3_type, mirror4_name, mirror4_url, mirror4_type,
-        mirror5_name, mirror5_url, mirror5_type,
+        mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type, mirror1_is_alt,
+        mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type, mirror2_is_alt,
+        mirror3_name, mirror3_url, mirror3_type, mirror3_is_alt,
+        mirror4_name, mirror4_url, mirror4_type, mirror4_is_alt,
+        mirror5_name, mirror5_url, mirror5_type, mirror5_is_alt,
         description, publish_date, stream_video_id, drm_enhanced, category_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(title, parseInt(author_id), main_source || '', main_source_type || 'youtube', main_source_title || '',
       thumbUrl, customThumb,
-      mirror1_name || null, mirror1_url || null, m1t === 'embed' ? 1 : 0, m1t,
-      mirror2_name || null, mirror2_url || null, m2t === 'embed' ? 1 : 0, m2t,
-      mirror3_name || null, mirror3_url || null, m3t,
-      mirror4_name || null, mirror4_url || null, m4t,
-      mirror5_name || null, mirror5_url || null, m5t,
+      mirror1_name || null, mirror1_url || null, m1t === 'embed' ? 1 : 0, m1t, mirror1_is_alt === 'true' || mirror1_is_alt === '1' ? 1 : 0,
+      mirror2_name || null, mirror2_url || null, m2t === 'embed' ? 1 : 0, m2t, mirror2_is_alt === 'true' || mirror2_is_alt === '1' ? 1 : 0,
+      mirror3_name || null, mirror3_url || null, m3t, mirror3_is_alt === 'true' || mirror3_is_alt === '1' ? 1 : 0,
+      mirror4_name || null, mirror4_url || null, m4t, mirror4_is_alt === 'true' || mirror4_is_alt === '1' ? 1 : 0,
+      mirror5_name || null, mirror5_url || null, m5t, mirror5_is_alt === 'true' || mirror5_is_alt === '1' ? 1 : 0,
       description || '', publish_date,
       stream_video_id || null, drm_enhanced === 'true' || drm_enhanced === '1' ? 1 : 0,
       category_id ? parseInt(category_id) : null);
@@ -1921,16 +1931,21 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
 app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, res) => {
   try {
     const { title, author_id, main_source, main_source_type, main_source_title,
-      thumbnail, mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type,
-      mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type,
-      mirror3_name, mirror3_url, mirror3_type,
-      mirror4_name, mirror4_url, mirror4_type,
-      mirror5_name, mirror5_url, mirror5_type,
+      thumbnail, mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type, mirror1_is_alt,
+      mirror2_name, mirror2_url, mirror2_is_embed, mirror2_type, mirror2_is_alt,
+      mirror3_name, mirror3_url, mirror3_type, mirror3_is_alt,
+      mirror4_name, mirror4_url, mirror4_type, mirror4_is_alt,
+      mirror5_name, mirror5_url, mirror5_type, mirror5_is_alt,
       description, publish_date, tags,
       category_id, stream_video_id, drm_enhanced, access_mode, allowed_users } = req.body;
 
     const existing = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Video not found' });
+
+    const effectiveStream = stream_video_id || existing.stream_video_id;
+    if (!effectiveStream && !(main_source && main_source.trim())) {
+      return res.status(400).json({ error: 'Musisz podać główne źródło (link lub przesłany plik).' });
+    }
 
     let thumbUrl = thumbnail || existing.thumbnail;
     let customThumb = existing.custom_thumbnail;
@@ -1951,20 +1966,20 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
 
     db.prepare(`
       UPDATE videos SET title=?, author_id=?, main_source=?, main_source_type=?, main_source_title=?, thumbnail=?, custom_thumbnail=?,
-        mirror1_name=?, mirror1_url=?, mirror1_is_embed=?, mirror1_type=?,
-        mirror2_name=?, mirror2_url=?, mirror2_is_embed=?, mirror2_type=?,
-        mirror3_name=?, mirror3_url=?, mirror3_type=?,
-        mirror4_name=?, mirror4_url=?, mirror4_type=?,
-        mirror5_name=?, mirror5_url=?, mirror5_type=?,
+        mirror1_name=?, mirror1_url=?, mirror1_is_embed=?, mirror1_type=?, mirror1_is_alt=?,
+        mirror2_name=?, mirror2_url=?, mirror2_is_embed=?, mirror2_type=?, mirror2_is_alt=?,
+        mirror3_name=?, mirror3_url=?, mirror3_type=?, mirror3_is_alt=?,
+        mirror4_name=?, mirror4_url=?, mirror4_type=?, mirror4_is_alt=?,
+        mirror5_name=?, mirror5_url=?, mirror5_type=?, mirror5_is_alt=?,
         description=?, publish_date=?, category_id=?, stream_video_id=?, drm_enhanced=?, access_mode=?,
         updated_at=datetime('now') WHERE id=?
     `).run(title, parseInt(author_id), main_source, main_source_type || 'youtube', main_source_title || '',
       thumbUrl, customThumb,
-      mirror1_name || null, mirror1_url || null, m1type === 'embed' ? 1 : 0, m1type,
-      mirror2_name || null, mirror2_url || null, m2type === 'embed' ? 1 : 0, m2type,
-      mirror3_name || null, mirror3_url || null, m3type,
-      mirror4_name || null, mirror4_url || null, m4type,
-      mirror5_name || null, mirror5_url || null, m5type,
+      mirror1_name || null, mirror1_url || null, m1type === 'embed' ? 1 : 0, m1type, mirror1_is_alt === 'true' || mirror1_is_alt === '1' ? 1 : 0,
+      mirror2_name || null, mirror2_url || null, m2type === 'embed' ? 1 : 0, m2type, mirror2_is_alt === 'true' || mirror2_is_alt === '1' ? 1 : 0,
+      mirror3_name || null, mirror3_url || null, m3type, mirror3_is_alt === 'true' || mirror3_is_alt === '1' ? 1 : 0,
+      mirror4_name || null, mirror4_url || null, m4type, mirror4_is_alt === 'true' || mirror4_is_alt === '1' ? 1 : 0,
+      mirror5_name || null, mirror5_url || null, m5type, mirror5_is_alt === 'true' || mirror5_is_alt === '1' ? 1 : 0,
       description || '', publish_date,
       category_id ? parseInt(category_id) : null,
       stream_video_id || existing.stream_video_id || null,
@@ -2942,15 +2957,18 @@ app.get('/api/stats', requireAuth, (req, res) => {
 
 // ============ PROFILE API ============
 app.get('/api/profile', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, username, display_name, avatar, role, bio, auth_method, avatar_source, discord_id, discord_email, ts3_uid, ts6_uid, discord_guild_avatar_hash, email, email_notifications, created_at, last_login FROM users WHERE id = ?').get(req.session.user.id);
+  const user = db.prepare('SELECT id, username, display_name, avatar, role, bio, auth_method, avatar_source, discord_id, discord_email, ts3_uid, ts6_uid, discord_guild_avatar_hash, custom_avatar, email, email_notifications, created_at, last_login FROM users WHERE id = ?').get(req.session.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   const videoCount = db.prepare('SELECT COUNT(*) AS c FROM videos WHERE author_id = ?').get(user.id).c;
   const viewCount = db.prepare('SELECT COUNT(*) AS c FROM watch_logs WHERE user_id = ?').get(user.id).c;
   const favCount = db.prepare('SELECT COUNT(*) AS c FROM favorites WHERE user_id = ?').get(user.id).c;
-  const { discord_guild_avatar_hash, discord_id, discord_email, ts3_uid, ts6_uid, email_notifications, ...userFields } = user;
+  const { discord_guild_avatar_hash, discord_id, discord_email, ts3_uid, ts6_uid, email_notifications, custom_avatar, ...userFields } = user;
+  const isDevOrAdmin = user.role === 'admin' || user.role === 'dev';
   res.json({
     ...userFields,
     has_guild_avatar: !!discord_guild_avatar_hash,
+    has_custom_avatar: !!custom_avatar,
+    can_upload_avatar: isDevOrAdmin || getSetting('allow_custom_avatars', '0') === '1',
     has_discord: !!discord_id,
     has_teamspeak3: !!ts3_uid,
     has_teamspeak6: !!ts6_uid,
@@ -2988,27 +3006,53 @@ app.put('/api/profile', requireAuth, (req, res) => {
       db.prepare('UPDATE users SET email_notifications = ? WHERE id = ?').run(email_notifications ? 1 : 0, req.session.user.id);
     }
     if (avatar_source !== undefined) {
-      if (!['global', 'guild'].includes(avatar_source)) {
+      if (!['global', 'guild', 'custom'].includes(avatar_source)) {
         return res.status(400).json({ error: 'Nieprawidłowa wartość avatar_source.' });
       }
-      const u = db.prepare('SELECT discord_id, discord_avatar_hash, discord_guild_avatar_hash, auth_method FROM users WHERE id = ?').get(req.session.user.id);
-      if (!u.discord_id) {
-        return res.status(400).json({ error: 'Źródło avatara dostępne tylko dla kont z połączonym Discordem.' });
+      const u = db.prepare('SELECT discord_id, discord_avatar_hash, discord_guild_avatar_hash, custom_avatar FROM users WHERE id = ?').get(req.session.user.id);
+      if (avatar_source === 'custom') {
+        if (!u.custom_avatar) return res.status(400).json({ error: 'Prześlij najpierw własny avatar.' });
+        db.prepare('UPDATE users SET avatar_source = ?, avatar = ? WHERE id = ?').run('custom', u.custom_avatar, req.session.user.id);
+        req.session.user.avatar = u.custom_avatar;
+      } else {
+        if (!u.discord_id) {
+          return res.status(400).json({ error: 'Źródło avatara dostępne tylko dla kont z połączonym Discordem.' });
+        }
+        if (avatar_source === 'guild' && !u.discord_guild_avatar_hash) {
+          return res.status(400).json({ error: 'Brak avatara serwerowego — ta funkcja wymaga Discord Nitro oraz ustawionego avatara na tym serwerze.' });
+        }
+        const newAvatarUrl = avatar_source === 'guild'
+          ? `https://cdn.discordapp.com/guilds/${process.env.DISCORD_GUILD_ID}/users/${u.discord_id}/avatars/${u.discord_guild_avatar_hash}.png`
+          : (u.discord_avatar_hash
+            ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.discord_avatar_hash}.png`
+            : `https://cdn.discordapp.com/embed/avatars/0.png`);
+        db.prepare('UPDATE users SET avatar_source = ?, avatar = ? WHERE id = ?').run(avatar_source, newAvatarUrl, req.session.user.id);
+        req.session.user.avatar = newAvatarUrl;
       }
-      if (avatar_source === 'guild' && !u.discord_guild_avatar_hash) {
-        return res.status(400).json({ error: 'Brak avatara serwerowego — ta funkcja wymaga Discord Nitro oraz ustawionego avatara na tym serwerze.' });
-      }
-      const newAvatarUrl = avatar_source === 'guild'
-        ? `https://cdn.discordapp.com/guilds/${process.env.DISCORD_GUILD_ID}/users/${u.discord_id}/avatars/${u.discord_guild_avatar_hash}.png`
-        : (u.discord_avatar_hash
-          ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.discord_avatar_hash}.png`
-          : `https://cdn.discordapp.com/embed/avatars/0.png`);
-      db.prepare('UPDATE users SET avatar_source = ?, avatar = ? WHERE id = ?').run(avatar_source, newAvatarUrl, req.session.user.id);
-      req.session.user.avatar = newAvatarUrl;
     }
     req.session.save(() => {});
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Custom avatar upload — dev/admin can always use this; ordinary members only when the
+// allow_custom_avatars setting is on (see ManagePage "Własne avatary" toggle).
+app.post('/api/profile/avatar', requireAuth, upload.single('avatar_file'), (req, res) => {
+  try {
+    const role = req.session.user.role;
+    const isDevOrAdmin = role === 'admin' || role === 'dev';
+    const allowMembers = getSetting('allow_custom_avatars', '0') === '1';
+    if (!isDevOrAdmin && !allowMembers) {
+      return res.status(403).json({ error: 'Własne avatary są obecnie wyłączone dla zwykłych użytkowników.' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'Brak pliku.' });
+    const url = `/api/uploads/${req.file.filename}`;
+    db.prepare('UPDATE users SET custom_avatar = ?, avatar_source = ?, avatar = ? WHERE id = ?').run(url, 'custom', url, req.session.user.id);
+    req.session.user.avatar = url;
+    req.session.save(() => {});
+    audit(req.session.user.id, 'edit', 'user', req.session.user.id, 'przesłano własny avatar');
+    res.json({ success: true, avatar: url });
+  } catch (err) { res.status(500).json({ error: 'Nie udało się przesłać avatara.' }); }
 });
 
 // ============ ACTIVE SESSIONS / DEVICES ============
@@ -3079,16 +3123,23 @@ app.post('/api/profile/refresh-discord', requireAuth, async (req, res) => {
     const discordAvatarHash = member.user?.avatar || null;
     const discordGuildAvatarHash = member.avatar || null;
     const avatarSource = u.avatar_source || 'global';
-    const avatarUrl = (avatarSource === 'guild' && discordGuildAvatarHash)
-      ? `https://cdn.discordapp.com/guilds/${process.env.DISCORD_GUILD_ID}/users/${u.discord_id}/avatars/${discordGuildAvatarHash}.png`
-      : (discordAvatarHash
-        ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${discordAvatarHash}.png`
-        : `https://cdn.discordapp.com/embed/avatars/0.png`);
-    db.prepare('UPDATE users SET discord_avatar_hash = ?, discord_guild_avatar_hash = ?, avatar = ? WHERE id = ?')
-      .run(discordAvatarHash, discordGuildAvatarHash, avatarUrl, req.session.user.id);
-    req.session.user.avatar = avatarUrl;
+    // A custom-uploaded avatar isn't Discord-derived — refresh the hashes (so switching back to
+    // global/guild later has fresh data) but leave the displayed `avatar` column untouched.
+    if (avatarSource === 'custom') {
+      db.prepare('UPDATE users SET discord_avatar_hash = ?, discord_guild_avatar_hash = ? WHERE id = ?')
+        .run(discordAvatarHash, discordGuildAvatarHash, req.session.user.id);
+    } else {
+      const avatarUrl = (avatarSource === 'guild' && discordGuildAvatarHash)
+        ? `https://cdn.discordapp.com/guilds/${process.env.DISCORD_GUILD_ID}/users/${u.discord_id}/avatars/${discordGuildAvatarHash}.png`
+        : (discordAvatarHash
+          ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${discordAvatarHash}.png`
+          : `https://cdn.discordapp.com/embed/avatars/0.png`);
+      db.prepare('UPDATE users SET discord_avatar_hash = ?, discord_guild_avatar_hash = ?, avatar = ? WHERE id = ?')
+        .run(discordAvatarHash, discordGuildAvatarHash, avatarUrl, req.session.user.id);
+      req.session.user.avatar = avatarUrl;
+    }
     req.session.save(() => {});
-    res.json({ success: true, has_guild_avatar: !!discordGuildAvatarHash, avatar: avatarUrl });
+    res.json({ success: true, has_guild_avatar: !!discordGuildAvatarHash, avatar: req.session.user.avatar });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -3149,12 +3200,15 @@ app.post('/api/profile/unlink', requireAuth, (req, res) => {
 
   try {
     if (method === 'discord') {
-      // Avatar only ever comes from Discord in this codebase (TS-only accounts have avatar =
-      // NULL and the frontend falls back to a generated one) — clear it along with the identity.
+      // Avatar comes from Discord or a custom upload in this codebase (TS-only accounts with no
+      // custom upload have avatar = NULL and the frontend falls back to a generated one) — clear
+      // it along with the identity, unless it's a custom upload, which is independent of Discord
+      // and shouldn't be lost just because the Discord identity was unlinked.
+      const wasCustom = user.avatar_source === 'custom';
       db.prepare(`UPDATE users SET discord_id = NULL, discord_roles = '[]', discord_avatar_hash = NULL,
-                  discord_guild_avatar_hash = NULL, discord_email = NULL, avatar_source = 'global', avatar = NULL WHERE id = ?`).run(user.id);
+                  discord_guild_avatar_hash = NULL, discord_email = NULL${wasCustom ? '' : `, avatar_source = 'global', avatar = NULL`} WHERE id = ?`).run(user.id);
       req.session.user.discord_id = null;
-      req.session.user.avatar = null;
+      if (!wasCustom) req.session.user.avatar = null;
     } else {
       const uidCol = method === 'teamspeak3' ? 'ts3_uid' : 'ts6_uid';
       const ipCol = method === 'teamspeak3' ? 'ts3_ip' : 'ts6_ip';
@@ -3192,7 +3246,7 @@ function anonymizeUser(userId) {
   const u = db.prepare('SELECT username, display_name FROM users WHERE id = ?').get(userId);
   if (!u) return;
   db.prepare(`UPDATE users SET
-    username = ?, display_name = 'Usunięty użytkownik', bio = '', avatar = NULL, avatar_source = 'global',
+    username = ?, display_name = 'Usunięty użytkownik', bio = '', avatar = NULL, avatar_source = 'global', custom_avatar = NULL,
     discord_id = NULL, discord_roles = '[]', discord_avatar_hash = NULL, discord_guild_avatar_hash = NULL, discord_email = NULL,
     email = NULL, email_notifications = 0,
     ts3_uid = NULL, ts3_ip = NULL, ts6_uid = NULL, ts6_ip = NULL, role = 'member',
@@ -3503,6 +3557,7 @@ function settingsPayload() {
     iframe_embed_enabled: getSetting('iframe_embed_enabled', '0') === '1',
     iframe_allowed_origins: getSetting('iframe_allowed_origins', '').split(',').map(o => o.trim()).filter(Boolean),
     show_top_bar: getSetting('show_top_bar', '1') === '1',
+    allow_custom_avatars: getSetting('allow_custom_avatars', '0') === '1',
     youtube_custom_player: getSetting('youtube_custom_player', '0') === '1',
     gdpr_region: getSetting('gdpr_region', 'off'),
 
@@ -3659,6 +3714,12 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
     setSetting('show_top_bar', req.body.show_top_bar ? '1' : '0');
     audit(req.session.user.id, 'edit', 'settings', null,
       `show_top_bar → ${req.body.show_top_bar ? 'ON' : 'OFF'}`);
+  }
+  // Whether ordinary members can upload a custom avatar (admin/dev can always upload one)
+  if (req.body.allow_custom_avatars !== undefined) {
+    setSetting('allow_custom_avatars', req.body.allow_custom_avatars ? '1' : '0');
+    audit(req.session.user.id, 'edit', 'settings', null,
+      `allow_custom_avatars → ${req.body.allow_custom_avatars ? 'ON' : 'OFF'}`);
   }
   // Custom-chrome YouTube player overlay vs. plain YouTube embed
   if (req.body.youtube_custom_player !== undefined) {

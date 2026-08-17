@@ -46,26 +46,31 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const [mirror1Type, setMirror1Type] = useState('link');
   const [mirror1VideoFile, setMirror1VideoFile] = useState(null);
   const [mirror1StreamVideoId, setMirror1StreamVideoId] = useState('');
+  const [mirror1IsAlt, setMirror1IsAlt] = useState(false);
   const [mirror2Name, setMirror2Name] = useState('');
   const [mirror2Url, setMirror2Url] = useState('');
   const [mirror2Type, setMirror2Type] = useState('link');
   const [mirror2VideoFile, setMirror2VideoFile] = useState(null);
   const [mirror2StreamVideoId, setMirror2StreamVideoId] = useState('');
+  const [mirror2IsAlt, setMirror2IsAlt] = useState(false);
   const [mirror3Name, setMirror3Name] = useState('');
   const [mirror3Url, setMirror3Url] = useState('');
   const [mirror3Type, setMirror3Type] = useState('link');
   const [mirror3VideoFile, setMirror3VideoFile] = useState(null);
   const [mirror3StreamVideoId, setMirror3StreamVideoId] = useState('');
+  const [mirror3IsAlt, setMirror3IsAlt] = useState(false);
   const [mirror4Name, setMirror4Name] = useState('');
   const [mirror4Url, setMirror4Url] = useState('');
   const [mirror4Type, setMirror4Type] = useState('link');
   const [mirror4VideoFile, setMirror4VideoFile] = useState(null);
   const [mirror4StreamVideoId, setMirror4StreamVideoId] = useState('');
+  const [mirror4IsAlt, setMirror4IsAlt] = useState(false);
   const [mirror5Name, setMirror5Name] = useState('');
   const [mirror5Url, setMirror5Url] = useState('');
   const [mirror5Type, setMirror5Type] = useState('link');
   const [mirror5VideoFile, setMirror5VideoFile] = useState(null);
   const [mirror5StreamVideoId, setMirror5StreamVideoId] = useState('');
+  const [mirror5IsAlt, setMirror5IsAlt] = useState(false);
   const [description, setDescription] = useState('');
   const [publishDate, setPublishDate] = useState(new Date().toISOString());
   const [selectedTags, setSelectedTags] = useState([]);
@@ -113,18 +118,23 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
         setMirror1Name(video.mirror1_name || '');
         setMirror1Url(video.mirror1_url || '');
         setMirror1Type(video.mirror1_type || (video.mirror1_is_embed ? 'embed' : 'link'));
+        setMirror1IsAlt(!!video.mirror1_is_alt);
         setMirror2Name(video.mirror2_name || '');
         setMirror2Url(video.mirror2_url || '');
         setMirror2Type(video.mirror2_type || (video.mirror2_is_embed ? 'embed' : 'link'));
+        setMirror2IsAlt(!!video.mirror2_is_alt);
         setMirror3Name(video.mirror3_name || '');
         setMirror3Url(video.mirror3_url || '');
         setMirror3Type(video.mirror3_type || 'link');
+        setMirror3IsAlt(!!video.mirror3_is_alt);
         setMirror4Name(video.mirror4_name || '');
         setMirror4Url(video.mirror4_url || '');
         setMirror4Type(video.mirror4_type || 'link');
+        setMirror4IsAlt(!!video.mirror4_is_alt);
         setMirror5Name(video.mirror5_name || '');
         setMirror5Url(video.mirror5_url || '');
         setMirror5Type(video.mirror5_type || 'link');
+        setMirror5IsAlt(!!video.mirror5_is_alt);
         setDescription(video.description || '');
         setPublishDate(video.publish_date || new Date().toISOString());
         setSelectedTags(video.tags || []);
@@ -160,11 +170,11 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     categoryId: video ? String(video.category_id || '') : (defaultCategoryId ? String(defaultCategoryId) : ''),
     mainSource: video?.main_source || '',
     mainSourceTitle: video?.main_source_title || '',
-    mirror1: { name: video?.mirror1_name || '', url: video?.mirror1_url || '', type: video?.mirror1_type || (video?.mirror1_is_embed ? 'embed' : 'link') },
-    mirror2: { name: video?.mirror2_name || '', url: video?.mirror2_url || '', type: video?.mirror2_type || (video?.mirror2_is_embed ? 'embed' : 'link') },
-    mirror3: { name: video?.mirror3_name || '', url: video?.mirror3_url || '', type: video?.mirror3_type || 'link' },
-    mirror4: { name: video?.mirror4_name || '', url: video?.mirror4_url || '', type: video?.mirror4_type || 'link' },
-    mirror5: { name: video?.mirror5_name || '', url: video?.mirror5_url || '', type: video?.mirror5_type || 'link' },
+    mirror1: { name: video?.mirror1_name || '', url: video?.mirror1_url || '', type: video?.mirror1_type || (video?.mirror1_is_embed ? 'embed' : 'link'), isAlt: !!video?.mirror1_is_alt },
+    mirror2: { name: video?.mirror2_name || '', url: video?.mirror2_url || '', type: video?.mirror2_type || (video?.mirror2_is_embed ? 'embed' : 'link'), isAlt: !!video?.mirror2_is_alt },
+    mirror3: { name: video?.mirror3_name || '', url: video?.mirror3_url || '', type: video?.mirror3_type || 'link', isAlt: !!video?.mirror3_is_alt },
+    mirror4: { name: video?.mirror4_name || '', url: video?.mirror4_url || '', type: video?.mirror4_type || 'link', isAlt: !!video?.mirror4_is_alt },
+    mirror5: { name: video?.mirror5_name || '', url: video?.mirror5_url || '', type: video?.mirror5_type || 'link', isAlt: !!video?.mirror5_is_alt },
     description: video?.description || '',
     tags: (video?.tags || []).map(t => t.id ?? t.name).slice().sort(),
     isSelfHosted: !!video?.stream_video_id,
@@ -177,11 +187,11 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const currentShape = {
     title, authorId, categoryId,
     mainSource, mainSourceTitle,
-    mirror1: { name: mirror1Name, url: mirror1Url, type: mirror1Type },
-    mirror2: { name: mirror2Name, url: mirror2Url, type: mirror2Type },
-    mirror3: { name: mirror3Name, url: mirror3Url, type: mirror3Type },
-    mirror4: { name: mirror4Name, url: mirror4Url, type: mirror4Type },
-    mirror5: { name: mirror5Name, url: mirror5Url, type: mirror5Type },
+    mirror1: { name: mirror1Name, url: mirror1Url, type: mirror1Type, isAlt: mirror1IsAlt },
+    mirror2: { name: mirror2Name, url: mirror2Url, type: mirror2Type, isAlt: mirror2IsAlt },
+    mirror3: { name: mirror3Name, url: mirror3Url, type: mirror3Type, isAlt: mirror3IsAlt },
+    mirror4: { name: mirror4Name, url: mirror4Url, type: mirror4Type, isAlt: mirror4IsAlt },
+    mirror5: { name: mirror5Name, url: mirror5Url, type: mirror5Type, isAlt: mirror5IsAlt },
     description,
     tags: selectedTags.map(t => t.id ?? t.name).slice().sort(),
     isSelfHosted, drmEnhanced, accessMode,
@@ -209,11 +219,11 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const resetForm = () => {
     setTitle(''); setAuthorId(currentUser ? String(currentUser.id) : ''); setMainSource(''); setMainSourceTitle('');
     setThumbnail(''); setThumbnailFile(null); setThumbnailPreview('');
-    setMirror1Name(''); setMirror1Url(''); setMirror1Type('link'); setMirror1VideoFile(null); setMirror1StreamVideoId('');
-    setMirror2Name(''); setMirror2Url(''); setMirror2Type('link'); setMirror2VideoFile(null); setMirror2StreamVideoId('');
-    setMirror3Name(''); setMirror3Url(''); setMirror3Type('link'); setMirror3VideoFile(null); setMirror3StreamVideoId('');
-    setMirror4Name(''); setMirror4Url(''); setMirror4Type('link'); setMirror4VideoFile(null); setMirror4StreamVideoId('');
-    setMirror5Name(''); setMirror5Url(''); setMirror5Type('link'); setMirror5VideoFile(null); setMirror5StreamVideoId('');
+    setMirror1Name(''); setMirror1Url(''); setMirror1Type('link'); setMirror1VideoFile(null); setMirror1StreamVideoId(''); setMirror1IsAlt(false);
+    setMirror2Name(''); setMirror2Url(''); setMirror2Type('link'); setMirror2VideoFile(null); setMirror2StreamVideoId(''); setMirror2IsAlt(false);
+    setMirror3Name(''); setMirror3Url(''); setMirror3Type('link'); setMirror3VideoFile(null); setMirror3StreamVideoId(''); setMirror3IsAlt(false);
+    setMirror4Name(''); setMirror4Url(''); setMirror4Type('link'); setMirror4VideoFile(null); setMirror4StreamVideoId(''); setMirror4IsAlt(false);
+    setMirror5Name(''); setMirror5Url(''); setMirror5Type('link'); setMirror5VideoFile(null); setMirror5StreamVideoId(''); setMirror5IsAlt(false);
     setDescription(''); setPublishDate(new Date().toISOString());
     setSelectedTags([]); setTagInput(''); setShowMirror1(false); setShowMirror2(false); setShowMirror3(false); setShowMirror4(false); setShowMirror5(false);
     setIsSelfHosted(false); setVideoFile(null); setDrmEnhanced(false); setUploadProgress(''); setUploadPercent(0); setChunkPercent(0); setStreamVideoId(''); setCategoryId(defaultCategoryId ? String(defaultCategoryId) : ''); setAccessMode('category'); setAllowedUsers([]);
@@ -323,7 +333,8 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title.trim() || !authorId) return;
-    if (!isSelfHosted && !mainSource.trim()) return;
+    if (!isSelfHosted && !mainSource.trim()) { toast.error('Podaj link do głównego źródła.'); return; }
+    if (isSelfHosted && !videoFile && !streamVideoId) { toast.error('Wybierz plik wideo do przesłania.'); return; }
     setSubmitting(true);
     try {
       let finalStreamId = streamVideoId;
@@ -447,11 +458,11 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
 
       if (thumbnailFile) formData.append('thumbnail_file', thumbnailFile);
       else if (thumbnail) formData.append('thumbnail', thumbnail);
-      if (showMirror1) { formData.append('mirror1_name', mirror1Name); formData.append('mirror1_url', finalMirror1Url); formData.append('mirror1_type', mirror1Type); }
-      if (showMirror2) { formData.append('mirror2_name', mirror2Name); formData.append('mirror2_url', finalMirror2Url); formData.append('mirror2_type', mirror2Type); }
-      if (showMirror3) { formData.append('mirror3_name', mirror3Name); formData.append('mirror3_url', finalMirror3Url); formData.append('mirror3_type', mirror3Type); }
-      if (showMirror4) { formData.append('mirror4_name', mirror4Name); formData.append('mirror4_url', finalMirror4Url); formData.append('mirror4_type', mirror4Type); }
-      if (showMirror5) { formData.append('mirror5_name', mirror5Name); formData.append('mirror5_url', finalMirror5Url); formData.append('mirror5_type', mirror5Type); }
+      if (showMirror1) { formData.append('mirror1_name', mirror1Name); formData.append('mirror1_url', finalMirror1Url); formData.append('mirror1_type', mirror1Type); formData.append('mirror1_is_alt', mirror1IsAlt ? 'true' : 'false'); }
+      if (showMirror2) { formData.append('mirror2_name', mirror2Name); formData.append('mirror2_url', finalMirror2Url); formData.append('mirror2_type', mirror2Type); formData.append('mirror2_is_alt', mirror2IsAlt ? 'true' : 'false'); }
+      if (showMirror3) { formData.append('mirror3_name', mirror3Name); formData.append('mirror3_url', finalMirror3Url); formData.append('mirror3_type', mirror3Type); formData.append('mirror3_is_alt', mirror3IsAlt ? 'true' : 'false'); }
+      if (showMirror4) { formData.append('mirror4_name', mirror4Name); formData.append('mirror4_url', finalMirror4Url); formData.append('mirror4_type', mirror4Type); formData.append('mirror4_is_alt', mirror4IsAlt ? 'true' : 'false'); }
+      if (showMirror5) { formData.append('mirror5_name', mirror5Name); formData.append('mirror5_url', finalMirror5Url); formData.append('mirror5_type', mirror5Type); formData.append('mirror5_is_alt', mirror5IsAlt ? 'true' : 'false'); }
 
       if (isEdit) await api.updateVideo(video.id, formData);
       else await api.createVideo(formData);
@@ -501,7 +512,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   return (
     <div className="modal-overlay">
       <div className="modal-backdrop" onClick={guardedClose} />
-      <div className="modal-content max-w-2xl" style={{ animation: 'slideUp 0.3s ease-out' }}>
+      <div className="modal-content max-w-2xl lg:max-w-5xl" style={{ animation: 'slideUp 0.3s ease-out' }}>
         <div className="p-8 sm:p-10">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display">
@@ -513,6 +524,8 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-6 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-x-8 lg:items-start">
+            <div className="space-y-6">
             <div>
               <label className="label-field">Tytuł</label>
               <input type="text" value={title} onChange={e => setTitle(e.target.value)} className="input-field" placeholder="Nazwa filmu" required />
@@ -537,6 +550,62 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
               </div>
             )}
 
+            <div>
+              <label className="label-field">Miniatura (opcjonalnie)</label>
+              <div className="flex gap-3">
+                <input type="text" value={thumbnail} onChange={e => { setThumbnail(e.target.value); setThumbnailFile(null); if (e.target.value) setThumbnailPreview(e.target.value); }} className="input-field flex-1" placeholder="URL miniatury lub wybierz plik" />
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="px-5 py-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
+                  <Upload className="w-5 h-5 text-zinc-500" />
+                </button>
+                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+              </div>
+              {thumbnailFile ? (
+                <div className="mt-3 relative w-48 aspect-video rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700">
+                  <img src={thumbnailPreview} alt="Preview" className="w-full h-full object-cover" />
+                </div>
+              ) : thumbnail ? (
+                <div className="mt-3 relative w-48 aspect-video rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700">
+                  <img src={thumbnail} alt="Preview" className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <SmartThumbnail ytId={ytId} alt={title} />
+              )}
+            </div>
+
+            {/* Date picker */}
+            <DateTimePicker label="Data publikacji" value={publishDate} onChange={setPublishDate} />
+
+            <div>
+              <label className="label-field">Tagi</label>
+              <div className="input-field flex flex-wrap gap-2 min-h-[56px] !p-3 cursor-text" onClick={() => tagInputRef.current?.focus()}>
+                {selectedTags.map((tag, idx) => (
+                  <span key={idx} className="inline-flex items-center gap-1 px-3 py-1.5 bg-violet-500 text-white rounded-xl text-xs font-bold animate-fade-in">
+                    {tag.name}
+                    <button type="button" onClick={(e) => { e.stopPropagation(); removeTag(idx); }} className="hover:bg-white/20 rounded p-0.5 transition-colors">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                <input ref={tagInputRef} type="text" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={handleTagKeyDown} className="flex-1 min-w-[120px] bg-transparent outline-none text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-600" placeholder={selectedTags.length === 0 ? "Wpisz tag i naciśnij Enter..." : ""} />
+              </div>
+              {tagSuggestions.length > 0 && (
+                <div className="mt-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-lg max-h-40 overflow-y-auto">
+                  {tagSuggestions.map(tag => (
+                    <button key={tag.id} type="button" onClick={() => addTag(tag)} className="w-full text-left px-4 py-2.5 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors first:rounded-t-2xl last:rounded-b-2xl">
+                      {tag.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="label-field">Opis</label>
+              <textarea value={description} onChange={e => setDescription(e.target.value)} className="input-field resize-none h-32" placeholder="Opis filmu..." />
+            </div>
+            </div>
+
+            <div className="space-y-6">
             {/* Access mode */}
             <div>
               <label className="label-field">Uprawnienia dostępu</label>
@@ -658,39 +727,6 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                     <p className="text-[10px] text-zinc-500 mt-0.5">Blokada nagrywania ekranu, watermark z nazwą użytkownika, blokada devtools</p>
                   </div>
                 </label>
-
-                {uploadProgress && (
-                  <div className="space-y-3 p-4 bg-violet-50/50 dark:bg-violet-500/5 rounded-xl border border-violet-100 dark:border-violet-500/10">
-                    <div className="flex items-center gap-2 text-sm text-violet-600 dark:text-violet-300 font-medium">
-                      {uploadPercent < 100 && <div className="w-4 h-4 border-2 border-violet-500 border-t-transparent rounded-full animate-spin shrink-0" />}
-                      {uploadPercent >= 100 && <svg className="w-4 h-4 text-emerald-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>}
-                      <span className="flex-1">{uploadProgress}</span>
-                      <span className="text-xs font-mono text-violet-500">{uploadPercent}%</span>
-                    </div>
-                    {/* Overall progress */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Całość</span>
-                        <span className="text-[10px] font-mono text-zinc-500">{uploadPercent}%</span>
-                      </div>
-                      <div className="h-2.5 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-violet-500 to-violet-500 rounded-full transition-all duration-300 ease-out" style={{ width: `${uploadPercent}%` }} />
-                      </div>
-                    </div>
-                    {/* Per-chunk progress */}
-                    {chunkPercent > 0 && uploadPercent < 95 && (
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Bieżąca część</span>
-                          <span className="text-[10px] font-mono text-zinc-500">{chunkPercent}%</span>
-                        </div>
-                        <div className="h-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-500 rounded-full transition-all duration-150 ease-out" style={{ width: `${chunkPercent}%` }} />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             )}
 
@@ -700,28 +736,6 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 <input type="text" value={mainSourceTitle} onChange={e => setMainSourceTitle(e.target.value)} className="input-field" placeholder="np. YouTube" maxLength={80} />
               </div>
             )}
-
-            <div>
-              <label className="label-field">Miniatura (opcjonalnie)</label>
-              <div className="flex gap-3">
-                <input type="text" value={thumbnail} onChange={e => { setThumbnail(e.target.value); setThumbnailFile(null); if (e.target.value) setThumbnailPreview(e.target.value); }} className="input-field flex-1" placeholder="URL miniatury lub wybierz plik" />
-                <button type="button" onClick={() => fileInputRef.current?.click()} className="px-5 py-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
-                  <Upload className="w-5 h-5 text-zinc-500" />
-                </button>
-                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
-              </div>
-              {thumbnailFile ? (
-                <div className="mt-3 relative w-48 aspect-video rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700">
-                  <img src={thumbnailPreview} alt="Preview" className="w-full h-full object-cover" />
-                </div>
-              ) : thumbnail ? (
-                <div className="mt-3 relative w-48 aspect-video rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700">
-                  <img src={thumbnail} alt="Preview" className="w-full h-full object-cover" />
-                </div>
-              ) : (
-                <SmartThumbnail ytId={ytId} alt={title} />
-              )}
-            </div>
 
             <div className="space-y-4">
               {!showMirror1 && (
@@ -744,6 +758,10 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                       <button key={o.v} type="button" onClick={() => { setMirror1Type(o.v); setMirror1VideoFile(null); setMirror1StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror1Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
                     ))}
                   </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={mirror1IsAlt} onChange={e => setMirror1IsAlt(e.target.checked)} className="w-3.5 h-3.5 rounded border-zinc-300 text-lime-600 focus:ring-lime-500" />
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Alternatywna wersja (np. inny montaż, zza kulis)</span>
+                  </label>
                   {mirror1Type === 'streamer' ? (
                     mirror1StreamVideoId ? (
                       <div className="flex items-center gap-2 p-3 bg-emerald-100 dark:bg-emerald-500/10 rounded-xl">
@@ -751,7 +769,12 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                         <span className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">Wideo przesłane: <code className="text-xs font-mono">{mirror1StreamVideoId}</code></span>
                       </div>
                     ) : (
-                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror1VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror1VideoRef.current?.click()}>
+                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror1VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`}
+                        onClick={() => mirror1VideoRef.current?.click()}
+                        onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); }}
+                        onDragLeave={e => { e.preventDefault(); e.currentTarget.classList.remove('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); }}
+                        onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); const file = e.dataTransfer.files?.[0]; if (file && file.type.startsWith('video/')) setMirror1VideoFile(file); }}
+                      >
                         <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
                         {mirror1VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror1VideoFile.name} ({(mirror1VideoFile.size/1024/1024).toFixed(1)} MB)</p>
                           : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> - max 20 GB</p>}
@@ -783,6 +806,10 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                       <button key={o.v} type="button" onClick={() => { setMirror2Type(o.v); setMirror2VideoFile(null); setMirror2StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror2Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
                     ))}
                   </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={mirror2IsAlt} onChange={e => setMirror2IsAlt(e.target.checked)} className="w-3.5 h-3.5 rounded border-zinc-300 text-lime-600 focus:ring-lime-500" />
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Alternatywna wersja (np. inny montaż, zza kulis)</span>
+                  </label>
                   {mirror2Type === 'streamer' ? (
                     mirror2StreamVideoId ? (
                       <div className="flex items-center gap-2 p-3 bg-emerald-100 dark:bg-emerald-500/10 rounded-xl">
@@ -790,7 +817,12 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                         <span className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">Wideo przesłane: <code className="text-xs font-mono">{mirror2StreamVideoId}</code></span>
                       </div>
                     ) : (
-                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror2VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror2VideoRef.current?.click()}>
+                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror2VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`}
+                        onClick={() => mirror2VideoRef.current?.click()}
+                        onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); }}
+                        onDragLeave={e => { e.preventDefault(); e.currentTarget.classList.remove('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); }}
+                        onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); const file = e.dataTransfer.files?.[0]; if (file && file.type.startsWith('video/')) setMirror2VideoFile(file); }}
+                      >
                         <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
                         {mirror2VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror2VideoFile.name} ({(mirror2VideoFile.size/1024/1024).toFixed(1)} MB)</p>
                           : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> - max 20 GB</p>}
@@ -822,6 +854,10 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                       <button key={o.v} type="button" onClick={() => { setMirror3Type(o.v); setMirror3VideoFile(null); setMirror3StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror3Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
                     ))}
                   </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={mirror3IsAlt} onChange={e => setMirror3IsAlt(e.target.checked)} className="w-3.5 h-3.5 rounded border-zinc-300 text-lime-600 focus:ring-lime-500" />
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Alternatywna wersja (np. inny montaż, zza kulis)</span>
+                  </label>
                   {mirror3Type === 'streamer' ? (
                     mirror3StreamVideoId ? (
                       <div className="flex items-center gap-2 p-3 bg-emerald-100 dark:bg-emerald-500/10 rounded-xl">
@@ -829,7 +865,12 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                         <span className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">Wideo przesłane: <code className="text-xs font-mono">{mirror3StreamVideoId}</code></span>
                       </div>
                     ) : (
-                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror3VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror3VideoRef.current?.click()}>
+                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror3VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`}
+                        onClick={() => mirror3VideoRef.current?.click()}
+                        onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); }}
+                        onDragLeave={e => { e.preventDefault(); e.currentTarget.classList.remove('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); }}
+                        onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); const file = e.dataTransfer.files?.[0]; if (file && file.type.startsWith('video/')) setMirror3VideoFile(file); }}
+                      >
                         <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
                         {mirror3VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror3VideoFile.name} ({(mirror3VideoFile.size/1024/1024).toFixed(1)} MB)</p>
                           : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> - max 20 GB</p>}
@@ -861,6 +902,10 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                       <button key={o.v} type="button" onClick={() => { setMirror4Type(o.v); setMirror4VideoFile(null); setMirror4StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror4Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
                     ))}
                   </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={mirror4IsAlt} onChange={e => setMirror4IsAlt(e.target.checked)} className="w-3.5 h-3.5 rounded border-zinc-300 text-lime-600 focus:ring-lime-500" />
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Alternatywna wersja (np. inny montaż, zza kulis)</span>
+                  </label>
                   {mirror4Type === 'streamer' ? (
                     mirror4StreamVideoId ? (
                       <div className="flex items-center gap-2 p-3 bg-emerald-100 dark:bg-emerald-500/10 rounded-xl">
@@ -868,7 +913,12 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                         <span className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">Wideo przesłane: <code className="text-xs font-mono">{mirror4StreamVideoId}</code></span>
                       </div>
                     ) : (
-                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror4VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror4VideoRef.current?.click()}>
+                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror4VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`}
+                        onClick={() => mirror4VideoRef.current?.click()}
+                        onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); }}
+                        onDragLeave={e => { e.preventDefault(); e.currentTarget.classList.remove('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); }}
+                        onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); const file = e.dataTransfer.files?.[0]; if (file && file.type.startsWith('video/')) setMirror4VideoFile(file); }}
+                      >
                         <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
                         {mirror4VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror4VideoFile.name} ({(mirror4VideoFile.size/1024/1024).toFixed(1)} MB)</p>
                           : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> - max 20 GB</p>}
@@ -900,6 +950,10 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                       <button key={o.v} type="button" onClick={() => { setMirror5Type(o.v); setMirror5VideoFile(null); setMirror5StreamVideoId(''); }} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror5Type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
                     ))}
                   </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={mirror5IsAlt} onChange={e => setMirror5IsAlt(e.target.checked)} className="w-3.5 h-3.5 rounded border-zinc-300 text-lime-600 focus:ring-lime-500" />
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Alternatywna wersja (np. inny montaż, zza kulis)</span>
+                  </label>
                   {mirror5Type === 'streamer' ? (
                     mirror5StreamVideoId ? (
                       <div className="flex items-center gap-2 p-3 bg-emerald-100 dark:bg-emerald-500/10 rounded-xl">
@@ -907,7 +961,12 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                         <span className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">Wideo przesłane: <code className="text-xs font-mono">{mirror5StreamVideoId}</code></span>
                       </div>
                     ) : (
-                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror5VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`} onClick={() => mirror5VideoRef.current?.click()}>
+                      <div className={`relative border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror5VideoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`}
+                        onClick={() => mirror5VideoRef.current?.click()}
+                        onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); }}
+                        onDragLeave={e => { e.preventDefault(); e.currentTarget.classList.remove('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); }}
+                        onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('border-violet-500', 'bg-violet-50/50', 'dark:bg-violet-500/10'); const file = e.dataTransfer.files?.[0]; if (file && file.type.startsWith('video/')) setMirror5VideoFile(file); }}
+                      >
                         <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
                         {mirror5VideoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror5VideoFile.name} ({(mirror5VideoFile.size/1024/1024).toFixed(1)} MB)</p>
                           : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> - max 20 GB</p>}
@@ -920,40 +979,10 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 </div>
               )}
             </div>
-
-            {/* Date picker */}
-            <DateTimePicker label="Data publikacji" value={publishDate} onChange={setPublishDate} />
-
-            <div>
-              <label className="label-field">Tagi</label>
-              <div className="input-field flex flex-wrap gap-2 min-h-[56px] !p-3 cursor-text" onClick={() => tagInputRef.current?.focus()}>
-                {selectedTags.map((tag, idx) => (
-                  <span key={idx} className="inline-flex items-center gap-1 px-3 py-1.5 bg-violet-500 text-white rounded-xl text-xs font-bold animate-fade-in">
-                    {tag.name}
-                    <button type="button" onClick={(e) => { e.stopPropagation(); removeTag(idx); }} className="hover:bg-white/20 rounded p-0.5 transition-colors">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-                <input ref={tagInputRef} type="text" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={handleTagKeyDown} className="flex-1 min-w-[120px] bg-transparent outline-none text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-600" placeholder={selectedTags.length === 0 ? "Wpisz tag i naciśnij Enter..." : ""} />
-              </div>
-              {tagSuggestions.length > 0 && (
-                <div className="mt-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-lg max-h-40 overflow-y-auto">
-                  {tagSuggestions.map(tag => (
-                    <button key={tag.id} type="button" onClick={() => addTag(tag)} className="w-full text-left px-4 py-2.5 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors first:rounded-t-2xl last:rounded-b-2xl">
-                      {tag.name}
-                    </button>
-                  ))}
-                </div>
-              )}
+            </div>
             </div>
 
-            <div>
-              <label className="label-field">Opis</label>
-              <textarea value={description} onChange={e => setDescription(e.target.value)} className="input-field resize-none h-32" placeholder="Opis filmu..." />
-            </div>
-
-            {!isSelfHosted && uploadProgress && (
+            {uploadProgress && (
               <div className="space-y-3 p-4 bg-violet-50/50 dark:bg-violet-500/5 rounded-xl border border-violet-100 dark:border-violet-500/10">
                 <div className="flex items-center gap-2 text-sm text-violet-600 dark:text-violet-300 font-medium">
                   {uploadPercent < 100 && <div className="w-4 h-4 border-2 border-violet-500 border-t-transparent rounded-full animate-spin shrink-0" />}

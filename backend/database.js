@@ -439,6 +439,17 @@ function initDB() {
   try { db.exec(`ALTER TABLE videos DROP COLUMN is_short`); } catch (e) {}
   try { db.exec(`ALTER TABLE categories ADD COLUMN is_shorts_category INTEGER DEFAULT 0`); } catch (e) {}
 
+  // Marks a mirror as an "alternative version" of the movie (e.g. different cut, behind the
+  // scenes) — purely a display flag, the viewer renders these tabs in a distinct color.
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror1_is_alt INTEGER DEFAULT 0`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror2_is_alt INTEGER DEFAULT 0`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror3_is_alt INTEGER DEFAULT 0`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror4_is_alt INTEGER DEFAULT 0`); } catch (e) {}
+  try { db.exec(`ALTER TABLE videos ADD COLUMN mirror5_is_alt INTEGER DEFAULT 0`); } catch (e) {}
+
+  // Custom uploaded avatar — an alternative to the Discord global/guild avatar_source values.
+  try { db.exec(`ALTER TABLE users ADD COLUMN custom_avatar TEXT`); } catch (e) {}
+
   return db;
 }
 

@@ -911,11 +911,11 @@ export default function VideoPage() {
   const embedUrl = (isHtml || isPlex || isStreamer) ? null : youtubeToEmbed(src.url);
   const sources = [
     { key: 'main', label: video.main_source_title || 'Główne źródło' },
-    ...(video.mirror1_url ? [{ key: 'mirror1', label: video.mirror1_name || 'Mirror 1' }] : []),
-    ...(video.mirror2_url ? [{ key: 'mirror2', label: video.mirror2_name || 'Mirror 2' }] : []),
-    ...(video.mirror3_url ? [{ key: 'mirror3', label: video.mirror3_name || 'Mirror 3' }] : []),
-    ...(video.mirror4_url ? [{ key: 'mirror4', label: video.mirror4_name || 'Mirror 4' }] : []),
-    ...(video.mirror5_url ? [{ key: 'mirror5', label: video.mirror5_name || 'Mirror 5' }] : []),
+    ...(video.mirror1_url ? [{ key: 'mirror1', label: video.mirror1_name || 'Mirror 1', isAlt: !!video.mirror1_is_alt }] : []),
+    ...(video.mirror2_url ? [{ key: 'mirror2', label: video.mirror2_name || 'Mirror 2', isAlt: !!video.mirror2_is_alt }] : []),
+    ...(video.mirror3_url ? [{ key: 'mirror3', label: video.mirror3_name || 'Mirror 3', isAlt: !!video.mirror3_is_alt }] : []),
+    ...(video.mirror4_url ? [{ key: 'mirror4', label: video.mirror4_name || 'Mirror 4', isAlt: !!video.mirror4_is_alt }] : []),
+    ...(video.mirror5_url ? [{ key: 'mirror5', label: video.mirror5_name || 'Mirror 5', isAlt: !!video.mirror5_is_alt }] : []),
   ];
   // Passed to SecurePlayer so a broken source's own error state offers a one-click way out
   // instead of only the tab row further down the page.
@@ -1013,7 +1013,7 @@ export default function VideoPage() {
 
         {sources.length > 1 && (
           <div className="flex gap-2 mb-6 anim-stagger-3">
-            {sources.map(s => <button key={s.key} onClick={() => setActiveSource(s.key)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeSource === s.key ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}>{s.label}</button>)}
+            {sources.map(s => <button key={s.key} onClick={() => setActiveSource(s.key)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeSource === s.key ? (s.isAlt ? 'bg-lime-500 text-white shadow-lg shadow-lime-500/30' : 'bg-violet-500 text-white shadow-lg shadow-violet-500/30') : (s.isAlt ? 'bg-lime-50 dark:bg-lime-500/10 text-lime-700 dark:text-lime-400 hover:bg-lime-100 dark:hover:bg-lime-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700')}`}>{s.label}</button>)}
           </div>
         )}
 

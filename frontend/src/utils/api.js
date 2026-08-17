@@ -196,6 +196,7 @@ export const api = {
     body: JSON.stringify(data),
   }),
   refreshDiscordAvatar: () => request('/profile/refresh-discord', { method: 'POST' }),
+  uploadAvatar: (formData) => request('/profile/avatar', { method: 'POST', body: formData }),
 
   // Active sessions / devices
   getSessions: () => request('/profile/sessions'),
