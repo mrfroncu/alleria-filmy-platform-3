@@ -66,9 +66,6 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const [mirror5Type, setMirror5Type] = useState('link');
   const [mirror5VideoFile, setMirror5VideoFile] = useState(null);
   const [mirror5StreamVideoId, setMirror5StreamVideoId] = useState('');
-  // Extra named versions of the movie (e.g. "Zza kulis"), each with its own mirror list — separate
-  // from the mirror1-5 slots above, which represent the implicit "Główna" version.
-  const [versions, setVersions] = useState([]);
   const [description, setDescription] = useState('');
   const [publishDate, setPublishDate] = useState(new Date().toISOString());
   const [selectedTags, setSelectedTags] = useState([]);
@@ -128,13 +125,6 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
         setMirror5Name(video.mirror5_name || '');
         setMirror5Url(video.mirror5_url || '');
         setMirror5Type(video.mirror5_type || 'link');
-        setVersions((video.versions || []).map(v => ({
-          name: v.name || '',
-          mirrors: (v.mirrors || []).map(m => ({
-            name: m.name || '', url: m.url || '', type: m.type || 'link',
-            videoFile: null, streamVideoId: m.type === 'streamer' ? (m.url || '').replace('self-hosted:', '') : '',
-          })),
-        })));
         setDescription(video.description || '');
         setPublishDate(video.publish_date || new Date().toISOString());
         setSelectedTags(video.tags || []);
@@ -175,7 +165,6 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     mirror3: { name: video?.mirror3_name || '', url: video?.mirror3_url || '', type: video?.mirror3_type || 'link' },
     mirror4: { name: video?.mirror4_name || '', url: video?.mirror4_url || '', type: video?.mirror4_type || 'link' },
     mirror5: { name: video?.mirror5_name || '', url: video?.mirror5_url || '', type: video?.mirror5_type || 'link' },
-    versions: (video?.versions || []).map(v => ({ name: v.name || '', mirrors: (v.mirrors || []).map(m => ({ name: m.name || '', url: m.url || '', type: m.type || 'link' })) })),
     description: video?.description || '',
     tags: (video?.tags || []).map(t => t.id ?? t.name).slice().sort(),
     isSelfHosted: !!video?.stream_video_id,
@@ -193,7 +182,6 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     mirror3: { name: mirror3Name, url: mirror3Url, type: mirror3Type },
     mirror4: { name: mirror4Name, url: mirror4Url, type: mirror4Type },
     mirror5: { name: mirror5Name, url: mirror5Url, type: mirror5Type },
-    versions: versions.map(v => ({ name: v.name, mirrors: v.mirrors.map(m => ({ name: m.name, url: m.url, type: m.type })) })),
     description,
     tags: selectedTags.map(t => t.id ?? t.name).slice().sort(),
     isSelfHosted, drmEnhanced, accessMode,
@@ -226,20 +214,10 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     setMirror3Name(''); setMirror3Url(''); setMirror3Type('link'); setMirror3VideoFile(null); setMirror3StreamVideoId('');
     setMirror4Name(''); setMirror4Url(''); setMirror4Type('link'); setMirror4VideoFile(null); setMirror4StreamVideoId('');
     setMirror5Name(''); setMirror5Url(''); setMirror5Type('link'); setMirror5VideoFile(null); setMirror5StreamVideoId('');
-    setVersions([]);
     setDescription(''); setPublishDate(new Date().toISOString());
     setSelectedTags([]); setTagInput(''); setShowMirror1(false); setShowMirror2(false); setShowMirror3(false); setShowMirror4(false); setShowMirror5(false);
     setIsSelfHosted(false); setVideoFile(null); setDrmEnhanced(false); setUploadProgress(''); setUploadPercent(0); setChunkPercent(0); setStreamVideoId(''); setCategoryId(defaultCategoryId ? String(defaultCategoryId) : ''); setAccessMode('category'); setAllowedUsers([]);
   };
-
-  // Extra movie versions (e.g. "Zza kulis") — plain immutable array updates, no ids needed since
-  // the whole list is replaced wholesale on save (same convention as tags).
-  const addVersion = () => setVersions(v => [...v, { name: '', mirrors: [] }]);
-  const removeVersion = (vi) => setVersions(v => v.filter((_, i) => i !== vi));
-  const updateVersionName = (vi, name) => setVersions(v => v.map((ver, i) => i === vi ? { ...ver, name } : ver));
-  const addMirrorToVersion = (vi) => setVersions(v => v.map((ver, i) => i === vi ? { ...ver, mirrors: [...ver.mirrors, { name: '', url: '', type: 'link', videoFile: null, streamVideoId: '' }] } : ver));
-  const updateVersionMirror = (vi, mi, patch) => setVersions(v => v.map((ver, i) => i === vi ? { ...ver, mirrors: ver.mirrors.map((m, j) => j === mi ? { ...m, ...patch } : m) } : ver));
-  const removeVersionMirror = (vi, mi) => setVersions(v => v.map((ver, i) => i === vi ? { ...ver, mirrors: ver.mirrors.filter((_, j) => j !== mi) } : ver));
 
   useEffect(() => {
     if (tagInput.length > 0) {
@@ -451,26 +429,6 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
         }
       }
 
-      // Step 1c: Upload streamer-type mirrors inside extra versions, then flatten to plain objects
-      const finalVersions = [];
-      for (let vi = 0; vi < versions.length; vi++) {
-        const ver = versions[vi];
-        if (!ver.name.trim()) continue;
-        const finalMirrors = [];
-        for (let mi = 0; mi < ver.mirrors.length; mi++) {
-          const m = ver.mirrors[mi];
-          let url = m.url;
-          let streamId = m.streamVideoId;
-          if (m.type === 'streamer' && m.videoFile && !streamId) {
-            streamId = await uploadVideoFile(m.videoFile, `${ver.name} — ${m.name || 'mirror'}`);
-            url = `self-hosted:${streamId}`;
-            updateVersionMirror(vi, mi, { streamVideoId: streamId, url });
-          }
-          if (url?.trim()) finalMirrors.push({ name: m.name, url, type: m.type });
-        }
-        finalVersions.push({ name: ver.name.trim(), mirrors: finalMirrors });
-      }
-
       // Step 2: Save video record
       const formData = new FormData();
       formData.append('title', title.trim());
@@ -481,7 +439,6 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
       formData.append('description', description);
       formData.append('publish_date', publishDate);
       formData.append('tags', JSON.stringify(selectedTags));
-      formData.append('versions', JSON.stringify(finalVersions));
       formData.append('stream_video_id', finalStreamId || '');
       formData.append('drm_enhanced', drmEnhanced ? 'true' : 'false');
       formData.append('category_id', categoryId || '');
@@ -538,41 +495,6 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
       setPromotingSlot(null);
     }
   };
-
-  // Field block for one mirror inside an extra version — mirrors the mirror1-5 blocks' fields
-  // (name, type toggle, URL or upload dropzone), but generic over (versionIndex, mirrorIndex)
-  // instead of copy-pasted per slot, since this list is dynamic.
-  const renderVersionMirrorFields = (mirror, vi, mi) => (
-    <div className="p-4 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">Mirror {mi + 1}</span>
-        <button type="button" onClick={() => removeVersionMirror(vi, mi)} className="btn-link-red text-xs">Usuń</button>
-      </div>
-      <input type="text" value={mirror.name} onChange={e => updateVersionMirror(vi, mi, { name: e.target.value })} className="input-field" placeholder="Nazwa (np. CDA, Mega, Plex)" maxLength={80} />
-      <div className="flex flex-wrap gap-2">
-        {[{v:'link',l:'Link/YouTube'},{v:'embed',l:'Kod HTML'},{v:'plex',l:'Plex'},{v:'streamer',l:'Upload'}].map(o => (
-          <button key={o.v} type="button" onClick={() => updateVersionMirror(vi, mi, { type: o.v, videoFile: null, streamVideoId: '' })} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${mirror.type === o.v ? 'bg-violet-500 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'}`}>{o.l}</button>
-        ))}
-      </div>
-      {mirror.type === 'streamer' ? (
-        mirror.streamVideoId ? (
-          <div className="flex items-center gap-2 p-3 bg-emerald-100 dark:bg-emerald-500/10 rounded-xl">
-            <svg className="w-4 h-4 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
-            <span className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">Wideo przesłane: <code className="text-xs font-mono">{mirror.streamVideoId}</code></span>
-          </div>
-        ) : (
-          <label className={`relative flex flex-col items-center border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${mirror.videoFile ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/5' : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'}`}>
-            <Upload className="w-6 h-6 mx-auto mb-1 text-zinc-400" />
-            {mirror.videoFile ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 truncate">{mirror.videoFile.name} ({(mirror.videoFile.size/1024/1024).toFixed(1)} MB)</p>
-              : <p className="text-sm text-zinc-500">Przeciągnij plik lub <span className="text-violet-500 font-bold">kliknij</span> - max 20 GB</p>}
-            <input type="file" accept="video/*" onChange={e => updateVersionMirror(vi, mi, { videoFile: e.target.files?.[0] || null })} className="hidden" />
-          </label>
-        )
-      ) : (
-        <input type="text" value={mirror.url} onChange={e => updateVersionMirror(vi, mi, { url: e.target.value })} className="input-field" placeholder={mirror.type === 'plex' ? 'Link do filmu w Plex (app.plex.tv/...)' : mirror.type === 'embed' ? 'Kod HTML embed' : 'URL filmu'} />
-      )}
-    </div>
-  );
 
   if (!isOpen) return null;
 
@@ -997,32 +919,6 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                   )}
                 </div>
               )}
-            </div>
-
-            {/* Extra movie versions (e.g. "Zza kulis") — each with its own mirror list, separate
-                from the mirror1-5 slots above which represent the main version of the movie. */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <label className="label-field mb-0">Dodatkowe wersje filmu</label>
-                <span className="text-xs text-zinc-400 text-right">np. „Zza kulis", „Wersja reżyserska"</span>
-              </div>
-              {versions.map((ver, vi) => (
-                <div key={vi} className="p-5 bg-violet-50/50 dark:bg-violet-500/5 rounded-2xl border border-violet-200 dark:border-violet-500/20 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <input type="text" value={ver.name} onChange={e => updateVersionName(vi, e.target.value)} className="input-field flex-1" placeholder="Nazwa wersji, np. Zza kulis" maxLength={80} />
-                    <button type="button" onClick={() => removeVersion(vi)} className="btn-link-red text-xs shrink-0">Usuń wersję</button>
-                  </div>
-                  <div className="space-y-3 pl-3 border-l-2 border-violet-200 dark:border-violet-500/20">
-                    {ver.mirrors.map((m, mi) => <React.Fragment key={mi}>{renderVersionMirrorFields(m, vi, mi)}</React.Fragment>)}
-                    <button type="button" onClick={() => addMirrorToVersion(vi)} className="btn-link-violet flex items-center gap-2 text-sm">
-                      <Plus className="w-4 h-4" /> Dodaj mirror
-                    </button>
-                  </div>
-                </div>
-              ))}
-              <button type="button" onClick={addVersion} className="btn-link-violet flex items-center gap-2 text-sm">
-                <Plus className="w-4 h-4" /> Dodaj wersję filmu
-              </button>
             </div>
 
             {/* Date picker */}

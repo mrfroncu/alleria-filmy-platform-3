@@ -1758,15 +1758,10 @@ app.get('/api/videos/:id', requireAuth, (req, res) => {
       SELECT t.* FROM tags t JOIN video_tags vt ON t.id = vt.tag_id WHERE vt.video_id = ?
     `).all(req.params.id);
 
-    // Extra named versions of the movie (e.g. "Zza kulis"), each with its own mirror list — the
-    // implicit "Główna" version stays represented by main_source/mirror1-5 above, untouched.
-    const versions = db.prepare('SELECT * FROM video_versions WHERE video_id = ? ORDER BY sort_order, id').all(video.id)
-      .map(v => ({ ...v, mirrors: db.prepare('SELECT * FROM video_version_mirrors WHERE version_id = ? ORDER BY sort_order, id').all(v.id) }));
-
     // Log watch
     db.prepare('INSERT INTO watch_logs (user_id, video_id) VALUES (?, ?)').run(user.id, video.id);
 
-    res.json({ ...video, tags, versions });
+    res.json({ ...video, tags });
   } catch (err) {
     console.error('Error fetching video:', err);
     res.status(500).json({ error: 'Failed to fetch video' });
@@ -1800,28 +1795,6 @@ app.post('/api/videos/:id/log-view', requireAuth, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Wholesale replace of a video's extra versions + their mirrors — same replace-all convention as
-// tags (DELETE then reinsert every save). `versionsJson` may be undefined (leave existing versions
-// untouched, e.g. a caller unaware of the field) or a JSON array string (including '[]' to clear).
-// Returns the number of versions saved, for the audit-log diff.
-function saveVideoVersions(videoId, versionsJson) {
-  if (typeof versionsJson === 'undefined') return null;
-  db.prepare('DELETE FROM video_versions WHERE video_id = ?').run(videoId); // cascades to mirrors
-  const versionList = versionsJson ? JSON.parse(versionsJson) : [];
-  const insVer = db.prepare('INSERT INTO video_versions (video_id, name, sort_order) VALUES (?, ?, ?)');
-  const insMirror = db.prepare('INSERT INTO video_version_mirrors (version_id, name, url, type, sort_order) VALUES (?, ?, ?, ?, ?)');
-  let saved = 0;
-  versionList.forEach((ver, vi) => {
-    if (!ver.name?.trim()) return;
-    const verId = insVer.run(videoId, ver.name.trim(), vi).lastInsertRowid;
-    saved++;
-    (ver.mirrors || []).forEach((m, mi) => {
-      if (m.url?.trim()) insMirror.run(verId, m.name || null, m.url.trim(), m.type || 'link', mi);
-    });
-  });
-  return saved;
-}
-
 app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res) => {
   try {
     const { title, author_id, main_source, main_source_type, main_source_title,
@@ -1830,7 +1803,7 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
       mirror3_name, mirror3_url, mirror3_type,
       mirror4_name, mirror4_url, mirror4_type,
       mirror5_name, mirror5_url, mirror5_type,
-      description, publish_date, tags, versions,
+      description, publish_date, tags,
       stream_video_id, drm_enhanced, category_id } = req.body;
 
     let thumbUrl = thumbnail || extractYoutubeThumbnail(main_source);
@@ -1873,8 +1846,6 @@ app.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res
       category_id ? parseInt(category_id) : null);
 
     const videoId = result.lastInsertRowid;
-
-    saveVideoVersions(videoId, versions);
 
     audit(req.session.user.id, "create", "video", videoId, title);
     // Mark self-hosted videos as transcoding
@@ -1955,13 +1926,11 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
       mirror3_name, mirror3_url, mirror3_type,
       mirror4_name, mirror4_url, mirror4_type,
       mirror5_name, mirror5_url, mirror5_type,
-      description, publish_date, tags, versions,
+      description, publish_date, tags,
       category_id, stream_video_id, drm_enhanced, access_mode, allowed_users } = req.body;
 
     const existing = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Video not found' });
-
-    const existingVersionCount = db.prepare('SELECT COUNT(*) c FROM video_versions WHERE video_id = ?').get(req.params.id).c;
 
     let thumbUrl = thumbnail || existing.thumbnail;
     let customThumb = existing.custom_thumbnail;
@@ -2013,8 +1982,6 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
       db.prepare('DELETE FROM video_access WHERE video_id = ?').run(req.params.id);
     }
 
-    const newVersionCount = saveVideoVersions(parseInt(req.params.id), versions);
-
     // Update tags
     db.prepare('DELETE FROM video_tags WHERE video_id = ?').run(req.params.id);
     if (tags) {
@@ -2056,7 +2023,6 @@ app.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, 
     if ((mirror5_name||'') !== (existing.mirror5_name||'')) changes.push(`mirror5 nazwa: "${existing.mirror5_name||''}" → "${mirror5_name||''}"`);
     if (category_id && parseInt(category_id) !== existing.category_id) { const oldC = existing.category_id ? db.prepare('SELECT name FROM categories WHERE id=?').get(existing.category_id)?.name : 'brak'; const newC = db.prepare('SELECT name FROM categories WHERE id=?').get(parseInt(category_id))?.name || '?'; changes.push(`kategoria: "${oldC}" → "${newC}"`); }
     if (thumbUrl !== existing.thumbnail) changes.push(`miniatura zmieniona`);
-    if (newVersionCount !== null && newVersionCount !== existingVersionCount) changes.push(`dodatkowe wersje: ${existingVersionCount} → ${newVersionCount}`);
     audit(req.session.user.id, "edit", "video", parseInt(req.params.id), changes.length ? changes.join('; ') : `edycja filmu "${title}"`);
     res.json({ success: true });
   } catch (err) {
@@ -4466,19 +4432,6 @@ function buildStreamDbMap() {
       if (url) { const m = url.match(/^self-hosted:(.+)$/); if (m) map.set(m[1], { id: v.id, title: v.title }); }
     }
   }
-  // Self-hosted mirrors inside extra movie versions (video_version_mirrors) — without this they'd
-  // look orphaned to the streaming server even though a video still references them.
-  const extraRows = db.prepare(`
-    SELECT vv.video_id AS id, v.title, vvm.url
-    FROM video_version_mirrors vvm
-    JOIN video_versions vv ON vv.id = vvm.version_id
-    JOIN videos v ON v.id = vv.video_id
-    WHERE vvm.url LIKE 'self-hosted:%'
-  `).all();
-  for (const r of extraRows) {
-    const m = r.url.match(/^self-hosted:(.+)$/);
-    if (m) map.set(m[1], { id: r.id, title: r.title });
-  }
   return map;
 }
 
@@ -4557,18 +4510,6 @@ app.get('/api/stream/transcoding', requireAdmin, async (req, res) => {
       const check = (url) => { if (url) { const m = url.match(/^self-hosted:(.+)$/); if (m) dbMap.set(m[1], { id: v.id, title: v.title }); } };
       if (v.stream_video_id) dbMap.set(v.stream_video_id, { id: v.id, title: v.title });
       [v.mirror1_url, v.mirror2_url, v.mirror3_url, v.mirror4_url, v.mirror5_url].forEach(check);
-    }
-    // Self-hosted mirrors inside extra movie versions — same cross-reference as above, extended.
-    const extraRows = db.prepare(`
-      SELECT vv.video_id AS id, v.title, vvm.url
-      FROM video_version_mirrors vvm
-      JOIN video_versions vv ON vv.id = vvm.version_id
-      JOIN videos v ON v.id = vv.video_id
-      WHERE vvm.url LIKE 'self-hosted:%'
-    `).all();
-    for (const r of extraRows) {
-      const m = r.url.match(/^self-hosted:(.+)$/);
-      if (m && ids.includes(m[1])) dbMap.set(m[1], { id: r.id, title: r.title });
     }
     res.json(jobs.map(j => ({ ...j, db_video: dbMap.get(j.video_id) || null })));
   } catch (e) { res.status(500).json({ error: e.message }); }

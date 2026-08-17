@@ -64,26 +64,6 @@ function initDB() {
       FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
     );
 
-    -- Extra named versions of a movie (e.g. "Zza kulis") beyond the implicit "Główna" version,
-    -- which stays represented by main_source/mirror1-5 on videos itself — see video_version_mirrors.
-    CREATE TABLE IF NOT EXISTS video_versions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      video_id INTEGER NOT NULL,
-      name TEXT NOT NULL,
-      sort_order INTEGER DEFAULT 0,
-      FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS video_version_mirrors (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      version_id INTEGER NOT NULL,
-      name TEXT,
-      url TEXT NOT NULL,
-      type TEXT DEFAULT 'link',
-      sort_order INTEGER DEFAULT 0,
-      FOREIGN KEY (version_id) REFERENCES video_versions(id) ON DELETE CASCADE
-    );
-
     CREATE TABLE IF NOT EXISTS watch_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
