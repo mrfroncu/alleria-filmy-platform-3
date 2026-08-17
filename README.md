@@ -279,15 +279,9 @@ nikt nie nasłuchuje i Cloudflare pokazuje użytkownikom swój własny, ogólny 
 
 `docker-compose.proxy.yml` dodaje kontener Caddy, który przejmuje port `3000` i przez cały czas
 coś na nim wystawia — appce jedynie reverse-proxuje ruch. Gdy `alleria-filmy` jest niedostępna,
-Caddy sam serwuje stronę „Przerwa techniczna” (treść wpisana wprost w `proxy/Caddyfile`, jako
-`respond 200 { body <<HTML ... HTML }` — **musi** być to jawne `200`, nie domyślne `502/504`
-dziedziczone z nieudanego `reverse_proxy`, bo Cloudflare przy statusie 5xx z originu podmienia
-całą treść odpowiedzi na własny, ogólny ekran błędu, ignorując co faktycznie wysłał serwer).
-
-> [!NOTE]
-> Treść strony żyje wyłącznie w `proxy/Caddyfile` (nie ma osobnego pliku `.html` montowanego
-> jako wolumen) — Caddy nie ma mechanizmu wczytania pliku do heredocu, więc to jest jedyne
-> źródło prawdy. Edytuj bezpośrednio ten plik, żeby zmienić treść ekranu.
+Caddy sam serwuje statyczną stronę „Przerwa techniczna” (`proxy/maintenance.html`) zamiast
+przepuszczać błąd dalej, więc Cloudflare zawsze dostaje realną odpowiedź HTTP i pokazuje ją
+użytkownikom zamiast swojego brandowanego 502.
 
 Tworzy to sieć Dockera `alleria-edge`, do której `docker-compose.panel-only.yml` też dołącza —
 appka bez niej się nie uruchomi. Dlatego `.github/workflows/deploy.yml` przed każdym deployem
