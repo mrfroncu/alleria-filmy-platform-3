@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="refresh" content="10">
+<title>Przerwa techniczna — Alleria Filmy</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fafafa;
+    --card: #ffffff;
+    --border: #e4e4e7;
+    --text: #18181b;
+    --text-muted: #71717a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #09090b;
+      --card: #18181b;
+      --border: #27272a;
+      --text: #fafafa;
+      --text-muted: #a1a1aa;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 24px;
+  }
+  .card {
+    width: 100%;
+    max-width: 440px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 40px 32px;
+    text-align: center;
+  }
+  .logo {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 24px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #6366f1, #d946ef);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .logo svg { width: 28px; height: 28px; }
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0 0 12px;
+  }
+  p {
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--text-muted);
+    margin: 0 0 28px;
+  }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: rgba(139, 92, 246, 0.1);
+    color: #8b5cf6;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #8b5cf6;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  footer {
+    margin-top: 28px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <svg viewBox="0 0 512 512" fill="none">
+        <circle cx="256" cy="256" r="200" fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.5)" stroke-width="14"/>
+        <polygon points="216,176 216,336 356,256" fill="white"/>
+      </svg>
+    </div>
+    <h1>Przerwa techniczna</h1>
+    <p>Aktualizujemy panel. Wracamy za chwilę — zwykle to kwestia kilku minut. Strona odświeży się automatycznie.</p>
+    <div class="status">
+      <span class="dot"></span>
+      Trwa aktualizacja
+    </div>
+    <footer>Alleria Filmy</footer>
+  </div>
+</body>
+</html>
