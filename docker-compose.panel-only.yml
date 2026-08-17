@@ -9,18 +9,13 @@
 #   STREAM_SECRET=<same secret as on streaming server>
 #   SESSION_SECRET=<random secret>
 #   DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, DISCORD_MEMBER_ROLE_ID
-#
-# No longer publishes ${PORT} on the host directly — docker-compose.proxy.yml owns that port
-# now and reverse-proxies here, so it can show a maintenance page during rebuilds instead of
-# Cloudflare's generic Bad Gateway error. Run `docker compose -f docker-compose.proxy.yml up -d`
-# once on the server before the first deploy (creates the alleria-edge network below).
 
 services:
   alleria-filmy:
     build: .
     container_name: alleria-filmy
-    expose:
-      - "3000"
+    ports:
+      - "${PORT:-3000}:3000"
     env_file:
       - .env
     volumes:
@@ -29,14 +24,7 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-    networks:
-      - default
-      - alleria-edge
 
 volumes:
   alleria-data:
     driver: local
-
-networks:
-  alleria-edge:
-    external: true
