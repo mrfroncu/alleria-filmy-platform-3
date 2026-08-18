@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, X, ChevronDown, Film, RotateCcw, Lock, CheckCircle2 } from 'lucide-react';
 import { api } from '../utils/api';
@@ -26,6 +26,8 @@ export default function VideosPage() {
   const [sort, setSort] = useState('newest');
   const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
+  const [visibleCount, setVisibleCount] = useState(12);
+  const sentinelRef = useRef(null);
   const [continueWatching, setContinueWatching] = useState([]);
   const [resetting, setResetting] = useState(false);
   const [resettingWatched, setResettingWatched] = useState(false);
@@ -33,7 +35,7 @@ export default function VideosPage() {
   const [hoveredVideoId, setHoveredVideoId] = useState(null);
 
   // Display config — videosPerPage should be a multiple of gridColumns (default 3)
-  const [config, setConfig] = useState({ videosPerPage: 12, gridColumns: 3, gridCardMinWidth: 300 });
+  const [config, setConfig] = useState({ videosPerPage: 12, gridColumns: 3, gridCardMinWidth: 300, infiniteScroll: false });
 
   useEffect(() => {
     const tagPromise = categorySlug ? api.getCategoryTags(categorySlug) : api.getTags();
@@ -68,10 +70,28 @@ export default function VideosPage() {
     if (categorySlug) params.category = categorySlug;
 
     api.getVideos(params)
-      .then(v => { setVideos(v); setPage(1); })
+      .then(v => { setVideos(v); setPage(1); setVisibleCount(config.videosPerPage); })
       .catch(console.error)
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, selectedTags, selectedAuthor, sort, categorySlug]);
+
+  // Infinite scroll — reveals more of the already-fetched `videos` array as the sentinel at the
+  // bottom of the grid comes into view, instead of the numbered page buttons. The full result set
+  // is fetched in one go either way (see the effect above); this only changes how much of it is
+  // shown at once.
+  useEffect(() => {
+    if (!config.infiniteScroll) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setVisibleCount(v => (v >= videos.length ? v : Math.min(videos.length, v + config.videosPerPage)));
+      }
+    }, { rootMargin: '600px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [config.infiniteScroll, config.videosPerPage, videos.length, visibleCount]);
 
   const toggleTag = (id) => {
     setSelectedTags(prev =>
@@ -342,7 +362,7 @@ export default function VideosPage() {
               Mobile: 1 col, Tablet (sm): 2 cols, Desktop (≥1280px): fixed-width columns, capped */}
           <style>{`@media(min-width:1280px){.video-grid{grid-template-columns:repeat(auto-fill,minmax(${CARD_MIN_WIDTH}px,1fr))!important;max-width:${gridContentWidth}px!important}}`}</style>
           <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 video-grid">
-            {videos.slice((page - 1) * config.videosPerPage, page * config.videosPerPage).map((video, idx) => (
+            {(config.infiniteScroll ? videos.slice(0, visibleCount) : videos.slice((page - 1) * config.videosPerPage, page * config.videosPerPage)).map((video, idx) => (
             <Link
               key={video.id}
               to={currentCategory?.is_shorts_category
@@ -422,8 +442,18 @@ export default function VideosPage() {
             ))}
           </div>
 
-          {/* Pagination */}
-          {videos.length > config.videosPerPage && (() => {
+          {/* Infinite scroll — sentinel div triggers loading more as it comes into view; a small
+              status line replaces the page buttons entirely while this mode is on. */}
+          {config.infiniteScroll ? (
+            visibleCount < videos.length ? (
+              <div ref={sentinelRef} className="flex items-center justify-center gap-2 mt-10 py-6 text-sm text-zinc-400">
+                <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+                Wczytywanie kolejnych filmów...
+              </div>
+            ) : videos.length > config.videosPerPage && (
+              <p className="text-center text-sm text-zinc-400 mt-10 py-6">Wszystkie filmy wczytane ({videos.length}).</p>
+            )
+          ) : videos.length > config.videosPerPage && (() => {
             const totalPages = Math.ceil(videos.length / config.videosPerPage);
             return (
               <div className="flex items-center justify-center gap-2 mt-10">

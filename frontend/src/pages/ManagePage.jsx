@@ -498,6 +498,19 @@ export default function ManagePage() {
     setSavingSettings(false);
   };
 
+  const toggleInfiniteScroll = async () => {
+    if (!settings) return;
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ infinite_scroll: !settings.infinite_scroll });
+      setSettingsState(s => ({ ...s, infinite_scroll: r.infinite_scroll }));
+      setStatus({ type: 'success', msg: `Infinite scroll: ${r.infinite_scroll ? 'WŁĄCZONY' : 'WYŁĄCZONY'}` });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
   const saveBotNickname = async () => {
     setSavingSettings(true);
     try {
@@ -1422,6 +1435,18 @@ export default function ManagePage() {
                 <button onClick={saveDisplaySettings} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
                   {savingSettings ? 'Zapisywanie...' : 'Zapisz'}
                 </button>
+
+                <div className="mt-6 pt-6 border-t border-zinc-100 dark:border-zinc-800">
+                  <ToggleSwitch
+                    checked={!!settings?.infinite_scroll}
+                    onChange={toggleInfiniteScroll}
+                    disabled={!settings || savingSettings}
+                    label={settings == null ? 'Ładowanie...' : (settings.infinite_scroll ? 'Infinite scroll: WŁĄCZONY' : 'Infinite scroll: WYŁĄCZONY')}
+                  />
+                  <p className="text-[11px] text-zinc-400 mt-2">
+                    <b>WŁĄCZONY</b>: kolejne filmy doładowują się automatycznie podczas przewijania, zamiast przycisków stron.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

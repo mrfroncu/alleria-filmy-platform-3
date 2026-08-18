@@ -70,7 +70,7 @@ export default function RankModal({ isOpen, onClose, rank, onSaved }) {
   return (
     <div className="modal-overlay">
       <div className="modal-backdrop" onClick={guardedClose} />
-      <div className="modal-content max-w-md" style={{ animation: 'slideUp 0.3s ease-out' }}>
+      <div className="modal-content max-w-lg" style={{ animation: 'slideUp 0.3s ease-out' }}>
         <div className="p-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold text-zinc-900 dark:text-white font-display">{isEdit ? 'Edytuj rangę' : 'Nowa ranga'}</h2>
@@ -78,11 +78,11 @@ export default function RankModal({ isOpen, onClose, rank, onSaved }) {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div><label className="label-field">Nazwa rangi</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="input-field" placeholder="np. Redaktor" required /></div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="sm:col-span-2"><label className="label-field">Nazwa rangi</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="input-field" placeholder="np. Redaktor" required /></div>
               <div><label className="label-field">Kolor</label><div className="flex gap-2 items-center"><input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-10 h-10 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer p-0.5 bg-transparent" /><span className="text-sm font-mono text-zinc-500">{color}</span></div></div>
+              <div className="sm:col-span-2"><label className="label-field">Opis (opcjonalnie)</label><input type="text" value={desc} onChange={e => setDesc(e.target.value)} className="input-field" placeholder="Opis rangi" /></div>
             </div>
-            <div><label className="label-field">Opis (opcjonalnie)</label><input type="text" value={desc} onChange={e => setDesc(e.target.value)} className="input-field" placeholder="Opis rangi" /></div>
             <button type="submit" disabled={submitting} className="w-full py-4 bg-gradient-to-br from-violet-500 to-violet-600 text-white rounded-2xl font-bold hover:from-violet-600 hover:to-violet-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-2 shadow-xl shadow-violet-500/20 active:scale-[0.98]">
               {submitting ? 'Zapisywanie...' : isEdit ? 'Zapisz rangę' : 'Dodaj rangę'}
             </button>

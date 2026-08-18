@@ -212,6 +212,7 @@ app.get('/api/config', requireAuth, (req, res) => {
     videosPerPage: s.videos_per_page,
     gridColumns: s.grid_columns,
     gridCardMinWidth: s.grid_card_min_width,
+    infiniteScroll: s.infinite_scroll,
     logsPerPage: s.logs_per_page,
     limitDisplayName: s.limit_display_name,
     limitBio: s.limit_bio,
@@ -3553,6 +3554,7 @@ function settingsPayload() {
     videos_per_page: parseInt(getSetting('videos_per_page', '12'), 10) || 12,
     grid_columns: parseInt(getSetting('grid_columns', '3'), 10) || 3,
     grid_card_min_width: parseInt(getSetting('grid_card_min_width', '300'), 10) || 300,
+    infinite_scroll: getSetting('infinite_scroll', '0') === '1',
     logs_per_page: parseInt(getSetting('logs_per_page', '50'), 10) || 50,
     iframe_embed_enabled: getSetting('iframe_embed_enabled', '0') === '1',
     iframe_allowed_origins: getSetting('iframe_allowed_origins', '').split(',').map(o => o.trim()).filter(Boolean),
@@ -3691,6 +3693,13 @@ app.post('/api/debug/settings', requireDev, (req, res) => {
     }
     setSetting('grid_card_min_width', n);
     audit(req.session.user.id, 'edit', 'settings', null, `grid_card_min_width → ${n}`);
+  }
+  // Infinite scroll on the video grid (homepage/category/tag/author lists) vs. the classic
+  // numbered page buttons.
+  if (req.body.infinite_scroll !== undefined) {
+    setSetting('infinite_scroll', req.body.infinite_scroll ? '1' : '0');
+    audit(req.session.user.id, 'edit', 'settings', null,
+      `infinite_scroll → ${req.body.infinite_scroll ? 'ON' : 'OFF'}`);
   }
   // iframe embedding toggle (formerly .env-only)
   if (req.body.iframe_embed_enabled !== undefined) {

@@ -7,6 +7,7 @@ const DEFAULT_CONFIG = {
   videosPerPage: 12,
   gridColumns: 3,
   gridCardMinWidth: 300,
+  infiniteScroll: false,
   logsPerPage: 50,
   limitDisplayName: 50,
   limitBio: 1000,
