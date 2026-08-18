@@ -10,6 +10,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useUnsavedForm, useUnsavedGuard } from '../contexts/UnsavedChangesContext';
 import { renderMarkdown } from '../utils/markdown';
 import CategoryModal from '../components/CategoryModal';
+import RankModal from '../components/RankModal';
 
 const MANAGE_TAB_IDS = ['categories', 'ranks', 'users', 'reports', 'gdpr', 'tos', 'settings'];
 const REPORT_REASON_LABELS = { spam: 'Spam', harassment: 'Nękanie / obraźliwe treści', spoiler: 'Spoiler', inappropriate: 'Nieodpowiednia treść', other: 'Inne' };
@@ -73,10 +74,8 @@ export default function ManagePage() {
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
 
   // Rank form state
-  const [rankName, setRankName] = useState('');
-  const [rankDesc, setRankDesc] = useState('');
-  const [rankColor, setRankColor] = useState('#6366f1');
   const [editingRank, setEditingRank] = useState(null);
+  const [rankModalOpen, setRankModalOpen] = useState(false);
 
   // Users tab state
   const [userRanks, setUserRanks] = useState({});
@@ -677,10 +676,6 @@ export default function ManagePage() {
     loadUsers();
   }, []);
 
-  const resetRankForm = () => {
-    setRankName(''); setRankDesc(''); setRankColor('#6366f1'); setEditingRank(null);
-  };
-
   const openAddCategory = () => { setEditingCat(null); setCategoryModalOpen(true); };
   const openEditCategory = (cat) => { setEditingCat(cat); setCategoryModalOpen(true); };
   const closeCategoryModal = () => setCategoryModalOpen(false);
@@ -695,20 +690,10 @@ export default function ManagePage() {
     } catch (e) { setStatus({ type: 'error', msg: e.message }); }
   };
 
-  const saveRank = async () => {
-    if (!rankName.trim()) return;
-    try {
-      if (editingRank) {
-        await api.updateRank(editingRank.id, { name: rankName, description: rankDesc, color: rankColor });
-        setStatus({ type: 'success', msg: `Ranga "${rankName}" zaktualizowana.` });
-      } else {
-        await api.createRank({ name: rankName, description: rankDesc, color: rankColor });
-        setStatus({ type: 'success', msg: `Ranga "${rankName}" utworzona.` });
-      }
-      resetRankForm();
-      api.getRanks().then(r => { setRanks(r); }).catch(() => {});
-    } catch (e) { setStatus({ type: 'error', msg: e.message }); }
-  };
+  const openAddRank = () => { setEditingRank(null); setRankModalOpen(true); };
+  const openEditRank = (rank) => { setEditingRank(rank); setRankModalOpen(true); };
+  const closeRankModal = () => setRankModalOpen(false);
+  const onRankSaved = () => { api.getRanks().then(setRanks).catch(() => {}); };
 
   const deleteRank = async (rank) => {
     if (!(await confirm(`Usunąć rangę "${rank.name}"? Spowoduje to usunięcie wszystkich przypisań tej rangi.`, { danger: true, confirmLabel: 'Usuń' }))) return;
@@ -726,12 +711,6 @@ export default function ManagePage() {
     if (m === 'roles') return { vm: 'roles', em: 'roles' };
     return { vm: 'public', em: 'none' };
   };
-
-  const rankBaseline = editingRank
-    ? { name: editingRank.name, desc: editingRank.description || '', color: editingRank.color || '#6366f1' }
-    : { name: '', desc: '', color: '#6366f1' };
-  const rankDirty = JSON.stringify({ name: rankName, desc: rankDesc, color: rankColor }) !== JSON.stringify(rankBaseline);
-  useUnsavedForm('manage-rank', { dirty: rankDirty, save: saveRank, label: 'Formularz rangi' });
 
   const tsLocked = settings?.ts_config_source !== 'panel';
   const discordRolesLocked = settings?.discord_roles_config_source !== 'panel';
@@ -876,38 +855,36 @@ export default function ManagePage() {
               <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center">
                 <Shield className="w-5 h-5 text-indigo-500" />
               </div>
-              <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display">{editingRank ? `Edycja rangi: ${editingRank.name}` : 'Nowa ranga'}</h2>
-              {editingRank && <button onClick={resetRankForm} className="btn-link-zinc ml-auto">Anuluj edycję</button>}
-            </div>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-2"><label className="label-field">Nazwa rangi</label><input type="text" value={rankName} onChange={e => setRankName(e.target.value)} className="input-field" placeholder="np. Redaktor" /></div>
-                <div><label className="label-field">Kolor</label><div className="flex gap-2 items-center"><input type="color" value={rankColor} onChange={e => setRankColor(e.target.value)} className="w-10 h-10 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer p-0.5 bg-transparent" /><span className="text-sm font-mono text-zinc-500">{rankColor}</span></div></div>
-              </div>
-              <div><label className="label-field">Opis (opcjonalnie)</label><input type="text" value={rankDesc} onChange={e => setRankDesc(e.target.value)} className="input-field" placeholder="Opis rangi" /></div>
-              <button onClick={saveRank} className="btn-primary text-sm">{editingRank ? 'Zapisz rangę' : 'Dodaj rangę'}</button>
+              <h2 className="text-lg font-bold text-zinc-900 dark:text-white font-display flex-1">Rangi ({ranks.length})</h2>
+              <button onClick={openAddRank} className="btn-primary text-sm flex items-center gap-2">
+                <Plus className="w-4 h-4" /> Dodaj rangę
+              </button>
             </div>
 
-            {ranks.length > 0 && (
-              <div className="mt-6 pt-6 border-t border-zinc-100 dark:border-zinc-800">
-                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">Istniejące rangi ({ranks.length})</p>
-                <div className="space-y-2">
-                  {ranks.map(r => (
-                    <div key={r.id} className="flex items-center gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
-                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm font-bold text-zinc-900 dark:text-white">{r.name}</span>
-                        {r.description && <span className="text-xs text-zinc-400 ml-2">{r.description}</span>}
-                      </div>
-                      <span className="text-[10px] font-mono text-zinc-400">ID:{r.id}</span>
-                      <button onClick={() => { setEditingRank(r); setRankName(r.name); setRankDesc(r.description || ''); setRankColor(r.color || '#6366f1'); }} className="btn-icon-indigo"><Pencil className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => deleteRank(r)} className="btn-icon-red"><Trash2 className="w-3.5 h-3.5" /></button>
+            {ranks.length === 0 ? <p className="text-sm text-zinc-400 italic text-center py-6">Brak rang</p> : (
+              <div className="space-y-2">
+                {ranks.map(r => (
+                  <div key={r.id} className="flex items-center gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
+                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-bold text-zinc-900 dark:text-white">{r.name}</span>
+                      {r.description && <span className="text-xs text-zinc-400 ml-2">{r.description}</span>}
                     </div>
-                  ))}
-                </div>
+                    <span className="text-[10px] font-mono text-zinc-400">ID:{r.id}</span>
+                    <button onClick={() => openEditRank(r)} className="btn-icon-indigo"><Pencil className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => deleteRank(r)} className="btn-icon-red"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
+
+          <RankModal
+            isOpen={rankModalOpen}
+            onClose={closeRankModal}
+            rank={editingRank}
+            onSaved={onRankSaved}
+          />
         </div>
       )}
 
