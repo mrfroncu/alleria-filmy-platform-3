@@ -13,7 +13,7 @@ const metaCache = new Map();
 // Self-hosted videos only: video.preview_sprite_url / preview_meta_url are null for YouTube
 // videos and for self-hosted ones too short/not-yet-ready to have a sprite (see attachPreviewUrl
 // in backend/server.js) — this component silently falls back to the static thumbnail in both cases.
-export default function HoverScrubThumbnail({ video, hovered }) {
+export default function HoverScrubThumbnail({ video, hovered, onLoad }) {
   const [meta, setMeta] = useState(() => metaCache.get(video.preview_meta_url));
   const [index, setIndex] = useState(0);
   const requestedRef = useRef(meta !== undefined);
@@ -35,6 +35,12 @@ export default function HoverScrubThumbnail({ video, hovered }) {
     return () => clearInterval(timer);
   }, [hovered, meta]);
 
+  // Nothing to wait for when there's no thumbnail at all — tell the parent right away so its
+  // loading-skeleton background doesn't shimmer forever behind the fallback icon.
+  useEffect(() => {
+    if (!video.thumbnail) onLoad?.();
+  }, [video.thumbnail]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!video.thumbnail) {
     return (
       <div className="w-full h-full flex items-center justify-center">
@@ -49,7 +55,7 @@ export default function HoverScrubThumbnail({ video, hovered }) {
 
   return (
     <>
-      <img src={video.thumbnail} alt={video.title} className="video-thumb w-full h-full object-cover" loading="lazy" />
+      <img src={video.thumbnail} alt={video.title} className="video-thumb w-full h-full object-cover" loading="lazy" onLoad={onLoad} />
       {showScrub && (
         <div
           className="absolute inset-0 w-full h-full"

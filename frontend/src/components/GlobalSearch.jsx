@@ -23,7 +23,7 @@ const PAGES = [
   { label: 'Historia', to: '/history', icon: Clock },
   { label: 'Watch Party', to: '/watch-party', icon: Users },
   { label: 'Mój profil', to: '/profile', icon: User },
-  { label: 'Panel Redaktora', to: '/admin', icon: Shield, adminOnly: true },
+  { label: 'Panel Admina', to: '/admin', icon: Shield, adminOnly: true },
   { label: 'Statystyki', to: '/stats', icon: BarChart3, adminOnly: true },
   { label: 'Zarządzanie', to: '/manage', icon: FolderOpen, devOnly: true },
   { label: 'Logi systemowe', to: '/logs', icon: FileText, devOnly: true },
@@ -34,8 +34,8 @@ const SHORTCUT_PATHS = ['/', '/favorites', '/history'];
 
 // Settings/options/tabs living inside admin+dev pages — deep-link via ?tab= so search actually lands on the right tab
 const SEARCHABLE_ITEMS = [
-  { label: 'Biblioteka filmów', section: 'Panel Redaktora', to: '/admin?tab=videos', icon: Film, adminOnly: true },
-  { label: 'Zarządzanie tagami', section: 'Panel Redaktora', to: '/admin?tab=tags', icon: TagIcon, adminOnly: true },
+  { label: 'Biblioteka filmów', section: 'Panel Admina', to: '/admin?tab=videos', icon: Film, adminOnly: true },
+  { label: 'Zarządzanie tagami', section: 'Panel Admina', to: '/admin?tab=tags', icon: TagIcon, adminOnly: true },
   { label: 'Kategorie', section: 'Zarządzanie', to: '/manage?tab=categories', icon: FolderOpen, devOnly: true },
   { label: 'Rangi', section: 'Zarządzanie', to: '/manage?tab=ranks', icon: Shield, devOnly: true },
   { label: 'Użytkownicy', section: 'Zarządzanie', to: '/manage?tab=users', icon: Users, devOnly: true },

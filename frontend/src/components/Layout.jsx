@@ -21,7 +21,7 @@ const STATIC_PAGE_TITLES = {
   '/favorites': 'Ulubione',
   '/history': 'Historia',
   '/profile': 'Mój profil',
-  '/admin': 'Panel Redaktora',
+  '/admin': 'Panel Admina',
   '/stats': 'Statystyki',
   '/manage': 'Zarządzanie',
   '/logs': 'Logi systemowe',
@@ -272,7 +272,7 @@ export default function Layout({ children }) {
             <>
               <SectionLabel label="Administracja" />
               <nav className="space-y-0.5">
-                {isAdmin && <NavLink to="/admin" icon={Shield} label="Panel Redaktora" active={isActive('/admin')} />}
+                {isAdmin && <NavLink to="/admin" icon={Shield} label="Panel Admina" active={isActive('/admin')} />}
                 {isAdmin && <NavLink to="/stats" icon={BarChart3} label="Statystyki" active={isActive('/stats')} />}
                 {isDev && <NavLink to="/manage" icon={FolderOpen} label="Zarządzanie" active={isActive('/manage')} badge={gdprPendingCount} />}
                 {isDev && <NavLink to="/logs" icon={FileText} label="Logi systemowe" active={isActive('/logs')} />}

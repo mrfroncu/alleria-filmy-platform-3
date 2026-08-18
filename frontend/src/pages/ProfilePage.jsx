@@ -396,7 +396,7 @@ export default function ProfilePage() {
 
   const handleUnlink = async (method, label) => {
     if (unlinking) return;
-    if (!(await confirm(`Rozłączyć konto ${label}?\n\nBędziesz mógł zalogować się tą metodą ponownie - powstanie nowe, osobne konto, albo połączysz ją z innym kontem od nowa. Historia na TYM koncie (komentarze, obejrzane filmy, dodane przez Ciebie filmy jako redaktor) zostaje bez zmian.`))) return;
+    if (!(await confirm(`Rozłączyć konto ${label}?\n\nBędziesz mógł zalogować się tą metodą ponownie - powstanie nowe, osobne konto, albo połączysz ją z innym kontem od nowa. Historia na TYM koncie (komentarze, obejrzane filmy, dodane przez Ciebie filmy jako admin) zostaje bez zmian.`))) return;
     setUnlinking(method);
     try {
       await api.unlinkAccount(method);

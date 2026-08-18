@@ -33,6 +33,11 @@ export default function VideosPage() {
   const [resettingWatched, setResettingWatched] = useState(false);
   const [hasWatchedAny, setHasWatchedAny] = useState(false);
   const [hoveredVideoId, setHoveredVideoId] = useState(null);
+  // Cards whose thumbnail image has actually finished loading — used to keep a shimmering
+  // skeleton behind newly-revealed cards (infinite scroll or a fresh page) instead of a flat
+  // dark box while the image is still in flight.
+  const [loadedThumbIds, setLoadedThumbIds] = useState(() => new Set());
+  const markThumbLoaded = (id) => setLoadedThumbIds(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
 
   // Display config — videosPerPage should be a multiple of gridColumns (default 3)
   const [config, setConfig] = useState({ videosPerPage: 12, gridColumns: 3, gridCardMinWidth: 300, infiniteScroll: false });
@@ -369,12 +374,12 @@ export default function VideosPage() {
                 ? `/shorts/${categorySlug}?start=${video.id}`
                 : `/video/${video.id}${categorySlug ? `?from=${categorySlug}` : ''}`}
               className="video-card card overflow-hidden group"
-              style={{ animationDelay: `${idx * 50}ms` }}
+              style={{ animationDelay: `${(idx % 12) * 50}ms` }}
               onMouseEnter={() => setHoveredVideoId(video.id)}
               onMouseLeave={() => setHoveredVideoId(id => (id === video.id ? null : id))}
             >
-              <div className="relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
-                <HoverScrubThumbnail video={video} hovered={hoveredVideoId === video.id} />
+              <div className={`relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden ${loadedThumbIds.has(video.id) ? '' : 'skeleton'}`}>
+                <HoverScrubThumbnail video={video} hovered={hoveredVideoId === video.id} onLoad={() => markThumbLoaded(video.id)} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <button
                   onClick={(e) => toggleWatched(e, video)}
@@ -451,7 +456,7 @@ export default function VideosPage() {
                 Wczytywanie kolejnych filmów...
               </div>
             ) : videos.length > config.videosPerPage && (
-              <p className="text-center text-sm text-zinc-400 mt-10 py-6">Wszystkie filmy wczytane ({videos.length}).</p>
+              <p className="text-center text-sm text-zinc-400 mt-10 py-6">To już wszystkie filmy — {videos.length}.</p>
             )
           ) : videos.length > config.videosPerPage && (() => {
             const totalPages = Math.ceil(videos.length / config.videosPerPage);
