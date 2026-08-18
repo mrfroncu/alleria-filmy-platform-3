@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, ZoomIn } from 'lucide-react';
 
-// Fixed CSS viewport size for the crop circle — output is always exported at OUTPUT_SIZE
+// Fixed CSS viewport size for the crop frame — output is always exported at OUTPUT_SIZE
 // regardless of this, so the on-screen size only affects drag/zoom feel, not final quality.
 const VIEWPORT = 288;
 const OUTPUT_SIZE = 512;
@@ -11,8 +11,13 @@ export default function AvatarCropModal({ file, onCancel, onSave, saving }) {
   const [natural, setNatural] = useState({ w: 0, h: 0 });
   const [zoom, setZoom] = useState(1);
   const [pos, setPos] = useState({ x: 0, y: 0 });
+  // Live drag position lives in a ref, not state — the mousemove handler writes straight to the
+  // DOM (see applyTransform) so dragging doesn't trigger a React re-render on every pixel, which
+  // was the cause of the laggy/delayed feel. `pos` state only gets updated once, at drag end.
+  const posRef = useRef({ x: 0, y: 0 });
   const dragRef = useRef(null);
   const imgRef = useRef(null);
+  const viewportRef = useRef(null);
 
   useEffect(() => {
     if (!file) { setImgUrl(''); return; }
@@ -20,6 +25,7 @@ export default function AvatarCropModal({ file, onCancel, onSave, saving }) {
     setImgUrl(url);
     setZoom(1);
     setPos({ x: 0, y: 0 });
+    posRef.current = { x: 0, y: 0 };
     setNatural({ w: 0, h: 0 });
     return () => URL.revokeObjectURL(url);
   }, [file]);
@@ -37,26 +43,56 @@ export default function AvatarCropModal({ file, onCancel, onSave, saving }) {
     y: Math.min(my, Math.max(-my, p.y)),
   });
 
+  const applyTransform = (p) => {
+    if (imgRef.current) imgRef.current.style.transform = `translate(-50%, -50%) translate(${p.x}px, ${p.y}px)`;
+  };
+
   // Re-clamp whenever zoom or the image's own dimensions change, so panning to an edge and then
   // zooming out never leaves the viewport partially uncovered.
   useEffect(() => {
-    setPos(p => clampPos(p, maxOffsetX, maxOffsetY));
+    const clamped = clampPos(posRef.current, maxOffsetX, maxOffsetY);
+    posRef.current = clamped;
+    setPos(clamped);
+    applyTransform(clamped);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom, natural.w, natural.h]);
 
   const startDrag = (clientX, clientY) => {
-    dragRef.current = { startX: clientX, startY: clientY, origX: pos.x, origY: pos.y };
+    dragRef.current = { startX: clientX, startY: clientY, origX: posRef.current.x, origY: posRef.current.y };
   };
   const moveDrag = (clientX, clientY) => {
     if (!dragRef.current) return;
     const dx = clientX - dragRef.current.startX;
     const dy = clientY - dragRef.current.startY;
-    setPos(clampPos({ x: dragRef.current.origX + dx, y: dragRef.current.origY + dy }, maxOffsetX, maxOffsetY));
+    const next = clampPos({ x: dragRef.current.origX + dx, y: dragRef.current.origY + dy }, maxOffsetX, maxOffsetY);
+    posRef.current = next;
+    applyTransform(next);
   };
-  const endDrag = () => { dragRef.current = null; };
+  const endDrag = () => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    setPos(posRef.current);
+  };
+
+  // Mouse drag is tracked on `window`, not the viewport element — a fast drag routinely moves
+  // the cursor outside a 288px box, and listening only on the element meant mouseup/mousemove
+  // stopped firing the instant the cursor left it, cutting the drag short.
+  const onMouseDown = (e) => {
+    e.preventDefault();
+    startDrag(e.clientX, e.clientY);
+    const onMove = (ev) => moveDrag(ev.clientX, ev.clientY);
+    const onUp = () => {
+      endDrag();
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
 
   const handleSave = () => {
     if (!imgRef.current || !natural.w) return;
+    const p = posRef.current;
     const canvas = document.createElement('canvas');
     canvas.width = OUTPUT_SIZE;
     canvas.height = OUTPUT_SIZE;
@@ -65,8 +101,8 @@ export default function AvatarCropModal({ file, onCancel, onSave, saving }) {
     const centerOffsetX = (VIEWPORT - dispW) / 2;
     const centerOffsetY = (VIEWPORT - dispH) / 2;
     // Invert to find which region of the *natural* image the viewport is showing.
-    const srcX = -(centerOffsetX + pos.x) / scale;
-    const srcY = -(centerOffsetY + pos.y) / scale;
+    const srcX = -(centerOffsetX + p.x) / scale;
+    const srcY = -(centerOffsetY + p.y) / scale;
     const srcSize = VIEWPORT / scale;
     ctx.drawImage(imgRef.current, srcX, srcY, srcSize, srcSize, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
     canvas.toBlob(blob => { if (blob) onSave(blob); }, 'image/jpeg', 0.92);
@@ -84,13 +120,13 @@ export default function AvatarCropModal({ file, onCancel, onSave, saving }) {
             <button onClick={onCancel} disabled={saving} className="btn-icon-zinc disabled:opacity-50"><X className="w-5 h-5" /></button>
           </div>
 
+          {/* Square frame — matches the actual exported shape (a plain square JPEG). A circular
+              preview here would have implied a circular crop when the saved file isn't one. */}
           <div
-            className="relative mx-auto overflow-hidden rounded-full bg-zinc-900 cursor-grab active:cursor-grabbing select-none"
+            ref={viewportRef}
+            className="relative mx-auto overflow-hidden rounded-2xl bg-zinc-900 cursor-grab active:cursor-grabbing select-none"
             style={{ width: VIEWPORT, height: VIEWPORT, touchAction: 'none' }}
-            onMouseDown={e => startDrag(e.clientX, e.clientY)}
-            onMouseMove={e => moveDrag(e.clientX, e.clientY)}
-            onMouseUp={endDrag}
-            onMouseLeave={endDrag}
+            onMouseDown={onMouseDown}
             onTouchStart={e => startDrag(e.touches[0].clientX, e.touches[0].clientY)}
             onTouchMove={e => moveDrag(e.touches[0].clientX, e.touches[0].clientY)}
             onTouchEnd={endDrag}
