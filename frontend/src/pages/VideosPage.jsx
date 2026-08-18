@@ -456,7 +456,7 @@ export default function VideosPage() {
                 Wczytywanie kolejnych filmów...
               </div>
             ) : videos.length > config.videosPerPage && (
-              <p className="text-center text-sm text-zinc-400 mt-10 py-6">To już wszystkie filmy — {videos.length}.</p>
+              <p className="text-center text-sm text-zinc-400 mt-10 py-6">To już wszystkie filmy - {videos.length}.</p>
             )
           ) : videos.length > config.videosPerPage && (() => {
             const totalPages = Math.ceil(videos.length / config.videosPerPage);

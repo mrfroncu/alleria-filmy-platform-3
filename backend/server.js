@@ -3942,7 +3942,7 @@ app.get('/api/debug/env-check', requireDev, (req, res) => {
 });
 
 // Categories that have custom Discord role IDs or a custom Discord user list attached — an audit
-// view so a dev can see what's affected before changing the global member/admin role IDs.
+// view so a dev can see what's affected before changing the global member/redaktor role IDs.
 app.get('/api/debug/category-role-overview', requireDev, async (req, res) => {
   try {
     const cats = db.prepare('SELECT id, name FROM categories ORDER BY sort_order, name').all();

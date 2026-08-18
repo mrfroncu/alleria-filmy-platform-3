@@ -365,7 +365,7 @@ export default function VideoAnalyticsPage() {
   return (
     <div className="p-6 sm:p-10 max-w-5xl mx-auto page-enter">
       <Link to={fromAdmin ? '/admin' : `/video/${id}`} className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white font-medium text-sm mb-6 hover:gap-3 transition-all">
-        <ArrowLeft className="w-4 h-4" /> {fromAdmin ? 'Wróć do panelu admina' : 'Wróć do filmu'}
+        <ArrowLeft className="w-4 h-4" /> {fromAdmin ? 'Wróć do panelu redaktora' : 'Wróć do filmu'}
       </Link>
 
       <div className="mb-6">

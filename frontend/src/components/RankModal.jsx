@@ -79,7 +79,7 @@ export default function RankModal({ isOpen, onClose, rank, onSaved }) {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="sm:col-span-2"><label className="label-field">Nazwa rangi</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="input-field" placeholder="np. VIP" required /></div>
+              <div className="sm:col-span-2"><label className="label-field">Nazwa rangi</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="input-field" placeholder="np. Redaktor" required /></div>
               <div><label className="label-field">Kolor</label><div className="flex gap-2 items-center"><input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-10 h-10 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer p-0.5 bg-transparent" /><span className="text-sm font-mono text-zinc-500">{color}</span></div></div>
             </div>
             <div><label className="label-field">Opis (opcjonalnie)</label><input type="text" value={desc} onChange={e => setDesc(e.target.value)} className="input-field" placeholder="Opis rangi" /></div>

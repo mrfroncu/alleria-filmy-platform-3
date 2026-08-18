@@ -5,6 +5,11 @@ import { X, ZoomIn } from 'lucide-react';
 // regardless of this, so the on-screen size only affects drag/zoom feel, not final quality.
 const VIEWPORT = 288;
 const OUTPUT_SIZE = 512;
+// Phone camera photos routinely come in at 12MP+ (4000x3000). Dragging a bitmap that large
+// around — even via a compositor-only `transform` — makes the browser redecode/repaint a huge
+// image on every mousemove, which is what read as laggy, delayed, "remote desktop"-like dragging.
+// Downscaling once up front (well above OUTPUT_SIZE, so exported quality is unaffected) fixes it.
+const MAX_EDIT_DIM = 1200;
 
 export default function AvatarCropModal({ file, onCancel, onSave, saving }) {
   const [imgUrl, setImgUrl] = useState('');
@@ -21,13 +26,35 @@ export default function AvatarCropModal({ file, onCancel, onSave, saving }) {
 
   useEffect(() => {
     if (!file) { setImgUrl(''); return; }
-    const url = URL.createObjectURL(file);
-    setImgUrl(url);
+    let cancelled = false;
+    let displayUrl = null;
+    const rawUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(rawUrl);
+      if (cancelled) return;
+      const { naturalWidth: w, naturalHeight: h } = img;
+      const downscale = Math.min(1, MAX_EDIT_DIM / Math.max(w, h));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(w * downscale));
+      canvas.height = Math.max(1, Math.round(h * downscale));
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(blob => {
+        if (cancelled || !blob) return;
+        displayUrl = URL.createObjectURL(blob);
+        setImgUrl(displayUrl);
+      }, 'image/jpeg', 0.92);
+    };
+    img.src = rawUrl;
     setZoom(1);
     setPos({ x: 0, y: 0 });
     posRef.current = { x: 0, y: 0 };
     setNatural({ w: 0, h: 0 });
-    return () => URL.revokeObjectURL(url);
+    return () => {
+      cancelled = true;
+      URL.revokeObjectURL(rawUrl);
+      if (displayUrl) URL.revokeObjectURL(displayUrl);
+    };
   }, [file]);
 
   // "Cover" scale — smallest scale at which the image fills the whole viewport with no gaps.
@@ -143,6 +170,7 @@ export default function AvatarCropModal({ file, onCancel, onSave, saving }) {
                   width: dispW || 'auto',
                   height: dispH || 'auto',
                   transform: `translate(-50%, -50%) translate(${pos.x}px, ${pos.y}px)`,
+                  willChange: 'transform',
                 }}
               />
             )}

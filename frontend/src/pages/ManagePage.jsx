@@ -1133,7 +1133,7 @@ export default function ManagePage() {
                           Ukryj komentarz
                         </button>
                       )}
-                      {/* /manage is dev-only (route-level guard), so unlike the old Admin-panel
+                      {/* /manage is dev-only (route-level guard), so unlike the old Redaktor-panel
                           copy of this UI, every viewer here already qualifies for hard delete. */}
                       <button
                         onClick={() => resolveReport(r, 'hard_delete')}
@@ -1528,7 +1528,7 @@ export default function ManagePage() {
               <div className="flex-1">
                 <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Własne avatary</h3>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                  Zezwól zwykłym userom (member) na przesyłanie własnego zdjęcia profilowego. Admini i devowie mogą zawsze.
+                  Zezwól zwykłym userom (member) na przesyłanie własnego zdjęcia profilowego. Redaktorzy i devowie mogą zawsze.
                 </p>
                 <ToggleSwitch
                   checked={!!settings?.allow_custom_avatars}
@@ -1807,7 +1807,7 @@ export default function ManagePage() {
             <div className="flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
               <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                Z poziomu panelu można zdefiniować połączenie z TeamSpeak 3/6 (host, port, dane logowania, grupy) oraz - dla Discorda - wyłącznie ID roli <strong>Member</strong> i ogólnego <strong>Admina</strong>. Wymaga to ustawienia odpowiedniej flagi
+                Z poziomu panelu można zdefiniować połączenie z TeamSpeak 3/6 (host, port, dane logowania, grupy) oraz - dla Discorda - wyłącznie ID roli <strong>Member</strong> i ogólnego <strong>Redaktora</strong>. Wymaga to ustawienia odpowiedniej flagi
                 (<code className="font-mono text-xs">TS_CONFIG_SOURCE</code> / <code className="font-mono text-xs">DISCORD_ROLES_CONFIG_SOURCE</code>) na <code className="font-mono text-xs">panel</code> w <code className="font-mono text-xs">.env</code> i restartu kontenera.
                 Pozostała konfiguracja Discord (Client ID/Secret, Bot Token, Guild ID, Redirect URI, rola Developera) jest zawsze wyłącznie w <code className="font-mono text-xs">.env</code> - bez możliwości podglądu ani edycji tutaj.
               </p>
@@ -1931,7 +1931,7 @@ export default function ManagePage() {
             </div>
           </div>
 
-          {/* Discord — member/admin role IDs + category role overview */}
+          {/* Discord — member/redaktor role IDs + category role overview */}
           <div className="card p-8 h-full flex flex-col xl:col-span-2">
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center shrink-0">
@@ -1939,7 +1939,7 @@ export default function ManagePage() {
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Discord - role Member / Admin</h3>
+                  <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display">Discord - role Member / Redaktor</h3>
                   {discordRolesLocked && <span className={sourceBadgeClass}>Źródło: .env</span>}
                 </div>
                 {discordRolesLocked && (
