@@ -1550,6 +1550,7 @@ app.get('/api/auth/me', (req, res) => {
     ...req.session.user,
     tosAccepted: !tosNeedsAcceptance(row?.tos_accepted_at),
     tosPreviouslyAccepted: !!row?.tos_accepted_at,
+    setupCompleted: getSetting('setup_completed', '0') === '1',
     impersonatedBy,
   });
 });
@@ -1588,6 +1589,15 @@ app.post('/api/debug/tos', requireDev, (req, res) => {
     audit(req.session.user.id, 'edit', 'settings', null, 'tos_content updated');
   }
   res.json({ content, updatedAt: getSetting('tos_updated_at', DEFAULT_TOS_UPDATED_AT) });
+});
+
+// ============ SETUP WIZARD ============
+// setup_completed gates the /setup redirect the same way tos_updated_at gates TosGate (see
+// setupCompleted above) — a dev sees the wizard on every request until this flips to '1'.
+app.post('/api/setup/complete', requireDev, (req, res) => {
+  setSetting('setup_completed', '1');
+  audit(req.session.user.id, 'setup_complete', 'settings', null, null);
+  res.json({ success: true });
 });
 
 app.post('/api/auth/logout', (req, res) => {

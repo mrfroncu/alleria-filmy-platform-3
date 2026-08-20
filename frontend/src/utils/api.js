@@ -39,6 +39,9 @@ export const api = {
   }),
   getDefaultTos: () => request('/debug/tos/default'),
 
+  // Setup wizard
+  completeSetup: () => request('/setup/complete', { method: 'POST' }),
+
   // opts: { linkMode: true } — attach the matched TS identity to the logged-in account
   // instead of logging in as a (possibly different) TS-origin account.
   loginTeamspeak: (opts) => request('/auth/teamspeak', {
@@ -271,6 +274,9 @@ export const api = {
   // Not routed through request() — this returns an HTML document (rendered in a new tab), not JSON.
   emailTemplatePreviewUrl: (type, template) => `${API}/debug/settings/email-preview/${type}?template=${encodeURIComponent(template)}`,
   envCheck: () => request('/debug/env-check'),
+  getHealth: () => request('/health'),
+  getVersion: () => request('/version'),
+  getStreamVersion: () => request('/version/streaming'),
   categoryRoleOverview: () => request('/debug/category-role-overview'),
   execSQL: (query) => request('/debug/sql', {
     method: 'POST',

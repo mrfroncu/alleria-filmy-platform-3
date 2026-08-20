@@ -133,8 +133,8 @@ export default function Layout({ children }) {
   // Load versions once
   useEffect(() => {
     Promise.all([
-      fetch('/api/version').then(r => r.json()).catch(() => ({})),
-      fetch('/api/version/streaming').then(r => r.json()).catch(() => ({})),
+      api.getVersion().catch(() => ({})),
+      api.getStreamVersion().catch(() => ({})),
     ]).then(([app, stream]) => {
       setVersions({ panel: app.version || '?', stream: stream.version || '?', streamStatus: stream.status || '' });
     });

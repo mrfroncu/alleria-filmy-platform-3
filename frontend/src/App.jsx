@@ -10,6 +10,8 @@ import { UnsavedChangesProvider } from './contexts/UnsavedChangesContext';
 import LoginPage from './pages/LoginPage';
 import Layout from './components/Layout';
 import TosGate from './components/TosGate';
+import SetupGate from './components/SetupGate';
+import SetupWizardPage from './pages/SetupWizardPage';
 import VideosPage from './pages/VideosPage';
 import VideoPage from './pages/VideoPage';
 import AdminPage from './pages/AdminPage';
@@ -68,8 +70,10 @@ export default function App() {
       <NotificationsProvider>
       <WatchPartyProvider>
         <TosGate />
+        <SetupGate />
         <Routes>
           <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
+          <Route path="/setup" element={<ProtectedRoute devOnly><SetupWizardPage /></ProtectedRoute>} />
           <Route path="/" element={<P><VideosPage /></P>} />
           <Route path="/video/:id" element={<P><VideoPage /></P>} />
           <Route path="/video/:id/analytics" element={<P><Suspense fallback={<LoadingScreen />}><VideoAnalyticsPage /></Suspense></P>} />
