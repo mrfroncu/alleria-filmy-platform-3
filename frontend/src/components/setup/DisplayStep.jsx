@@ -106,25 +106,42 @@ export default function DisplayStep({ settings, reloadSettings }) {
         <button onClick={() => save(logsForm, 'Zapisano.')} disabled={saving} className="btn-primary text-sm mt-4 disabled:opacity-50">Zapisz</button>
       </div>
 
-      <div className="mb-6 pb-6 border-b border-zinc-100 dark:border-zinc-800 space-y-4">
-        <ToggleSwitch
-          checked={!!settings.youtube_custom_player}
-          onChange={() => toggle('youtube_custom_player', 'Zapisano.')}
-          disabled={saving}
-          label={settings.youtube_custom_player ? 'Własna nakładka YouTube: WŁĄCZONA' : 'Własna nakładka YouTube: WYŁĄCZONA'}
-        />
-        <ToggleSwitch
-          checked={!!settings.show_top_bar}
-          onChange={() => toggle('show_top_bar', 'Zapisano.')}
-          disabled={saving}
-          label={settings.show_top_bar ? 'Górny pasek: WŁĄCZONY' : 'Górny pasek: WYŁĄCZONY'}
-        />
-        <ToggleSwitch
-          checked={!!settings.allow_custom_avatars}
-          onChange={() => toggle('allow_custom_avatars', 'Zapisano.')}
-          disabled={saving}
-          label={settings.allow_custom_avatars ? 'Własne avatary (dla member): WŁĄCZONE' : 'Własne avatary (dla member): WYŁĄCZONE'}
-        />
+      <div className="flex flex-col gap-6">
+        <div>
+          <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-1">Odtwarzacz YouTube</h3>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Nakładka UI na player YT (eksperymentalna).</p>
+          <ToggleSwitch
+            checked={!!settings.youtube_custom_player}
+            onChange={() => toggle('youtube_custom_player', 'Zapisano.')}
+            disabled={saving}
+            label={settings.youtube_custom_player ? 'Własna nakładka YouTube: WŁĄCZONA' : 'Własna nakładka YouTube: WYŁĄCZONA'}
+          />
+        </div>
+        <div>
+          <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-1">Górny pasek</h3>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-2">
+            WŁĄCZONY: tytuł strony, wyszukiwarka i profil użytkownika w górnym pasku. WYŁĄCZONY: profil w lewym dolnym
+            rogu, a każda strona pokazuje własny tytuł, brak smart search.
+          </p>
+          <ToggleSwitch
+            checked={!!settings.show_top_bar}
+            onChange={() => toggle('show_top_bar', 'Zapisano.')}
+            disabled={saving}
+            label={settings.show_top_bar ? 'Górny pasek: WŁĄCZONY' : 'Górny pasek: WYŁĄCZONY'}
+          />
+        </div>
+        <div>
+          <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-1">Własne avatary</h3>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-2">
+            Zezwól zwykłym userom (member) na przesyłanie własnego zdjęcia profilowego. Redaktorzy i devowie mogą zawsze.
+          </p>
+          <ToggleSwitch
+            checked={!!settings.allow_custom_avatars}
+            onChange={() => toggle('allow_custom_avatars', 'Zapisano.')}
+            disabled={saving}
+            label={settings.allow_custom_avatars ? 'Własne avatary: WŁĄCZONE' : 'Własne avatary: WYŁĄCZONE'}
+          />
+        </div>
       </div>
     </div>
   );

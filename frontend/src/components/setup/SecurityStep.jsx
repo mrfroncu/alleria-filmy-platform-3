@@ -48,7 +48,7 @@ export default function SecurityStep({ settings, reloadSettings }) {
         <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-2">Ograniczenie domen webhooków</h3>
         <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
           Gdy włączone, serwer wysyła powiadomienia webhook tylko do domen Discorda
-          ({settings.webhook_allowed_hosts?.join(', ') || 'discord.com, discordapp.com'}) — ochrona przed SSRF.
+          ({settings.webhook_allowed_hosts?.join(', ') || 'discord.com, discordapp.com'}) - ochrona przed SSRF.
         </p>
         <ToggleSwitch
           checked={!!settings.webhook_domain_restriction}
@@ -59,7 +59,7 @@ export default function SecurityStep({ settings, reloadSettings }) {
       </div>
 
       <div className="mb-6 pb-6 border-b border-zinc-100 dark:border-zinc-800">
-        <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-2">Region RODO (GDPR / LGPD)</h3>
+        <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-2">Zgodność z RODO (GDPR / LGPD)</h3>
         <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
           Włącza samoobsługowe żądania eksportu/usunięcia danych (sekcja "Twoje dane" w profilu).
         </p>
@@ -76,13 +76,21 @@ export default function SecurityStep({ settings, reloadSettings }) {
           <Frame className="w-4 h-4 text-blue-500" />
           <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Osadzanie w iframe</h3>
         </div>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+          Kontroluje, czy i skąd wolno osadzić odtwarzacz tej platformy w elemencie <code className="font-mono">&lt;iframe&gt;</code> na
+          innej stronie internetowej. Domyślnie wyłączone - żadna zewnętrzna strona nie może osadzić playera.
+        </p>
         <ToggleSwitch
           checked={!!settings.iframe_embed_enabled}
           onChange={() => save({ iframe_embed_enabled: !settings.iframe_embed_enabled }, 'Zapisano.')}
           disabled={saving}
           label={settings.iframe_embed_enabled ? 'Osadzanie: WŁĄCZONE' : 'Osadzanie: WYŁĄCZONE'}
         />
-        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-5 mb-2 font-display">Dozwolone domeny</p>
+        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-5 mb-1 font-display">Dozwolone domeny</p>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-2">
+          Adresy (wraz z subdomeną) zewnętrznych stron, którym wolno osadzić odtwarzacz - np. <code className="font-mono">https://forum.alleria.pl</code>,
+          jeśli chcesz go osadzić na forum. Nie ma to nic wspólnego z domenami, pod którymi działa sama platforma.
+        </p>
         <div className="flex gap-2 max-w-md">
           <input
             type="text" value={originInput} onChange={e => setOriginInput(e.target.value)}

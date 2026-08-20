@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogIn, Info, Bot, Headphones, Radio, MessageSquare } from 'lucide-react';
+import { LogIn, Bot, Headphones, Radio, MessageSquare } from 'lucide-react';
 import { api } from '../../utils/api';
 import { useToast } from '../../contexts/ToastContext';
 import { Segmented, sourceBadgeClass } from './SetupUI';
@@ -57,18 +57,7 @@ export default function LoginStep({ settings, reloadSettings }) {
       <div className="w-12 h-12 rounded-2xl bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center mb-5">
         <LogIn className="w-6 h-6 text-violet-500" />
       </div>
-      <h2 className="text-xl font-bold text-zinc-900 dark:text-white font-display mb-2">Logowanie</h2>
-
-      <div className="p-4 rounded-2xl bg-blue-50/50 dark:bg-blue-500/[0.06] border border-blue-200 dark:border-blue-500/20 flex items-start gap-3 mb-6">
-        <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
-        <p className="text-xs text-zinc-600 dark:text-zinc-300">
-          Połączenie z TeamSpeak 3/6 oraz ID ról Discorda Member/Redaktor można edytować tutaj tylko gdy w{' '}
-          <code className="font-mono">.env</code> ustawisz <code className="font-mono">TS_CONFIG_SOURCE</code> /{' '}
-          <code className="font-mono">DISCORD_ROLES_CONFIG_SOURCE</code> na <code className="font-mono">panel</code> i zrestartujesz
-          kontener. Reszta konfiguracji Discorda (Client ID/Secret, Bot Token, Guild ID, rola Developera) zawsze zostaje
-          wyłącznie w <code className="font-mono">.env</code>.
-        </p>
-      </div>
+      <h2 className="text-xl font-bold text-zinc-900 dark:text-white font-display mb-6">Logowanie</h2>
 
       {/* Bot nickname */}
       <div className="mb-6 pb-6 border-b border-zinc-100 dark:border-zinc-800">
@@ -153,7 +142,7 @@ export default function LoginStep({ settings, reloadSettings }) {
       <div>
         <div className="flex items-center gap-2 mb-3 flex-wrap">
           <MessageSquare className="w-4 h-4 text-indigo-500" />
-          <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Discord — role Member / Redaktor</h3>
+          <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Discord - role Member / Redaktor</h3>
           {discordRolesLocked && <span className={sourceBadgeClass}>Źródło: .env</span>}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">

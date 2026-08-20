@@ -25,7 +25,7 @@ export default function StreamingStep() {
       <p className="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed mb-6">
         Self-hosted streaming (upload, transkodowanie, HLS) to osobny serwis komunikujący się z panelem przez{' '}
         <code className="font-mono text-xs">STREAM_URL</code>/<code className="font-mono text-xs">STREAM_SECRET</code> w{' '}
-        <code className="font-mono text-xs">.env</code> — to ustawia się przed startem kontenera, więc ten krok tylko
+        <code className="font-mono text-xs">.env</code> - to ustawia się przed startem kontenera, więc ten krok tylko
         diagnozuje i pokazuje instrukcję, nic tu nie zapisujesz.
       </p>
 
@@ -59,7 +59,7 @@ export default function StreamingStep() {
             <span className="text-zinc-400">Sprawdzanie połączenia ze streamerem...</span>
           ) : reachable ? (
             <span className="text-emerald-700 dark:text-emerald-300">
-              Streamer osiągalny — wersja {status.version}{status.status === 'deprecated' ? ' (przestarzała, zalecana aktualizacja)' : ''}.
+              Streamer osiągalny - wersja {status.version}{status.status === 'deprecated' ? ' (przestarzała, zalecana aktualizacja)' : ''}.
             </span>
           ) : (
             <span className="text-red-700 dark:text-red-300">
@@ -74,7 +74,7 @@ export default function StreamingStep() {
           <p className="font-bold text-zinc-800 dark:text-zinc-200">Jak skonfigurować streaming na osobnym serwerze:</p>
           <ol className="list-decimal list-inside space-y-1.5">
             <li>Sklonuj repo na drugi serwer (albo skopiuj sam folder <code className="font-mono">streaming-standalone/</code>).</li>
-            <li><code className="font-mono">cd streaming-standalone && cp .env.example .env</code> — uzupełnij <code className="font-mono">STREAM_SECRET</code> tak samo jak w głównej appce.</li>
+            <li><code className="font-mono">cd streaming-standalone && cp .env.example .env</code> - uzupełnij <code className="font-mono">STREAM_SECRET</code> tak samo jak w głównej appce.</li>
             <li><code className="font-mono">docker compose up -d --build</code> na tamtym serwerze.</li>
             <li>Na głównym serwerze ustaw <code className="font-mono">STREAM_URL=http://&lt;adres-drugiego-serwera&gt;:4000</code> w <code className="font-mono">.env</code> i zrestartuj panel.</li>
           </ol>

@@ -7,8 +7,8 @@ import { ToggleSwitch } from './SetupUI';
 const TEMPLATE_FIELDS = [
   { key: 'email_template_new_video', title: 'Nowy film w kategorii', hint: 'Znaczniki: {title} {author} {category} {description} {date} {id} {url} {thumbnail}', type: 'new_video', rows: 5 },
   { key: 'email_template_gdpr_notify', title: 'Zgłoszenie RODO (do administracji)', hint: 'Znaczniki: {user} {type} {url}', type: 'gdpr_notify', rows: 4 },
-  { key: 'email_template_gdpr_result_export', title: 'RODO — eksport gotowy', hint: null, type: 'gdpr_result_export', rows: 4 },
-  { key: 'email_template_gdpr_result_deletion', title: 'RODO — konto usunięte', hint: null, type: 'gdpr_result_deletion', rows: 4 },
+  { key: 'email_template_gdpr_result_export', title: 'RODO - eksport gotowy', hint: null, type: 'gdpr_result_export', rows: 4 },
+  { key: 'email_template_gdpr_result_deletion', title: 'RODO - konto usunięte', hint: null, type: 'gdpr_result_deletion', rows: 4 },
 ];
 
 // Same fields, same payload keys as ManagePage.jsx's "Ustawienia serwera E-mail" section.
@@ -74,7 +74,7 @@ export default function EmailStep({ settings, reloadSettings }) {
       </div>
       <h2 className="text-xl font-bold text-zinc-900 dark:text-white font-display mb-2">Powiadomienia e-mail</h2>
       <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6">
-        Serwer SMTP używany do powiadomień o nowych filmach oraz zgłoszeń RODO. Opcjonalne — bez tego platforma działa
+        Serwer SMTP używany do powiadomień o nowych filmach oraz zgłoszeń RODO. Opcjonalne - bez tego platforma działa
         normalnie, po prostu nikt nie dostanie e-maili.
       </p>
 

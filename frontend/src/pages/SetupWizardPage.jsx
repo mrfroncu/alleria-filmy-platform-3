@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Rocket } from 'lucide-react';
 import { api } from '../utils/api';
 import { useToast } from '../contexts/ToastContext';
+import { SETUP_SKIPPED_KEY } from '../components/SetupGate';
 import WelcomeStep from '../components/setup/WelcomeStep';
 import EnvDiagnosticsStep from '../components/setup/EnvDiagnosticsStep';
 import LoginStep from '../components/setup/LoginStep';
@@ -43,14 +44,24 @@ export default function SetupWizardPage() {
     setFinishing(true);
     try {
       await api.completeSetup();
-      navigate('/');
+      // Hard navigation, not navigate('/') — AuthContext fetches /api/auth/me exactly once on
+      // mount and never again, so a client-side route change would carry the stale
+      // setupCompleted:false it loaded with, and SetupGate would immediately bounce back here.
+      // A full reload remounts AuthProvider and re-fetches the now-true flag (same reason
+      // TosGate's accept handler reloads instead of just closing the modal).
+      window.location.href = '/';
     } catch (e) {
       toast.error('Błąd: ' + e.message);
       setFinishing(false);
     }
   };
 
-  const skip = () => navigate('/');
+  // Doesn't complete setup — just tells SetupGate not to force-redirect here again for the rest
+  // of this browser session, so skipping doesn't immediately bounce back to /setup.
+  const skip = () => {
+    sessionStorage.setItem(SETUP_SKIPPED_KEY, '1');
+    navigate('/');
+  };
   const goBack = () => setStepIndex(i => Math.max(0, i - 1));
   const goNext = () => setStepIndex(i => Math.min(STEPS.length - 1, i + 1));
 

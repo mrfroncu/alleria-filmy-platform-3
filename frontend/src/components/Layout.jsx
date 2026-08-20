@@ -353,6 +353,17 @@ export default function Layout({ children }) {
               </button>
             </div>
           )}
+          {/* Setup wizard reminder — shown after a dev skips it (SetupGate stops force-redirecting
+              for the rest of that session once skipped, see SetupGate.jsx), so there's still a way
+              back in without retyping the URL. Hidden on /setup itself. */}
+          {isDev && user && !user.setupCompleted && location.pathname !== '/setup' && (
+            <div className="shrink-0 flex items-center justify-center gap-3 px-4 py-2 bg-violet-500 text-white text-xs font-bold flex-wrap">
+              <span>Konfiguracja platformy nie została jeszcze zakończona</span>
+              <Link to="/setup" className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/15 hover:bg-white/25 transition-colors no-underline text-white">
+                Dokończ konfigurację
+              </Link>
+            </div>
+          )}
           {/* Mobile top bar — always present (hamburger is the only way to reach the sidebar on mobile) */}
           <div className="lg:hidden shrink-0 flex items-center justify-between gap-3 p-4 bg-gradient-to-r from-violet-100/50 via-white/60 to-fuchsia-100/40 dark:from-violet-500/10 dark:via-zinc-950/50 dark:to-fuchsia-500/10 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 dark:border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
             <div className="flex items-center gap-2 min-w-0">
