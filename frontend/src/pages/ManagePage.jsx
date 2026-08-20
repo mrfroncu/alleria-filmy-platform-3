@@ -13,6 +13,24 @@ import CategoryModal from '../components/CategoryModal';
 import RankModal from '../components/RankModal';
 
 const MANAGE_TAB_IDS = ['categories', 'ranks', 'users', 'reports', 'gdpr', 'tos', 'settings'];
+
+// Search metadata for the global command palette (Cmd/Ctrl+K, GlobalSearch.jsx) — add an entry
+// here whenever a tab or settings subsection above is added, so it's searchable automatically
+// instead of relying on someone remembering to also edit GlobalSearch.jsx.
+export const MANAGE_SEARCH_ITEMS = [
+  { label: 'Kategorie', section: 'Zarządzanie', to: '/manage?tab=categories', icon: FolderOpen, devOnly: true },
+  { label: 'Rangi', section: 'Zarządzanie', to: '/manage?tab=ranks', icon: Shield, devOnly: true },
+  { label: 'Użytkownicy', section: 'Zarządzanie', to: '/manage?tab=users', icon: Users, devOnly: true },
+  { label: 'Zgłoszenia', section: 'Zarządzanie', to: '/manage?tab=reports', icon: Flag, devOnly: true },
+  { label: 'Zgłoszenia RODO (GDPR / LGPD)', section: 'Zarządzanie', to: '/manage?tab=gdpr', icon: Lock, devOnly: true },
+  { label: 'Regulamin (edycja)', section: 'Zarządzanie', to: '/manage?tab=tos', icon: FileText, devOnly: true },
+  { label: 'Limity treści', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=display', icon: Settings, devOnly: true },
+  { label: 'Ograniczenie domen webhooków', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=security', icon: ShieldCheck, devOnly: true },
+  { label: 'Region RODO / LGPD', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=security', icon: ShieldCheck, devOnly: true },
+  { label: 'Wysyłka kodu logowania (TS3)', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=login', icon: ShieldCheck, devOnly: true },
+  { label: 'Ustawienia SMTP', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=email', icon: Mail, devOnly: true },
+];
+
 const REPORT_REASON_LABELS = { spam: 'Spam', harassment: 'Nękanie / obraźliwe treści', spoiler: 'Spoiler', inappropriate: 'Nieodpowiednia treść', other: 'Inne' };
 
 // Standard on/off slider switch — used for the boolean settings toggles in the Ustawienia tab.
@@ -52,6 +70,13 @@ export default function ManagePage() {
   const toast = useToast();
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState(MANAGE_TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'categories');
+  // GlobalSearch (and any other same-route link) only changes the URL query string — this route
+  // component stays mounted, so without this effect `tab` (frozen at whatever it was on initial
+  // mount) would never follow a `?tab=` link clicked while already on this page.
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t && MANAGE_TAB_IDS.includes(t)) setTab(t);
+  }, [searchParams]);
   // Deep-links (e.g. from GlobalSearch) point at a settings section via ?subtab=; since all
   // sections now live on one scrollable page, this just scrolls to the section on arrival.
   const settingsScrollTarget = ["display","security","email","login"].includes(searchParams.get('subtab')) ? searchParams.get('subtab') : null;
@@ -367,7 +392,7 @@ export default function ManagePage() {
 
   const handleGdprApprove = async (id, type) => {
     const message = type === 'deletion'
-      ? 'Zatwierdzić usunięcie konta? Nastąpi natychmiastowa anonimizacja danych i wylogowanie użytkownika. Tej operacji nie można cofnąć.'
+      ? 'Zatwierdzić usunięcie konta? Nastąpi natychmiastowa anonimizacja danych, usunięcie logów aktywności (historia oglądania, ulubione, powiadomienia, logi logowań itd.) i wylogowanie użytkownika. Tej operacji nie można cofnąć.'
       : 'Zatwierdzić eksport danych? Plik stanie się dostępny do pobrania w profilu użytkownika.';
     if (!(await confirm(message, { confirmLabel: 'Zatwierdź', danger: type === 'deletion' }))) return;
     setGdprBusy(id);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink, Download, Trash2, Clock, ShieldCheck, Mail, Bell, Monitor, Smartphone, LogOut, Upload } from 'lucide-react';
+import { User, Film, Eye, Heart, Calendar, Shield, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink, Download, Trash2, Clock, ShieldCheck, Mail, Bell, Monitor, Smartphone, LogOut, Upload, Lock } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, parseTsError, urlBase64ToUint8Array } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
@@ -9,6 +9,14 @@ import { useToast } from '../contexts/ToastContext';
 import { useUnsavedForm } from '../contexts/UnsavedChangesContext';
 import TsChallengeModal from '../components/TsChallengeModal';
 import AvatarCropModal from '../components/AvatarCropModal';
+
+// Search metadata for the global command palette (Cmd/Ctrl+K, GlobalSearch.jsx) — add an entry
+// here whenever a section below is added, so it's searchable automatically instead of relying on
+// someone remembering to also edit GlobalSearch.jsx.
+export const PROFILE_SEARCH_ITEMS = [
+  { label: 'Adres e-mail i powiadomienia', section: 'Mój profil', to: '/profile', icon: Mail },
+  { label: 'Twoje dane (RODO)', section: 'Mój profil', to: '/profile', icon: Lock },
+];
 
 export default function ProfilePage() {
   const { config: siteConfig } = useSettings();

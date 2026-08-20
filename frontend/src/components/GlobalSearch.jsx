@@ -4,12 +4,15 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search, Film, Loader2, Heart, Clock, Users, User, Tag as TagIcon,
   Shield, BarChart3, FolderOpen, FileText, Wrench, CornerDownLeft,
-  Eye, LogIn, HardDrive, UserPlus, ShieldCheck, Settings, Download,
-  Upload, Trash2, AlertTriangle, Terminal, Mail, Lock,
 } from 'lucide-react';
 import { api } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useUnsavedGuard } from '../contexts/UnsavedChangesContext';
+import { ADMIN_SEARCH_ITEMS } from '../pages/AdminPage';
+import { MANAGE_SEARCH_ITEMS } from '../pages/ManagePage';
+import { LOGS_SEARCH_ITEMS } from '../pages/LogsPage';
+import { DEBUG_SEARCH_ITEMS } from '../pages/DebugPage';
+import { PROFILE_SEARCH_ITEMS } from '../pages/ProfilePage';
 
 const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || navigator.userAgent || '');
 
@@ -32,36 +35,16 @@ const PAGES = [
 
 const SHORTCUT_PATHS = ['/', '/favorites', '/history'];
 
-// Settings/options/tabs living inside admin+dev pages — deep-link via ?tab= so search actually lands on the right tab
+// Settings/options/tabs living inside admin+dev pages — deep-link via ?tab= so search actually
+// lands on the right tab. Each page owns its own slice of this list (exported right next to that
+// page's tab definitions) so adding a tab there makes it searchable automatically, instead of
+// requiring a matching edit in this unrelated file.
 const SEARCHABLE_ITEMS = [
-  { label: 'Biblioteka filmów', section: 'Panel Redaktora', to: '/admin?tab=videos', icon: Film, adminOnly: true },
-  { label: 'Zarządzanie tagami', section: 'Panel Redaktora', to: '/admin?tab=tags', icon: TagIcon, adminOnly: true },
-  { label: 'Kategorie', section: 'Zarządzanie', to: '/manage?tab=categories', icon: FolderOpen, devOnly: true },
-  { label: 'Rangi', section: 'Zarządzanie', to: '/manage?tab=ranks', icon: Shield, devOnly: true },
-  { label: 'Użytkownicy', section: 'Zarządzanie', to: '/manage?tab=users', icon: Users, devOnly: true },
-  { label: 'Audit Log', section: 'Logi systemowe', to: '/logs?tab=audit', icon: FileText, devOnly: true },
-  { label: 'Logi Watch Party', section: 'Logi systemowe', to: '/logs?tab=watchparty', icon: Users, devOnly: true },
-  { label: 'Logi wyświetleń', section: 'Logi systemowe', to: '/logs?tab=watch', icon: Eye, devOnly: true },
-  { label: 'Logi logowania', section: 'Logi systemowe', to: '/logs?tab=login', icon: LogIn, devOnly: true },
-  { label: 'Pliki streamera', section: 'Narzędzia Developerskie', to: '/debug?tab=streaming', icon: HardDrive, devOnly: true },
-  { label: 'Czyszczenie streamingu', section: 'Narzędzia Developerskie', to: '/debug?tab=streaming', icon: Trash2, devOnly: true },
-  { label: 'Aktywne Watch Parties', section: 'Narzędzia Developerskie', to: '/debug?tab=admin', icon: Users, devOnly: true },
-  { label: 'Dodaj użytkownika', section: 'Narzędzia Developerskie', to: '/debug?tab=admin', icon: UserPlus, devOnly: true },
-  { label: 'Sprawdź uprawnienia', section: 'Narzędzia Developerskie', to: '/debug?tab=categories', icon: ShieldCheck, devOnly: true },
-  { label: 'Eksportuj bazę danych', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: Download, devOnly: true },
-  { label: 'Importuj bazę danych', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: Upload, devOnly: true },
-  { label: 'Czyszczenie logów', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: Trash2, devOnly: true },
-  { label: 'Wyczyść bazę danych', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: AlertTriangle, devOnly: true },
-  { label: 'Konsola SQL', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: Terminal, devOnly: true },
-  { label: 'Limity treści', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=display', icon: Settings, devOnly: true },
-  { label: 'Ograniczenie domen webhooków', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=security', icon: ShieldCheck, devOnly: true },
-  { label: 'Wysyłka kodu logowania (TS3)', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=login', icon: ShieldCheck, devOnly: true },
-  { label: 'Regulamin (edycja)', section: 'Zarządzanie', to: '/manage?tab=tos', icon: FileText, devOnly: true },
-  { label: 'Ustawienia SMTP', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=email', icon: Mail, devOnly: true },
-  { label: 'Region RODO / LGPD', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=security', icon: ShieldCheck, devOnly: true },
-  { label: 'Zgłoszenia RODO (GDPR / LGPD)', section: 'Zarządzanie', to: '/manage?tab=gdpr', icon: Lock, devOnly: true },
-  { label: 'Adres e-mail i powiadomienia', section: 'Mój profil', to: '/profile', icon: Mail },
-  { label: 'Twoje dane (RODO)', section: 'Mój profil', to: '/profile', icon: Lock },
+  ...ADMIN_SEARCH_ITEMS,
+  ...MANAGE_SEARCH_ITEMS,
+  ...LOGS_SEARCH_ITEMS,
+  ...DEBUG_SEARCH_ITEMS,
+  ...PROFILE_SEARCH_ITEMS,
 ];
 
 // Strip dots/dashes/underscores/spaces so "R.E.P.O." and "REPO" compare equal —

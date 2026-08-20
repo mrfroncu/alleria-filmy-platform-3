@@ -55,9 +55,7 @@ Dane przechowywane są przez czas korzystania z platformy. Konto, w związku z k
 
 **Usunięcie konta a usunięcie danych aktywności**
 
-Zgłoszenie usunięcia konta (dostępne w ustawieniach profilu) powoduje anonimizację konta w ciągu 30 dni - dane identyfikujące (nazwa, awatar, ID Discord/TeamSpeak, e-mail) zostają usunięte, a konto oznaczone jako „Usunięty użytkownik". Ze względów technicznych (integralność bazy danych, treści powiązane z innymi użytkownikami) sam wpis konta oraz dodane przez nie filmy pozostają w systemie, ale bez możliwości powiązania z Twoją tożsamością.
-
-Jeżeli chcesz, aby dodatkowo usunięta została Twoja historia aktywności (historia oglądania, ulubione, powiadomienia, logi logowań itp.), zaznacz to wyraźnie w treści zgłoszenia lub napisz do nas na [kontakt@alleria.pl](mailto:kontakt@alleria.pl) - jest to operacja nieodwracalna i wykonywana odrębnie od standardowej anonimizacji konta.
+Zgłoszenie usunięcia konta (dostępne w ustawieniach profilu) powoduje usunięcie wszystkich informacji powiązanych z Twoim kontem, poza dodanymi materiałami wideo w przypadku redaktorów. Procedura ta trwa do 30 dni - dane identyfikujące (nazwa, awatar, ID Discord/TeamSpeak, e-mail), historia oglądania, ulubione, powiadomienia oraz logi (jeśli prawo nie wymaga ich dłuższego przechowywania) zostają usunięte. Ze względów technicznych (integralność bazy danych, treści powiązane z innymi użytkownikami) sam wpis konta oznaczony jako „Usunięty użytkownik" oraz dodane przez nie filmy pozostają w systemie, ale bez możliwości powiązania z Twoją tożsamością.
 
 **Twoje prawa**
 
@@ -79,7 +77,7 @@ Dane nie są wykorzystywane do profilowania ani zautomatyzowanego podejmowania d
 
 ## §6. Pliki cookie i podobne technologie
 
-Platforma używa jednego pliku cookie, niezbędnego do utrzymania Twojego zalogowania. Cookie ten jest ważny maksymalnie 7 dni lub do momentu wylogowania - nie jest wykorzystywany do śledzenia ani do celów reklamowych, dlatego nie wymaga osobnej zgody.
+Platforma używa jednego pliku cookie, niezbędnego do utrzymania Twojej sesji. Cookie ten jest ważny maksymalnie 7 dni lub do momentu wylogowania.
 
 Platforma zapisuje też lokalnie w Twojej przeglądarce (localStorage/sessionStorage) drobne ustawienia, takie jak preferowana jakość odtwarzania wideo czy kod trwającej sesji wspólnego oglądania (Watch Party) - wyłącznie po to, by zapamiętać te ustawienia między odwiedzinami. Dane te nie są wysyłane na zewnętrzne serwery ani wykorzystywane do śledzenia.
 

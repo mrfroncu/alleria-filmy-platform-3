@@ -10,6 +10,14 @@ import { useToast } from '../contexts/ToastContext';
 
 const ADMIN_TAB_IDS = ['videos', 'tags'];
 
+// Search metadata for the global command palette (Cmd/Ctrl+K, GlobalSearch.jsx) — add an entry
+// here whenever a tab above is added, so it's searchable automatically instead of relying on
+// someone remembering to also edit GlobalSearch.jsx.
+export const ADMIN_SEARCH_ITEMS = [
+  { label: 'Biblioteka filmów', section: 'Panel Redaktora', to: '/admin?tab=videos', icon: Film, adminOnly: true },
+  { label: 'Zarządzanie tagami', section: 'Panel Redaktora', to: '/admin?tab=tags', icon: Tag, adminOnly: true },
+];
+
 export default function AdminPage() {
   const { config } = useSettings();
   const confirm = useConfirm();
@@ -22,6 +30,13 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
 
   const [tab, setTab] = useState(ADMIN_TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'videos');
+  // GlobalSearch (and any other same-route link) only changes the URL query string — this route
+  // component stays mounted, so without this effect `tab` (frozen at whatever it was on initial
+  // mount) would never follow a `?tab=` link clicked while already on this page.
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t && ADMIN_TAB_IDS.includes(t)) setTab(t);
+  }, [searchParams]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVideo, setEditingVideo] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);

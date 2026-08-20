@@ -8,6 +8,16 @@ import { useConfirm } from '../contexts/ConfirmContext';
 
 const LOGS_TAB_IDS = ['audit', 'watchparty', 'watch', 'login'];
 
+// Search metadata for the global command palette (Cmd/Ctrl+K, GlobalSearch.jsx) — add an entry
+// here whenever a tab above is added, so it's searchable automatically instead of relying on
+// someone remembering to also edit GlobalSearch.jsx.
+export const LOGS_SEARCH_ITEMS = [
+  { label: 'Audit Log', section: 'Logi systemowe', to: '/logs?tab=audit', icon: Shield, devOnly: true },
+  { label: 'Logi Watch Party', section: 'Logi systemowe', to: '/logs?tab=watchparty', icon: Users, devOnly: true },
+  { label: 'Logi wyświetleń', section: 'Logi systemowe', to: '/logs?tab=watch', icon: Eye, devOnly: true },
+  { label: 'Logi logowania', section: 'Logi systemowe', to: '/logs?tab=login', icon: LogIn, devOnly: true },
+];
+
 const WP_ACTIONS = [
   { key: '', label: 'Wszystkie' },
   { key: 'party_created', label: 'Utworzono', color: 'bg-emerald-500/10 text-emerald-400' },
@@ -35,6 +45,13 @@ export default function LogsPage() {
   const confirm = useConfirm();
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState(LOGS_TAB_IDS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'audit');
+  // GlobalSearch (and any other same-route link) only changes the URL query string — this route
+  // component stays mounted, so without this effect `tab` (frozen at whatever it was on initial
+  // mount) would never follow a `?tab=` link clicked while already on this page.
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t && LOGS_TAB_IDS.includes(t)) setTab(t);
+  }, [searchParams]);
 
   // Users list, shared by the per-tab user filters below.
   const [allUsers, setAllUsers] = useState([]);

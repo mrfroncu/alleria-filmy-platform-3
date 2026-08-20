@@ -3889,8 +3889,14 @@ app.post('/api/debug/gdpr/requests/:id/approve', requireDev, (req, res) => {
   try {
     // Fetched before anonymizeUser() below, which wipes email/discord_email for deletions.
     const user = db.prepare('SELECT email, discord_email FROM users WHERE id = ?').get(reqRow.user_id);
-    if (reqRow.type === 'deletion') anonymizeUser(reqRow.user_id);
-    db.prepare("UPDATE gdpr_requests SET status = 'approved', processed_by = ?, processed_at = datetime('now') WHERE id = ?")
+    // Deletion requests anonymize the account AND purge its activity logs in one step, per the
+    // Regulamin's promise that a deletion request removes everything within 30 days (no separate
+    // ask needed) — authored videos are the only thing that deliberately survives.
+    if (reqRow.type === 'deletion') {
+      anonymizeUser(reqRow.user_id);
+      purgeUserActivityData(reqRow.user_id);
+    }
+    db.prepare("UPDATE gdpr_requests SET status = 'approved', activity_purged_at = CASE WHEN type = 'deletion' THEN datetime('now') ELSE activity_purged_at END, processed_by = ?, processed_at = datetime('now') WHERE id = ?")
       .run(req.session.user.id, reqRow.id);
     audit(req.session.user.id, 'gdpr_approve', 'user', reqRow.user_id, reqRow.type);
     if (user) notifyUserOfGdprResult(reqRow.type, user).catch(e => console.error('[EMAIL] GDPR result notify failed:', e.message));
@@ -3914,6 +3920,9 @@ app.post('/api/debug/gdpr/requests/:id/reject', requireDev, (req, res) => {
   res.json({ success: true });
 });
 
+// Approving a deletion request now purges activity data automatically (see /approve above) —
+// this stays around as a manual backfill for deletion requests that were approved before that
+// behavior existed, so their activity data can still be brought in line with the Regulamin.
 app.post('/api/debug/gdpr/requests/:id/purge-activity', requireDev, (req, res) => {
   const reqRow = db.prepare('SELECT * FROM gdpr_requests WHERE id = ?').get(req.params.id);
   if (!reqRow) return res.status(404).json({ error: 'Nie znaleziono zgłoszenia.' });
