@@ -1572,6 +1572,12 @@ app.post('/api/tos/accept', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
+// Returns the built-in default text without touching app_settings — the "Restore default" button
+// loads this into the editor so a dev can review/tweak it before actually saving via /api/debug/tos.
+app.get('/api/debug/tos/default', requireDev, (req, res) => {
+  res.json({ content: DEFAULT_TOS_MD });
+});
+
 app.post('/api/debug/tos', requireDev, (req, res) => {
   const content = String(req.body.content || '').trim();
   if (!content) return res.status(400).json({ error: 'Treść regulaminu nie może być pusta.' });
@@ -3257,6 +3263,22 @@ function anonymizeUser(userId) {
   invalidateUserSessions(userId);
 }
 
+// Separate, opt-in step a dev can take on top of anonymizeUser() — actually removes the user's
+// activity/log rows instead of just scrubbing identifying columns. Deliberately leaves: the users
+// row itself (comments/videos reference it), authored videos, and comments (already anonymized
+// via the username change above). Also leaves comment_reports and audit_logs alone — those are a
+// moderation/security trail kept by design even across deletions, not a personal activity log.
+function purgeUserActivityData(userId) {
+  const tables = [
+    'watch_logs', 'video_playback_events', 'watch_progress', 'video_watched',
+    'favorites', 'notifications', 'push_subscriptions', 'login_logs', 'comment_reactions',
+  ];
+  for (const t of tables) {
+    db.prepare(`DELETE FROM ${t} WHERE user_id = ?`).run(userId);
+  }
+  db.prepare('DELETE FROM watch_party_logs WHERE user_id = ?').run(userId);
+}
+
 // Fire-and-forget, same philosophy as sendCategoryEmailNotifications — a bad send should
 // never block the user's request from going through.
 async function notifyDevsOfGdprRequest(type, requestingUser) {
@@ -3889,6 +3911,19 @@ app.post('/api/debug/gdpr/requests/:id/reject', requireDev, (req, res) => {
   db.prepare("UPDATE gdpr_requests SET status = 'rejected', admin_note = ?, processed_by = ?, processed_at = datetime('now') WHERE id = ?")
     .run(reason, req.session.user.id, reqRow.id);
   audit(req.session.user.id, 'gdpr_reject', 'user', reqRow.user_id, `${reqRow.type}: ${reason}`);
+  res.json({ success: true });
+});
+
+app.post('/api/debug/gdpr/requests/:id/purge-activity', requireDev, (req, res) => {
+  const reqRow = db.prepare('SELECT * FROM gdpr_requests WHERE id = ?').get(req.params.id);
+  if (!reqRow) return res.status(404).json({ error: 'Nie znaleziono zgłoszenia.' });
+  if (reqRow.type !== 'deletion' || reqRow.status !== 'approved') {
+    return res.status(400).json({ error: 'Logi aktywności można usunąć tylko dla zatwierdzonego zgłoszenia usunięcia konta.' });
+  }
+  if (reqRow.activity_purged_at) return res.status(400).json({ error: 'Logi aktywności zostały już usunięte.' });
+  purgeUserActivityData(reqRow.user_id);
+  db.prepare("UPDATE gdpr_requests SET activity_purged_at = datetime('now') WHERE id = ?").run(reqRow.id);
+  audit(req.session.user.id, 'gdpr_purge_activity', 'user', reqRow.user_id, `request #${reqRow.id}`);
   res.json({ success: true });
 });
 

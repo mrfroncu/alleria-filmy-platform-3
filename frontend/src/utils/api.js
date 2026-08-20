@@ -37,6 +37,7 @@ export const api = {
   updateTos: (content) => request('/debug/tos', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }),
   }),
+  getDefaultTos: () => request('/debug/tos/default'),
 
   // opts: { linkMode: true } — attach the matched TS identity to the logged-in account
   // instead of logging in as a (possibly different) TS-origin account.
@@ -236,6 +237,7 @@ export const api = {
     return request(`/debug/gdpr/requests/${id}/replace`, { method: 'POST', body: formData });
   },
   adminApproveGdpr: (id) => request(`/debug/gdpr/requests/${id}/approve`, { method: 'POST' }),
+  adminPurgeGdprActivity: (id) => request(`/debug/gdpr/requests/${id}/purge-activity`, { method: 'POST' }),
   adminRejectGdpr: (id, reason) => request(`/debug/gdpr/requests/${id}/reject`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

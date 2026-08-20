@@ -108,6 +108,19 @@ export default function ManagePage() {
       api.getTos().then(t => { setTosContent(t.content); setTosBaseline(t.content); setTosUpdatedAt(t.updatedAt); }).catch(() => {}).finally(() => setTosLoading(false));
     }
   }, [tab]);
+  const [tosRestoring, setTosRestoring] = useState(false);
+  const restoreDefaultTos = async () => {
+    if (!(await confirm('Wczytać domyślną treść regulaminu do edytora poniżej? Zastąpi to obecnie wyświetlaną treść — trzeba ją będzie jeszcze zapisać przyciskiem „Zapisz regulamin”.', { confirmLabel: 'Wczytaj domyślny' }))) return;
+    setTosRestoring(true);
+    try {
+      const t = await api.getDefaultTos();
+      setTosContent(t.content);
+    } catch (err) {
+      setStatus({ type: 'error', msg: 'Błąd: ' + err.message });
+    }
+    setTosRestoring(false);
+  };
+
   const saveTos = async () => {
     setTosSaving(true);
     try {
@@ -363,6 +376,20 @@ export default function ManagePage() {
       setStatus({ type: 'success', msg: 'Zgłoszenie zatwierdzone.' });
       loadGdprAdmin();
       loadGdprPendingCount();
+    } catch (err) {
+      setStatus({ type: 'error', msg: 'Błąd: ' + err.message });
+    }
+    setGdprBusy(null);
+  };
+
+  const handleGdprPurgeActivity = async (id) => {
+    const message = 'Usunąć również logi aktywności (historię oglądania, ulubione, powiadomienia, logi logowań itd.) tego użytkownika? Autorskie filmy i komentarze zostają. Tej operacji nie można cofnąć.';
+    if (!(await confirm(message, { confirmLabel: 'Usuń logi', danger: true }))) return;
+    setGdprBusy(id);
+    try {
+      await api.adminPurgeGdprActivity(id);
+      setStatus({ type: 'success', msg: 'Logi aktywności usunięte.' });
+      loadGdprAdmin();
     } catch (err) {
       setStatus({ type: 'error', msg: 'Błąd: ' + err.message });
     }
@@ -1197,12 +1224,18 @@ export default function ManagePage() {
                           było: {r.anonymized_original_display_name} (@{r.anonymized_original_username})
                         </span>
                       )}
+                      {r.type === 'deletion' && r.status === 'approved' && r.activity_purged_at && (
+                        <span className="text-zinc-400 italic">logi aktywności usunięte</span>
+                      )}
                       <div className="ml-auto flex items-center gap-2">
                         {r.type === 'export' && r.export_file && (
                           <button onClick={() => handleGdprDownloadFile(r)} className="btn-link-violet text-xs font-bold">Pobierz plik</button>
                         )}
                         {r.type === 'export' && r.status === 'pending' && (
                           <button onClick={() => triggerReplace(r.id)} disabled={busy} className="btn-link-zinc text-xs font-bold disabled:opacity-50">Podmień plik</button>
+                        )}
+                        {r.type === 'deletion' && r.status === 'approved' && !r.activity_purged_at && (
+                          <button onClick={() => handleGdprPurgeActivity(r.id)} disabled={busy} className="btn-sm-danger disabled:opacity-50">Usuń też logi</button>
                         )}
                         {r.status === 'pending' && (
                           <>
@@ -1266,9 +1299,14 @@ export default function ManagePage() {
               </div>
             </div>
           )}
-          <button onClick={saveTos} disabled={tosSaving || tosLoading} className="btn-primary text-sm mt-4">
-            {tosSaving ? 'Zapisywanie...' : 'Zapisz regulamin'}
-          </button>
+          <div className="flex items-center gap-2 mt-4">
+            <button onClick={saveTos} disabled={tosSaving || tosLoading} className="btn-primary text-sm">
+              {tosSaving ? 'Zapisywanie...' : 'Zapisz regulamin'}
+            </button>
+            <button onClick={restoreDefaultTos} disabled={tosRestoring || tosLoading} className="btn-secondary text-sm disabled:opacity-50">
+              {tosRestoring ? 'Wczytywanie...' : 'Przywróć domyślny'}
+            </button>
+          </div>
         </div>
 
         {/* Markdown cheat sheet */}

@@ -7,6 +7,7 @@ Alleria Filmy to prywatna platforma wideo dostępna wyłącznie dla członków s
 ## §2. Dostęp do platformy
 
 - Dostęp mają wyłącznie osoby posiadające wymaganą rolę na serwerze Discord Alleria lub wymaganą grupę serwerową na serwerze TeamSpeak.
+- Z platformy mogą korzystać wyłącznie osoby pełnoletnie (które ukończyły 18 lat), posiadające pełną zdolność do czynności prawnych.
 - Konto jest ściśle osobiste i nie może być udostępniane innym osobom.
 - Administrator zastrzega sobie prawo do odmowy lub cofnięcia dostępu bez podania przyczyny.
 
@@ -15,6 +16,8 @@ Alleria Filmy to prywatna platforma wideo dostępna wyłącznie dla członków s
 - Materiały dostępne na platformie są przeznaczone wyłącznie do wewnętrznego użytku społeczności Alleria.
 - Zabronione jest pobieranie, retransmisja, udostępnianie lub kopiowanie treści poza platformę bez zgody administratora.
 - Zabronione jest nagrywanie materiałów wideo dostępnych na platformie.
+- Platforma udostępnia funkcję wspólnego oglądania (Watch Party) — podczas wspólnej sesji Twoja nazwa użytkownika i awatar są widoczne dla pozostałych uczestników tej samej sesji, podobnie jak w przypadku komentarzy publikowanych pod filmami.
+- Dla poszczególnych filmów zbierane są zbiorcze statystyki oglądalności (m.in. czas obejrzenia, punkty przerwania), dostępne dla autora danego materiału oraz administracji, wykorzystywane w celach analitycznych i poprawy jakości treści.
 
 ## §4. Odpowiedzialność
 
@@ -27,42 +30,58 @@ Zgodnie z Rozporządzeniem Parlamentu Europejskiego i Rady (UE) 2016/679 z dnia 
 
 **Przetwarzane dane i cel**
 
-- **Discord:** ID konta, nazwa użytkownika, awatar - pobierane przez protokół OAuth2 (platforma nie przechowuje hasła do konta Discord).
-- **TeamSpeak:** adres IP klienta w momencie logowania, unikalny identyfikator UID, nazwa użytkownika (nickname) - wyłącznie w celu weryfikacji tożsamości.
-- **Aktywność:** historia obejrzanych filmów i logi logowania - wyłącznie do celów statystycznych i bezpieczeństwa platformy.
+- **Discord:** ID konta, nazwa użytkownika, awatar oraz adres e-mail powiązany z kontem Discord - pobierane przez protokół OAuth2 (platforma nie przechowuje hasła do konta Discord).
+- **TeamSpeak:** adres IP klienta w momencie logowania, unikalny identyfikator UID, nazwa użytkownika (nickname) - wykorzystywane wyłącznie do dopasowania łączącego się klienta TeamSpeak do logującej się osoby oraz weryfikacji tożsamości.
+- **Logowanie:** adres IP jest zapisywany przy każdej próbie logowania, niezależnie od metody logowania i tego, czy zakończyła się powodzeniem - w celach bezpieczeństwa i wykrywania nadużyć.
+- **Aktywność:** historia obejrzanych filmów, ulubione oraz inna aktywność związana z korzystaniem z platformy - wyłącznie do celów statystycznych, analitycznych oraz bezpieczeństwa platformy.
 
 **Podstawa prawna przetwarzania**
 
 Art. 6 ust. 1 lit. b RODO (realizacja usługi) oraz art. 6 ust. 1 lit. f RODO (prawnie uzasadniony interes administratora - bezpieczeństwo i integralność platformy).
 
+**Odbiorcy danych i przekazywanie poza Europejski Obszar Gospodarczy (EOG)**
+
+Do prawidłowego działania platformy korzystamy z poniższych dostawców, którym mogą być przekazywane niektóre dane (w tym adres IP):
+
+- **Discord** (Discord Inc. / Discord Netherlands B.V., USA) - logowanie odbywa się przez autoryzację OAuth2 bezpośrednio na stronie Discorda, który jest jednocześnie niezależnym administratorem Twoich danych na własnej platformie; my jedynie pobieramy od Discorda dane potrzebne do założenia i obsługi konta (ID, nazwa, rola, e-mail). Twój awatar jest ładowany bezpośrednio z serwerów Discorda przy każdym wyświetleniu profilu, co wiąże się z przekazaniem adresu IP osoby przeglądającej.
+- **Cloudflare, Inc.** (USA) - infrastruktura sieciowa zapewniająca dostępność i bezpieczeństwo platformy.
+- **Google LLC (Google Fonts)** - czcionki wyświetlane na stronie; przeglądarka użytkownika łączy się bezpośrednio z serwerami Google, co wiąże się z przekazaniem adresu IP.
+
+Przekazanie danych do tych dostawców odbywa się w oparciu o mechanizmy prawne przewidziane w RODO (art. 44-49), stosowane przez poszczególnych dostawców zgodnie z ich politykami prywatności (m.in. standardowe klauzule umowne). Poza wskazanymi wyżej dostawcami dane nie są udostępniane innym podmiotom trzecim.
+
 **Okres przechowywania danych**
 
-Dane przechowywane są przez czas korzystania z platformy. Po usunięciu konta lub cofnięciu dostępu dane są usuwane w ciągu 30 dni, o ile przepisy prawa nie wymagają ich dłuższego przechowywania.
+Dane przechowywane są przez czas korzystania z platformy. Konto, w związku z którym zgłoszono usunięcie (patrz niżej), jest anonimizowane w ciągu 30 dni, o ile przepisy prawa nie wymagają dłuższego przechowywania niektórych danych.
 
-**Odbiorcy danych**
+**Usunięcie konta a usunięcie danych aktywności**
 
-Dane nie są udostępniane podmiotom trzecim ani przekazywane poza Europejski Obszar Gospodarczy (EOG).
+Zgłoszenie usunięcia konta (dostępne w ustawieniach profilu) powoduje anonimizację konta w ciągu 30 dni - dane identyfikujące (nazwa, awatar, ID Discord/TeamSpeak, e-mail) zostają usunięte, a konto oznaczone jako „Usunięty użytkownik". Ze względów technicznych (integralność bazy danych, treści powiązane z innymi użytkownikami) sam wpis konta oraz dodane przez nie filmy pozostają w systemie, ale bez możliwości powiązania z Twoją tożsamością.
 
-**Twoje prawa (art. 15–21 RODO)**
+Jeżeli chcesz, aby dodatkowo usunięta została Twoja historia aktywności (historia oglądania, ulubione, powiadomienia, logi logowań itp.), zaznacz to wyraźnie w treści zgłoszenia lub napisz do nas na [kontakt@alleria.pl](mailto:kontakt@alleria.pl) - jest to operacja nieodwracalna i wykonywana odrębnie od standardowej anonimizacji konta.
+
+**Twoje prawa**
 
 Masz prawo do:
 
-- **dostępu** do swoich danych osobowych (art. 15)
-- **sprostowania** nieprawidłowych danych (art. 16)
-- **usunięcia** danych - „prawo do bycia zapomnianym" (art. 17)
-- **ograniczenia przetwarzania** (art. 18)
-- **przenoszenia danych** (art. 20)
-- **sprzeciwu** wobec przetwarzania danych (art. 21)
+- **dostępu** do swoich danych osobowych (art. 15 RODO)
+- **sprostowania** nieprawidłowych danych (art. 16 RODO)
+- **usunięcia** danych - „prawo do bycia zapomnianym" (art. 17 RODO)
+- **ograniczenia przetwarzania** (art. 18 RODO)
+- **przenoszenia danych** (art. 20 RODO)
+- **sprzeciwu** wobec przetwarzania danych (art. 21 RODO)
+- **wniesienia skargi** do Prezesa Urzędu Ochrony Danych Osobowych (UODO), jeśli uznasz, że przetwarzanie Twoich danych narusza przepisy o ochronie danych osobowych
 
-Aby skorzystać z powyższych praw lub wycofać zgodę, skontaktuj się z nami: [kontakt@alleria.pl](mailto:kontakt@alleria.pl)
+Aby skorzystać z powyższych praw, skontaktuj się z nami: [kontakt@alleria.pl](mailto:kontakt@alleria.pl)
 
 **Zautomatyzowane podejmowanie decyzji**
 
 Dane nie są wykorzystywane do profilowania ani zautomatyzowanego podejmowania decyzji w rozumieniu art. 22 RODO.
 
-## §6. Pliki cookie i dane sesji
+## §6. Pliki cookie i podobne technologie
 
-Platforma używa plików cookie wyłącznie w celu utrzymania sesji zalogowanego użytkownika (cookies sesyjne). Pliki te są niezbędne do prawidłowego działania serwisu i nie są wykorzystywane do śledzenia ani reklamy. Zamknięcie przeglądarki lub wylogowanie powoduje usunięcie sesji.
+Platforma używa jednego pliku cookie, niezbędnego do utrzymania Twojego zalogowania. Cookie ten jest ważny maksymalnie 7 dni lub do momentu wylogowania - nie jest wykorzystywany do śledzenia ani do celów reklamowych, dlatego nie wymaga osobnej zgody.
+
+Platforma zapisuje też lokalnie w Twojej przeglądarce (localStorage/sessionStorage) drobne ustawienia, takie jak preferowana jakość odtwarzania wideo czy kod trwającej sesji wspólnego oglądania (Watch Party) - wyłącznie po to, by zapamiętać te ustawienia między odwiedzinami. Dane te nie są wysyłane na zewnętrzne serwery ani wykorzystywane do śledzenia.
 
 ## §7. Zmiany regulaminu
 
@@ -72,6 +91,6 @@ Administrator zastrzega sobie prawo do zmiany niniejszego Regulaminu. O istotnyc
 
 W sprawach dotyczących platformy, treści oraz danych osobowych (w tym żądań usunięcia danych) prosimy o kontakt: [kontakt@alleria.pl](mailto:kontakt@alleria.pl)`;
 
-const DEFAULT_TOS_UPDATED_AT = '2026-07-29T00:00:00.000Z';
+const DEFAULT_TOS_UPDATED_AT = '2026-08-20T00:00:00.000Z';
 
 module.exports = { DEFAULT_TOS_MD, DEFAULT_TOS_UPDATED_AT };

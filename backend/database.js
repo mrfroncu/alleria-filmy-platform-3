@@ -318,6 +318,10 @@ function initDB() {
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   )`);
 
+  // Separate, optional step on top of anonymizeUser() — a dev can additionally wipe the user's
+  // activity/log rows outright instead of just anonymizing the users row.
+  try { db.exec(`ALTER TABLE gdpr_requests ADD COLUMN activity_purged_at TEXT`); } catch (e) {}
+
   // Regulamin (terms of service) acceptance — content itself lives in app_settings
   // (tos_content/tos_updated_at); this just tracks when THIS user last agreed to it.
   try { db.exec(`ALTER TABLE users ADD COLUMN tos_accepted_at TEXT`); } catch (e) {}
