@@ -41,6 +41,7 @@ export const api = {
 
   // Setup wizard
   completeSetup: () => request('/setup/complete', { method: 'POST' }),
+  resetSetup: () => request('/setup/reset', { method: 'POST' }),
 
   // opts: { linkMode: true } — attach the matched TS identity to the logged-in account
   // instead of logging in as a (possibly different) TS-origin account.

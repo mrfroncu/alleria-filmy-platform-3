@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Rocket } from 'lucide-react';
 import { api } from '../utils/api';
 import { useToast } from '../contexts/ToastContext';
-import { SETUP_SKIPPED_KEY } from '../components/SetupGate';
 import WelcomeStep from '../components/setup/WelcomeStep';
 import EnvDiagnosticsStep from '../components/setup/EnvDiagnosticsStep';
 import LoginStep from '../components/setup/LoginStep';
@@ -29,7 +27,6 @@ const STEPS = [
 // endpoints ManagePage.jsx's Ustawienia tab uses — on an install that already has data, that
 // means the wizard opens fully pre-filled and clicking through to the end changes nothing.
 export default function SetupWizardPage() {
-  const navigate = useNavigate();
   const toast = useToast();
   const [stepIndex, setStepIndex] = useState(0);
   const [settings, setSettingsState] = useState(null);
@@ -40,15 +37,19 @@ export default function SetupWizardPage() {
 
   useEffect(() => { reloadSettings().finally(() => setLoading(false)); }, []);
 
-  const finish = async () => {
+  // Both "Zakończ konfigurację" and "Pomiń, zrobię to później" call this — the only state that
+  // exists is the one DB flag, so there's no such thing as a temporary/session-only skip. Skipping
+  // just means "I'm satisfied with the defaults for now"; getting back in later is the "Uruchom
+  // ponownie kreator konfiguracji" button in Dev Tools → Debug, not a lingering nag banner.
+  const finishSetup = async () => {
     setFinishing(true);
     try {
       await api.completeSetup();
-      // Hard navigation, not navigate('/') — AuthContext fetches /api/auth/me exactly once on
-      // mount and never again, so a client-side route change would carry the stale
-      // setupCompleted:false it loaded with, and SetupGate would immediately bounce back here.
-      // A full reload remounts AuthProvider and re-fetches the now-true flag (same reason
-      // TosGate's accept handler reloads instead of just closing the modal).
+      // Hard navigation, not client-side routing — AuthContext fetches /api/auth/me exactly once
+      // on mount and never again, so a route change would carry the stale setupCompleted:false it
+      // loaded with, and SetupGate would immediately bounce back here. A full reload remounts
+      // AuthProvider and re-fetches the now-true flag (same reason TosGate's accept handler
+      // reloads instead of just closing the modal).
       window.location.href = '/';
     } catch (e) {
       toast.error('Błąd: ' + e.message);
@@ -56,12 +57,6 @@ export default function SetupWizardPage() {
     }
   };
 
-  // Doesn't complete setup — just tells SetupGate not to force-redirect here again for the rest
-  // of this browser session, so skipping doesn't immediately bounce back to /setup.
-  const skip = () => {
-    sessionStorage.setItem(SETUP_SKIPPED_KEY, '1');
-    navigate('/');
-  };
   const goBack = () => setStepIndex(i => Math.max(0, i - 1));
   const goNext = () => setStepIndex(i => Math.min(STEPS.length - 1, i + 1));
 
@@ -85,7 +80,7 @@ export default function SetupWizardPage() {
                 <p className="text-xs text-zinc-400">Krok {stepIndex + 1} z {STEPS.length} · {step.label}</p>
               </div>
             </div>
-            <button onClick={skip} className="text-xs font-semibold text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors shrink-0">
+            <button onClick={finishSetup} disabled={finishing} className="text-xs font-semibold text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors shrink-0 disabled:opacity-50">
               Pomiń, zrobię to później
             </button>
           </div>
@@ -102,7 +97,7 @@ export default function SetupWizardPage() {
                 <div className="w-6 h-6 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : (
-              <StepComponent settings={settings} reloadSettings={reloadSettings} onFinish={finish} onGoTo={setStepIndex} steps={STEPS} />
+              <StepComponent settings={settings} reloadSettings={reloadSettings} onFinish={finishSetup} onGoTo={setStepIndex} steps={STEPS} />
             )}
           </div>
 
@@ -115,7 +110,7 @@ export default function SetupWizardPage() {
               <ChevronLeft className="w-4 h-4" /> Wstecz
             </button>
             {isLast ? (
-              <button onClick={finish} disabled={finishing} className="btn-primary text-sm disabled:opacity-50">
+              <button onClick={finishSetup} disabled={finishing} className="btn-primary text-sm disabled:opacity-50">
                 {finishing ? 'Zapisywanie...' : 'Zakończ konfigurację'}
               </button>
             ) : (

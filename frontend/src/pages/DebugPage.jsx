@@ -1190,6 +1190,34 @@ export default function DebugPage() {
           </div>
         </div>
 
+        {/* Re-run setup wizard */}
+        <div className="card p-8 h-full flex flex-col">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <RefreshCw className="w-6 h-6 text-violet-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Kreator konfiguracji</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                Uruchom ponownie kreator pierwszej konfiguracji (diagnostyka .env, streaming, wszystkie ustawienia).
+                Aktualne wartości zostają bez zmian - kreator tylko znowu poprowadzi Cię przez wszystkie kroki.
+              </p>
+              <button
+                onClick={async () => {
+                  if (!(await confirm('Uruchomić ponownie kreator konfiguracji? Zostaniesz przekierowany na /setup.', { confirmLabel: 'Uruchom' }))) return;
+                  try {
+                    await api.resetSetup();
+                    window.location.href = '/setup';
+                  } catch (e) { setStatus({ type: 'error', msg: e.message }); }
+                }}
+                className="btn-secondary text-sm"
+              >
+                Uruchom ponownie kreator konfiguracji
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Clear Logs */}
         <div className="card p-8 h-full flex flex-col">
           <div className="flex items-start gap-4">

@@ -1600,6 +1600,15 @@ app.post('/api/setup/complete', requireDev, (req, res) => {
   res.json({ success: true });
 });
 
+// Re-opens the wizard on demand (Dev Tools → Debug → "Uruchom ponownie kreator konfiguracji") —
+// the only supported way back in once setup_completed is true, since the /setup redirect itself
+// is driven purely by that one DB flag.
+app.post('/api/setup/reset', requireDev, (req, res) => {
+  setSetting('setup_completed', '0');
+  audit(req.session.user.id, 'setup_reset', 'settings', null, null);
+  res.json({ success: true });
+});
+
 app.post('/api/auth/logout', (req, res) => {
   req.session.destroy(() => res.json({ success: true }));
 });
