@@ -133,8 +133,8 @@ export default function Layout({ children }) {
   // Load versions once
   useEffect(() => {
     Promise.all([
-      fetch('/api/version').then(r => r.json()).catch(() => ({})),
-      fetch('/api/version/streaming').then(r => r.json()).catch(() => ({})),
+      api.getVersion().catch(() => ({})),
+      api.getStreamVersion().catch(() => ({})),
     ]).then(([app, stream]) => {
       setVersions({ panel: app.version || '?', stream: stream.version || '?', streamStatus: stream.status || '' });
     });
@@ -351,6 +351,18 @@ export default function Layout({ children }) {
                 <LogOut className="w-3.5 h-3.5" />
                 Wróć do swojego konta
               </button>
+            </div>
+          )}
+          {/* Setup wizard reminder — shown once a dev has skipped the wizard (setup_status
+              'skipped'), since that's the one state where SetupGate stops force-redirecting but
+              the wizard genuinely isn't done. Hidden once 'completed', and hidden on /setup
+              itself (the gate already sends 'pending' sessions straight there anyway). */}
+          {isDev && user && user.setupStatus && user.setupStatus !== 'completed' && location.pathname !== '/setup' && (
+            <div className="shrink-0 flex items-center justify-center gap-3 px-4 py-2 bg-violet-500 text-white text-xs font-bold flex-wrap">
+              <span>Konfiguracja platformy nie została jeszcze zakończona</span>
+              <Link to="/setup" className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/15 hover:bg-white/25 transition-colors no-underline text-white">
+                Dokończ konfigurację
+              </Link>
             </div>
           )}
           {/* Mobile top bar — always present (hamburger is the only way to reach the sidebar on mobile) */}

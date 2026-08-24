@@ -1550,6 +1550,8 @@ app.get('/api/auth/me', (req, res) => {
     ...req.session.user,
     tosAccepted: !tosNeedsAcceptance(row?.tos_accepted_at),
     tosPreviouslyAccepted: !!row?.tos_accepted_at,
+    // 'pending' (never touched the wizard) / 'skipped' (dismissed, not done) / 'completed'.
+    setupStatus: getSetting('setup_status', 'pending'),
     impersonatedBy,
   });
 });
@@ -1588,6 +1590,30 @@ app.post('/api/debug/tos', requireDev, (req, res) => {
     audit(req.session.user.id, 'edit', 'settings', null, 'tos_content updated');
   }
   res.json({ content, updatedAt: getSetting('tos_updated_at', DEFAULT_TOS_UPDATED_AT) });
+});
+
+// ============ SETUP WIZARD ============
+// setup_status ('pending'/'skipped'/'completed') gates the /setup redirect the same way
+// tos_updated_at gates TosGate (see setupStatus above) — a dev is force-redirected there only
+// while it's still 'pending'. 'skipped' stops the forced redirect but keeps the Layout.jsx
+// reminder banner up (it hides once 'completed'); both are reachable again any time via
+// Dev Tools → Debug → "Uruchom ponownie kreator konfiguracji" (POST /api/setup/reset below).
+app.post('/api/setup/complete', requireDev, (req, res) => {
+  setSetting('setup_status', 'completed');
+  audit(req.session.user.id, 'setup_complete', 'settings', null, null);
+  res.json({ success: true });
+});
+
+app.post('/api/setup/skip', requireDev, (req, res) => {
+  setSetting('setup_status', 'skipped');
+  audit(req.session.user.id, 'setup_skip', 'settings', null, null);
+  res.json({ success: true });
+});
+
+app.post('/api/setup/reset', requireDev, (req, res) => {
+  setSetting('setup_status', 'pending');
+  audit(req.session.user.id, 'setup_reset', 'settings', null, null);
+  res.json({ success: true });
 });
 
 app.post('/api/auth/logout', (req, res) => {
