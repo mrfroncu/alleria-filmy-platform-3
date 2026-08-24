@@ -8,14 +8,16 @@ import { useAuth } from '../contexts/AuthContext';
 // overlaying a modal — there's too much content (env diagnostics, streaming, every settings
 // section) to cram into a dismiss-or-accept dialog.
 //
-// Driven purely by app_settings.setup_completed (via user.setupCompleted) — no client-side
-// "skip for this session" state. Both "Zakończ konfigurację" and "Pomiń, zrobię to później" in
-// SetupWizardPage.jsx set that same DB flag; the only way back in once it's set is the manual
-// "Uruchom ponownie kreator konfiguracji" button in Dev Tools → Debug, which clears it again.
+// Driven purely by app_settings.setup_status (via user.setupStatus) — no client-side state.
+// Force-redirects only while 'pending' (never engaged at all). "Pomiń, zrobię to później" sets
+// it to 'skipped', which stops the forced redirect but leaves Layout.jsx's reminder banner up;
+// "Zakończ konfigurację" sets 'completed', which clears the banner too. Either way, the only
+// way back in is the manual "Uruchom ponownie kreator konfiguracji" button in Dev Tools → Debug,
+// which resets the flag to 'pending' again.
 export default function SetupGate() {
   const { user, isDev } = useAuth();
   const location = useLocation();
-  const needsSetup = !!user && isDev && !user.setupCompleted;
+  const needsSetup = !!user && isDev && user.setupStatus === 'pending';
 
   if (needsSetup && location.pathname !== '/setup') {
     return <Navigate to="/setup" replace />;

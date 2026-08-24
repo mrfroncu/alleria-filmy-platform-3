@@ -22,8 +22,9 @@ const STEPS = [
   { id: 'finish', label: 'Podsumowanie', Component: FinishStep },
 ];
 
-// Reachable only while app_settings.setup_completed is false (see SetupGate.jsx, which redirects
-// every dev session here until it's flipped). Every step loads real current values from the same
+// Reachable directly any time (this route itself isn't gated), but SetupGate.jsx also forces
+// every dev session here automatically while app_settings.setup_status is 'pending'. Every step
+// loads real current values from the same
 // endpoints ManagePage.jsx's Ustawienia tab uses — on an install that already has data, that
 // means the wizard opens fully pre-filled and clicking through to the end changes nothing.
 export default function SetupWizardPage() {
@@ -37,25 +38,27 @@ export default function SetupWizardPage() {
 
   useEffect(() => { reloadSettings().finally(() => setLoading(false)); }, []);
 
-  // Both "Zakończ konfigurację" and "Pomiń, zrobię to później" call this — the only state that
-  // exists is the one DB flag, so there's no such thing as a temporary/session-only skip. Skipping
-  // just means "I'm satisfied with the defaults for now"; getting back in later is the "Uruchom
-  // ponownie kreator konfiguracji" button in Dev Tools → Debug, not a lingering nag banner.
-  const finishSetup = async () => {
+  // Hard navigation (not client-side routing) after either action below — AuthContext fetches
+  // /api/auth/me exactly once on mount and never again, so a route change would carry the stale
+  // setupStatus:'pending' it loaded with, and SetupGate would immediately bounce back here. A
+  // full reload remounts AuthProvider and re-fetches the now-updated status (same reason
+  // TosGate's accept handler reloads instead of just closing its modal).
+  const runSetupAction = async (apiCall) => {
     setFinishing(true);
     try {
-      await api.completeSetup();
-      // Hard navigation, not client-side routing — AuthContext fetches /api/auth/me exactly once
-      // on mount and never again, so a route change would carry the stale setupCompleted:false it
-      // loaded with, and SetupGate would immediately bounce back here. A full reload remounts
-      // AuthProvider and re-fetches the now-true flag (same reason TosGate's accept handler
-      // reloads instead of just closing the modal).
+      await apiCall();
       window.location.href = '/';
     } catch (e) {
       toast.error('Błąd: ' + e.message);
       setFinishing(false);
     }
   };
+
+  // setup_status -> 'completed': done for real, no reminder banner afterward.
+  const finishSetup = () => runSetupAction(api.completeSetup);
+  // setup_status -> 'skipped': stops the forced /setup redirect, but Layout.jsx keeps showing a
+  // reminder banner (with a link back) until this is properly finished or reset from Dev Tools.
+  const skipSetup = () => runSetupAction(api.skipSetup);
 
   const goBack = () => setStepIndex(i => Math.max(0, i - 1));
   const goNext = () => setStepIndex(i => Math.min(STEPS.length - 1, i + 1));
@@ -80,7 +83,7 @@ export default function SetupWizardPage() {
                 <p className="text-xs text-zinc-400">Krok {stepIndex + 1} z {STEPS.length} · {step.label}</p>
               </div>
             </div>
-            <button onClick={finishSetup} disabled={finishing} className="text-xs font-semibold text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors shrink-0 disabled:opacity-50">
+            <button onClick={skipSetup} disabled={finishing} className="text-xs font-semibold text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors shrink-0 disabled:opacity-50">
               Pomiń, zrobię to później
             </button>
           </div>
