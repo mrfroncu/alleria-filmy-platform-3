@@ -5170,6 +5170,10 @@ app.get('/api/tags/category/:slug', requireAuth, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ============ DASHBOARD INTEGRATION (dash.alleria.pl) ============
+require('./integrations')(app, db);
+
+
 // ============ SERVE FRONTEND ============
 const frontendPath = path.join(__dirname, '..', 'frontend', 'dist');
 if (!fs.existsSync(frontendPath)) {
