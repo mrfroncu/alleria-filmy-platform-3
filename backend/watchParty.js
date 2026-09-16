@@ -5,8 +5,15 @@ const { v4: uuidv4 } = require('uuid');
 // Party: { id, code, hostId, queue, currentIndex, position, playing, positionUpdatedAt, members: Map<userId, {user, ws, canControl}> }
 const parties = new Map();
 
-// DB reference — set via setupWatchPartyWS(server, db)
+// DB reference — set via setupWatchPartyWS(db, resolveVideoForUser)
 let _db = null;
+
+// Resolves a catalog video id to its DB row for a given user, or null if it doesn't
+// exist or the user has no category/rank access to it. Provided by server.js (which
+// owns the access-control tables) so queue_add never has to trust a client-supplied
+// title/thumbnail/mirrors/stream_video_id for a real catalog video, and never lets a
+// party host add a video they don't themselves have access to.
+let _resolveVideoForUser = null;
 
 function wpLog(partyCode, action, userId, userName, targetUserId, targetUserName, details) {
   if (!_db) return;
@@ -181,8 +188,9 @@ setInterval(() => {
 // `{ server, path }` fight over the same 'upgrade' event: both listeners fire for every
 // request, and the one whose path doesn't match actively aborts the socket with a 400 —
 // even when the OTHER one would have handled it correctly. noServer + manual dispatch avoids that.
-function setupWatchPartyWS(db) {
+function setupWatchPartyWS(db, resolveVideoForUser) {
   _db = db;
+  _resolveVideoForUser = resolveVideoForUser || null;
   const wss = new WebSocketServer({ noServer: true });
 
   wss.on('connection', (ws) => {
@@ -297,24 +305,65 @@ function setupWatchPartyWS(db) {
           if (!canControl) return;
           const item = msg.item;
           if (!item || typeof item !== 'object') return;
-          // Validate required fields and types
-          const safeItem = {
-            title: typeof item.title === 'string' ? item.title.slice(0, 200) : 'Untitled',
-            sourceKey: typeof item.sourceKey === 'string' ? item.sourceKey.slice(0, 100) : 'main',
-            videoId: typeof item.videoId === 'number' ? item.videoId : (typeof item.videoId === 'string' ? item.videoId.slice(0, 100) : null),
-            thumbnail: typeof item.thumbnail === 'string' ? item.thumbnail.slice(0, 500) : null,
-            stream_video_id: typeof item.stream_video_id === 'string' ? item.stream_video_id.slice(0, 100) : null,
-            stream_status: typeof item.stream_status === 'string' ? item.stream_status.slice(0, 20) : null,
-            drm_enhanced: item.drm_enhanced === true,
-            sources: Array.isArray(item.sources)
-              ? item.sources.slice(0, 10).map(s => ({
-                  key: typeof s.key === 'string' ? s.key.slice(0, 50) : '',
-                  label: typeof s.label === 'string' ? s.label.slice(0, 100) : '',
-                  url: typeof s.url === 'string' ? s.url.slice(0, 2000) : '',
-                  type: typeof s.type === 'string' ? s.type.slice(0, 20) : 'link',
-                })).filter(s => s.key && s.url)
-              : [],
-          };
+
+          let safeItem;
+          const catalogVideoId = typeof item.videoId === 'number' ? item.videoId : null;
+          if (catalogVideoId !== null) {
+            // Backed by a real catalog video — never trust the client's title/thumbnail/
+            // sources for it (that's exactly how an unprivileged member could smuggle raw
+            // HTML/JS into other members' browsers via a fake 'embed' source, or claim
+            // metadata for a video they have no access to). Re-fetch everything server-side,
+            // gated on the ADDING member's own category/rank access.
+            const video = _resolveVideoForUser ? _resolveVideoForUser(catalogVideoId, member.user) : null;
+            if (!video) {
+              sendMsg(ws, { type: 'error', message: 'Brak dostępu do tego filmu.' });
+              return;
+            }
+            const sources = [];
+            for (let n = 1; n <= 5; n++) {
+              const url = video[`mirror${n}_url`];
+              if (!url) continue;
+              const type = video[`mirror${n}_type`] || (video[`mirror${n}_is_embed`] ? 'embed' : 'link');
+              sources.push({ key: `mirror${n}`, label: video[`mirror${n}_name`] || `Mirror ${n}`, url, type });
+            }
+            safeItem = {
+              title: (video.title || 'Untitled').slice(0, 200),
+              sourceKey: typeof item.sourceKey === 'string' && sources.some(s => s.key === item.sourceKey)
+                ? item.sourceKey : (sources[0]?.key || 'main'),
+              videoId: video.id,
+              thumbnail: video.thumbnail || null,
+              stream_video_id: video.stream_video_id || null,
+              stream_status: video.stream_status || null,
+              drm_enhanced: !!video.drm_enhanced,
+              sources,
+            };
+          } else {
+            // Freeform/ad-hoc entry with no catalog video behind it (e.g. a pasted YouTube
+            // link) — unlike a catalog video's mirrors, this never went through the
+            // per-category "editor" rank gate, so only a plain http(s) link is allowed here;
+            // 'embed'/'html' (raw-HTML rendering) is never permitted for client-supplied sources.
+            safeItem = {
+              title: typeof item.title === 'string' ? item.title.slice(0, 200) : 'Untitled',
+              sourceKey: typeof item.sourceKey === 'string' ? item.sourceKey.slice(0, 100) : 'main',
+              videoId: null,
+              thumbnail: typeof item.thumbnail === 'string' && /^https?:\/\//i.test(item.thumbnail) ? item.thumbnail.slice(0, 500) : null,
+              stream_video_id: null,
+              stream_status: null,
+              drm_enhanced: false,
+              sources: Array.isArray(item.sources)
+                ? item.sources.slice(0, 10).map(s => ({
+                    key: typeof s.key === 'string' ? s.key.slice(0, 50) : '',
+                    label: typeof s.label === 'string' ? s.label.slice(0, 100) : '',
+                    url: typeof s.url === 'string' ? s.url.slice(0, 2000) : '',
+                    type: 'link',
+                  })).filter(s => s.key && s.url && /^https?:\/\//i.test(s.url))
+                : [],
+            };
+          }
+          if (safeItem.sources.length === 0) {
+            sendMsg(ws, { type: 'error', message: 'Brak prawidłowego źródła wideo.' });
+            return;
+          }
           party.queue.push(safeItem);
           if (party.currentIndex === -1) {
             party.currentIndex = 0;

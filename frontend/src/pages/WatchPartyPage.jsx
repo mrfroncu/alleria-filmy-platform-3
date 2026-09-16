@@ -22,7 +22,10 @@ function HtmlEmbed({ html }) {
     return () => URL.revokeObjectURL(url);
   }, [html]);
   if (!blobUrl) return null;
-  return <iframe src={blobUrl} className="w-full h-full border-0" allowFullScreen />;
+  // Same sandbox restriction as VideoPage's HtmlEmbed: blocks script execution and
+  // top-level navigation, since this content now always comes from the server-resolved
+  // catalog video (see watchParty.js queue_add) rather than any client-supplied HTML.
+  return <iframe src={blobUrl} className="w-full h-full border-0" sandbox="allow-forms" allowFullScreen />;
 }
 
 // YouTube IFrame API — polling approach works even if API was already loaded by another page/module

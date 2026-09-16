@@ -424,6 +424,56 @@ function checkCatAccess(catId, accessMode, userId, userRoles, userRankIds) {
   return { canView, canEdit };
 }
 
+// Shared category/custom-access check for a video row — same rules as GET /api/videos/:id,
+// reused by every route that lets a user reach a video's metadata or actual stream bytes
+// (stream token/keys/media, progress, favorites, comments, watch-party queue) so none of
+// them can be used to bypass the per-category rank/role restrictions.
+function userCanViewVideo(video, user) {
+  if (!video) return false;
+  if (user.role === 'dev') return true;
+  if (video.access_mode === 'custom') {
+    const hasAccess = db.prepare('SELECT 1 FROM video_access WHERE video_id = ? AND user_id = ?').get(video.id, user.id);
+    if (!hasAccess) return false;
+  }
+  if (video.category_id) {
+    const cat = db.prepare('SELECT access_mode FROM categories WHERE id = ?').get(video.category_id);
+    if (cat) {
+      const { canView } = checkCatAccess(video.category_id, cat.access_mode, user.id, user.discord_roles || [], getUserRankIds(user.id));
+      if (!canView) return false;
+    }
+  }
+  return true;
+}
+
+// Looks up a video by its opaque stream_video_id (what /api/stream/* and /stream/* are
+// keyed on) and checks the requesting user's access. Returns { ok, status, error, video }.
+function resolveStreamVideoForUser(streamVideoId, user) {
+  const video = db.prepare('SELECT id, category_id, access_mode FROM videos WHERE stream_video_id = ?').get(streamVideoId);
+  if (!video) return { ok: false, status: 404, error: 'Video not found' };
+  if (!userCanViewVideo(video, user)) return { ok: false, status: 403, error: 'Brak dostępu do tego filmu.' };
+  return { ok: true, video };
+}
+
+// Passed into watchParty.js so it can resolve a catalog video for its queue without
+// trusting any client-supplied metadata (title/thumbnail/mirrors/stream_video_id) or
+// letting a party host add a video the ADDING user has no category/rank access to.
+// Returns the full video row, or null if it doesn't exist or the user can't view it.
+function resolveWatchPartyVideo(videoId, user) {
+  const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(videoId);
+  if (!video || !userCanViewVideo(video, user)) return null;
+  return video;
+}
+
+// Same category/rank rule as the frontend's own returnTo check, but also rejects any
+// backslash — browsers resolve "/\evil.com" identically to "//evil.com" for http(s)
+// navigation, so a prefix-only "//" check can be bypassed with a backslash.
+function isSafeReturnTo(value) {
+  if (typeof value !== 'string' || value.length === 0 || value.length >= 500) return false;
+  if (value.includes('\\') || value.includes('\n') || value.includes('\r')) return false;
+  if (!value.startsWith('/') || value.startsWith('//')) return false;
+  return true;
+}
+
 // ============ DISCORD AUTH ============
 function discordRedirectHandler(req, res) {
   if (!process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_REDIRECT_URI) {
@@ -433,7 +483,7 @@ function discordRedirectHandler(req, res) {
   // Save return URL so user gets redirected back after login (validate to prevent open redirect)
   if (req.query.returnTo) {
     const r = String(req.query.returnTo);
-    if (r.startsWith('/') && !r.startsWith('//') && !r.includes('\n') && !r.includes('\r') && r.length < 500) {
+    if (isSafeReturnTo(r)) {
       req.session.returnTo = r;
     }
   }
@@ -449,14 +499,20 @@ function discordRedirectHandler(req, res) {
   if (isLinkMode) {
     req.session.linkPrimaryUserId = req.session.user.id;
   }
-  if (req.query.returnTo || isPopupFlow || isLinkMode) {
-    req.session.save(() => {});
-  }
+  // CSRF protection for the OAuth round-trip: a random, single-use state tied to this
+  // session is required back on the callback. Without it, an attacker who has obtained
+  // their own valid Discord authorization code could drive a victim's browser through
+  // /api/auth/discord?mode=link followed directly by /api/auth/discord/callback?code=...,
+  // silently linking the attacker's Discord identity onto the victim's session/account.
+  const state = crypto.randomBytes(24).toString('hex');
+  req.session.oauthState = state;
+  req.session.save(() => {});
   const params = new URLSearchParams({
     client_id: process.env.DISCORD_CLIENT_ID,
     redirect_uri: process.env.DISCORD_REDIRECT_URI,
     response_type: 'code',
-    scope: 'identify guilds.members.read email'
+    scope: 'identify guilds.members.read email',
+    state
   });
   const url = `https://discord.com/api/oauth2/authorize?${params}`;
   console.log('Redirecting to Discord OAuth:', url.replace(process.env.DISCORD_CLIENT_ID, '***'));
@@ -468,9 +524,18 @@ app.get('/api/auth/discord', authLimiter, discordRedirectHandler);
 app.get('/auth/discord', authLimiter, discordRedirectHandler);
 
 async function discordCallbackHandler(req, res) {
-  const { code } = req.query;
+  const { code, state } = req.query;
   console.log('[AUTH] Discord callback received, code:', code ? 'present' : 'MISSING');
   if (!code) return res.redirect('/login?error=no_code');
+
+  // Verify the state this callback carries matches the one the redirect step stored on
+  // this exact session, and consume it (single use) — see discordRedirectHandler.
+  const expectedState = req.session.oauthState;
+  delete req.session.oauthState;
+  if (!expectedState || !state || state !== expectedState) {
+    console.warn('[AUTH] OAuth state mismatch — rejecting callback');
+    return res.redirect('/login?error=invalid_state');
+  }
 
   const clientIp = req.ip || req.socket.remoteAddress;
 
@@ -634,7 +699,7 @@ async function discordCallbackHandler(req, res) {
         const isPopup = savedPopup;
         const rawReturnTo = savedReturnTo || '/';
         // Validate returnTo before redirecting
-        const returnTo = (rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//') && !rawReturnTo.includes('\n') && !rawReturnTo.includes('\r') && rawReturnTo.length < 500) ? rawReturnTo : '/';
+        const returnTo = isSafeReturnTo(rawReturnTo) ? rawReturnTo : '/';
 
         if (isPopup) {
           // Serve a minimal page that notifies the opener and closes the popup.
@@ -2636,6 +2701,7 @@ app.get('/api/logs/login', requireAdmin, (req, res) => {
 // ============ FAVORITES API ============
 app.get('/api/favorites', requireAuth, (req, res) => {
   try {
+    const user = req.session.user;
     const favs = db.prepare(`
       SELECT v.*, u.username AS author_name, u.display_name AS author_display_name,
       GROUP_CONCAT(DISTINCT t.name) AS tag_names, GROUP_CONCAT(DISTINCT t.id) AS tag_ids,
@@ -2648,8 +2714,9 @@ app.get('/api/favorites', requireAuth, (req, res) => {
       WHERE f.user_id = ?
       GROUP BY v.id
       ORDER BY f.created_at DESC
-    `).all(req.session.user.id);
-    res.json(favs.map(v => ({
+    `).all(user.id);
+    // Same rationale as /api/progress: a favorite can outlive access to its video.
+    res.json(favs.filter(v => userCanViewVideo(v, user)).map(v => ({
       ...v,
       tags: v.tag_names ? v.tag_names.split(',').map((name, i) => ({ id: parseInt(v.tag_ids.split(',')[i]), name })) : []
     })));
@@ -2658,7 +2725,11 @@ app.get('/api/favorites', requireAuth, (req, res) => {
 
 app.post('/api/favorites/:videoId', requireAuth, (req, res) => {
   try {
-    db.prepare('INSERT OR IGNORE INTO favorites (user_id, video_id) VALUES (?, ?)').run(req.session.user.id, req.params.videoId);
+    const user = req.session.user;
+    const video = db.prepare('SELECT id, category_id, access_mode FROM videos WHERE id = ?').get(req.params.videoId);
+    if (!video) return res.status(404).json({ error: 'Video not found' });
+    if (!userCanViewVideo(video, user)) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
+    db.prepare('INSERT OR IGNORE INTO favorites (user_id, video_id) VALUES (?, ?)').run(user.id, req.params.videoId);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -4388,6 +4459,8 @@ app.post('/api/videos/:id/regenerate-thumbnail', requireAdmin, async (req, res) 
 // Generate playback token for user
 app.get('/api/stream/token/:videoId', requireAuth, async (req, res) => {
   try {
+    const check = resolveStreamVideoForUser(req.params.videoId, req.session.user);
+    if (!check.ok) return res.status(check.status).json({ error: check.error });
     const r = await fetch(`${STREAM_URL}/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Stream-Token': STREAM_SECRET },
@@ -4404,15 +4477,26 @@ app.get('/api/stream/token/:videoId', requireAuth, async (req, res) => {
 // Mint a short-lived cast token for Chromecast/AirPlay — lets the receiver device
 // fetch /stream/media and /stream/keys directly without the viewer's session cookie.
 app.get('/api/stream/cast-token/:videoId', requireAuth, (req, res) => {
+  const check = resolveStreamVideoForUser(req.params.videoId, req.session.user);
+  if (!check.ok) return res.status(check.status).json({ error: check.error });
   const uid = String(req.session.user.id);
   const expires = Date.now() + CAST_TOKEN_TTL_MS;
   const castToken = signCastToken(req.params.videoId, uid, expires);
   res.json({ castToken, uid, expires });
 });
 
-// Proxy stream media & keys (so streaming container is never exposed publicly)
+// Proxy stream media & keys (so streaming container is never exposed publicly).
+// requireAuthOrCastToken lets a request through either with a live session, or with a
+// cast token minted by /api/stream/cast-token above (already access-checked at mint time,
+// and scoped to one videoId+uid+short expiry) — so we only need to re-check category/
+// custom access here for the session-cookie path; a valid cast token is proof enough.
 app.get('/stream/keys/*', requireAuthOrCastToken, async (req, res) => {
   try {
+    const streamVideoId = (req.params[0] || '').split('/')[0];
+    if (req.session.user) {
+      const check = resolveStreamVideoForUser(streamVideoId, req.session.user);
+      if (!check.ok) return res.status(check.status).send(check.error);
+    }
     const url = `${STREAM_URL}/keys/${req.params[0]}?t=${req.query.t || ''}&uid=${req.query.uid || ''}`;
     const r = await fetch(url);
     // Explicit no-store on the miss path — Cloudflare caches by file extension when no
@@ -4430,6 +4514,11 @@ app.get('/stream/keys/*', requireAuthOrCastToken, async (req, res) => {
 
 app.get('/stream/media/*', requireAuthOrCastToken, async (req, res) => {
   try {
+    const streamVideoId = (req.params[0] || '').split('/')[0];
+    if (req.session.user) {
+      const check = resolveStreamVideoForUser(streamVideoId, req.session.user);
+      if (!check.ok) return res.status(check.status).send(check.error);
+    }
     const url = `${STREAM_URL}/media/${req.params[0]}`;
     const r = await fetch(url);
     // Explicit no-store on the miss path — without ANY Cache-Control, Cloudflare falls back to
@@ -4677,6 +4766,10 @@ function attachReactions(comments, userId) {
 
 app.get('/api/videos/:id/comments', requireAuth, (req, res) => {
   try {
+    const user = req.session.user;
+    const video = db.prepare('SELECT id, category_id, access_mode FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).json({ error: 'Video not found' });
+    if (!userCanViewVideo(video, user)) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     const comments = db.prepare(`
       SELECT c.*, u.username, u.display_name, u.avatar
       FROM comments c JOIN users u ON c.user_id = u.id
@@ -4706,6 +4799,10 @@ app.post('/api/comments/:id/react', requireAuth, (req, res) => {
 
 app.post('/api/videos/:id/comments', requireAuth, (req, res) => {
   try {
+    const user = req.session.user;
+    const video = db.prepare('SELECT id, category_id, access_mode FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).json({ error: 'Video not found' });
+    if (!userCanViewVideo(video, user)) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     const { content, parent_id } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: 'Treść wymagana.' });
     const maxComment = getLimit('limit_comment');
@@ -5039,6 +5136,9 @@ app.put('/api/progress/:videoId', requireAuth, (req, res) => {
   const { position, duration } = req.body;
   if (isNaN(videoId) || position === undefined) return res.status(400).json({ error: 'Missing params' });
   try {
+    const video = db.prepare('SELECT id, category_id, access_mode FROM videos WHERE id = ?').get(videoId);
+    if (!video) return res.status(404).json({ error: 'Video not found' });
+    if (!userCanViewVideo(video, user)) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     db.prepare(`
       INSERT INTO watch_progress (user_id, video_id, position, duration, updated_at)
       VALUES (?, ?, ?, ?, datetime('now'))
@@ -5057,7 +5157,7 @@ app.get('/api/progress', requireAuth, (req, res) => {
     const rows = db.prepare(`
       SELECT wp.video_id, wp.position, wp.duration, wp.updated_at,
              v.title, v.thumbnail, v.main_source_type, v.stream_video_id, v.stream_status,
-             c.name AS category_name, c.slug AS category_slug
+             v.category_id, v.access_mode, c.name AS category_name, c.slug AS category_slug
       FROM watch_progress wp
       JOIN videos v ON wp.video_id = v.id
       LEFT JOIN categories c ON v.category_id = c.id
@@ -5067,7 +5167,12 @@ app.get('/api/progress', requireAuth, (req, res) => {
       ORDER BY wp.updated_at DESC
       LIMIT 20
     `).all(user.id);
-    res.json(rows);
+    // A progress row can outlive the user's access to its video (rank revoked, category
+    // access changed) — never trust wp.* alone to expose video metadata like stream_video_id.
+    const visible = rows
+      .filter(r => userCanViewVideo({ id: r.video_id, category_id: r.category_id, access_mode: r.access_mode }, user))
+      .map(({ category_id, access_mode, ...rest }) => rest);
+    res.json(visible);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -5195,7 +5300,7 @@ const httpServer = http.createServer(app);
 // Both WSS instances are created with `noServer: true` (see their setup functions) — a single
 // shared 'upgrade' listener here dispatches by pathname instead of each attaching its own,
 // which would otherwise fight over the same event (see the comment in watchParty.js).
-const watchPartyWss = setupWatchPartyWS(db);
+const watchPartyWss = setupWatchPartyWS(db, resolveWatchPartyVideo);
 const notificationsWss = setupNotificationsWS(db);
 httpServer.on('upgrade', (req, socket, head) => {
   const { pathname } = new URL(req.url, 'http://localhost');

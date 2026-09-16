@@ -5,6 +5,14 @@ import { getCurrentYear, parseTsError } from '../utils/helpers';
 import { renderMarkdown } from '../utils/markdown';
 import TsChallengeModal from '../components/TsChallengeModal';
 
+// A "//host" prefix isn't the only way to smuggle a cross-origin destination through a
+// path-looking string: browsers resolve "/\evil.com" identically to "//evil.com" for
+// http(s) navigation, so any backslash must be rejected too, not just a literal "//".
+function isSafeReturnTo(value) {
+  return typeof value === 'string' && value.length > 0 && value.length < 500 &&
+    value.startsWith('/') && !value.startsWith('//') && !/[\\\r\n]/.test(value);
+}
+
 export default function LoginPage() {
   const [tsLoading, setTsLoading]   = useState(false);
   const [ts3Loading, setTs3Loading] = useState(false);
@@ -25,7 +33,7 @@ export default function LoginPage() {
   const returnTo = (() => {
     const params = new URLSearchParams(window.location.search);
     const r = params.get('returnTo');
-    if (r && r.startsWith('/') && !r.startsWith('//') && r !== '/login') return r;
+    if (r && isSafeReturnTo(r) && r !== '/login') return r;
     return '';
   })();
 
@@ -56,7 +64,7 @@ export default function LoginPage() {
     const handleMessage = (event) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'discord_auth_success') {
-        const dest = (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) ? returnTo : '/';
+        const dest = isSafeReturnTo(returnTo) ? returnTo : '/';
         window.location.href = dest;
       }
     };
@@ -92,7 +100,7 @@ export default function LoginPage() {
     try {
       const res = await api.loginTeamspeak();
       if (res?.challenge) startChallenge(res, 'teamspeak', 'TeamSpeak 6');
-      else window.location.href = (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) ? returnTo : '/';
+      else window.location.href = isSafeReturnTo(returnTo) ? returnTo : '/';
     }
     catch (err) { setTs6Error(parseTsError(err.message, 'TeamSpeak 6')); }
     finally { setTsLoading(false); }
@@ -103,7 +111,7 @@ export default function LoginPage() {
     try {
       const res = await api.loginTeamspeak3();
       if (res?.challenge) startChallenge(res, 'teamspeak3', 'TeamSpeak 3');
-      else window.location.href = (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) ? returnTo : '/';
+      else window.location.href = isSafeReturnTo(returnTo) ? returnTo : '/';
     }
     catch (err) { setTs3Error(parseTsError(err.message, 'TeamSpeak 3')); }
     finally { setTs3Loading(false); }
@@ -115,7 +123,7 @@ export default function LoginPage() {
     try {
       const verifyFn = challenge.method === 'teamspeak3' ? api.verifyTeamspeak3 : api.verifyTeamspeak;
       await verifyFn(challenge.challengeId, challengeCode.trim());
-      const dest = (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) ? returnTo : '/';
+      const dest = isSafeReturnTo(returnTo) ? returnTo : '/';
       window.location.href = dest;
     } catch (err) {
       setChallengeError(err.message || 'Nieprawidłowy kod.');

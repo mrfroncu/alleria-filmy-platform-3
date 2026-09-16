@@ -7,6 +7,15 @@ const fs = require('fs');
 const os = require('os');
 const { execSync, spawn } = require('child_process');
 
+// STREAM_SECRET protects every video: it's the shared secret backend uses to authorize
+// upload/cleanup/token-mint requests, and the HMAC key behind every playback/key token.
+// It must never silently fall back to a fixed value — a fallback here would be a fixed,
+// publicly-known-from-source-code secret, defeating all access control on video content.
+if (!process.env.STREAM_SECRET) {
+  console.error('FATAL: STREAM_SECRET environment variable is not set');
+  process.exit(1);
+}
+
 const app = express();
 app.use(express.json());
 
@@ -51,7 +60,7 @@ app.get('/keys/:videoId/:keyFile', (req, res) => {
   if (!userToken) return res.status(403).send('Forbidden');
 
   // Validate token (simple HMAC check)
-  const expected = crypto.createHmac('sha256', process.env.STREAM_SECRET || 'secret')
+  const expected = crypto.createHmac('sha256', process.env.STREAM_SECRET)
     .update(req.params.videoId + ':' + (req.query.uid || '')).digest('hex').slice(0, 32);
 
   if (userToken !== expected) return res.status(403).send('Invalid token');
@@ -198,7 +207,7 @@ app.delete('/video/:videoId', requireToken, (req, res) => {
 app.post('/token', requireToken, (req, res) => {
   const { video_id, user_id } = req.body;
   if (!video_id) return res.status(400).json({ error: 'video_id required' });
-  const token = crypto.createHmac('sha256', process.env.STREAM_SECRET || 'secret')
+  const token = crypto.createHmac('sha256', process.env.STREAM_SECRET)
     .update(video_id + ':' + (user_id || '')).digest('hex').slice(0, 32);
   res.json({ token, video_id, user_id });
 });
