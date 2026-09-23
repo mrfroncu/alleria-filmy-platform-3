@@ -82,14 +82,26 @@ export default function SecurePlayer({
   // SDK's event listeners, which are registered once when the SDK finishes loading.
   const loadCastMediaRef = useRef(() => {});
 
-  // Load hls.js dynamically
+  // Load hls.js dynamically. hlsReady flips once the script is actually available (already
+  // loaded, or its load event fires) — the HLS-init effect below depends on it to retry.
+  const [hlsReady, setHlsReady] = useState(() => !!window.Hls);
   useEffect(() => {
-    if (window.Hls) return;
-    const script = document.createElement('script');
-    script.src = HLS_CDN;
-    script.async = true;
-    document.head.appendChild(script);
-    return () => {};
+    if (window.Hls) { setHlsReady(true); return; }
+    let script = document.querySelector(`script[src="${HLS_CDN}"]`);
+    if (!script) {
+      script = document.createElement('script');
+      script.src = HLS_CDN;
+      script.async = true;
+      document.head.appendChild(script);
+    }
+    const onLoad = () => setHlsReady(true);
+    const onError = () => setError('Nie udało się załadować odtwarzacza wideo.');
+    script.addEventListener('load', onLoad);
+    script.addEventListener('error', onError);
+    return () => {
+      script.removeEventListener('load', onLoad);
+      script.removeEventListener('error', onError);
+    };
   }, []);
 
   // Seed the DOM element's own muted flag from startMuted (e.g. the Shorts feed, which
@@ -275,16 +287,12 @@ export default function SecurePlayer({
     fetchToken();
   };
 
-  // Initialize HLS player
+  // Initialize HLS player. Depends on hlsReady (not just window.Hls) so this effect
+  // actually re-runs once the CDN script finishes loading, instead of only ever firing
+  // once at mount — previously, if the token arrived before hls.js had finished loading,
+  // playback got stuck forever with nothing to trigger a retry.
   useEffect(() => {
-    if (!token || !streamVideoId || !window.Hls) {
-      // Retry after hls.js loads
-      if (!window.Hls && !error) {
-        const t = setTimeout(() => setLoading(l => l), 500);
-        return () => clearTimeout(t);
-      }
-      return;
-    }
+    if (!token || !streamVideoId || !hlsReady || !window.Hls) return;
 
     const video = videoRef.current;
     if (!video) return;
@@ -347,7 +355,7 @@ export default function SecurePlayer({
     } else {
       setError('Przeglądarka nie obsługuje HLS.');
     }
-  }, [token, streamVideoId, user, error]);
+  }, [token, streamVideoId, user, error, hlsReady]);
 
   // Anti-devtools and anti-capture
   useEffect(() => {
