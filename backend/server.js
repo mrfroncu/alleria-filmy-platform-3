@@ -1723,17 +1723,8 @@ app.get('/api/videos', requireAuth, (req, res) => {
     conditions.push("(v.stream_status IS NULL OR v.stream_status = 'ready')");
   }
 
-  // Hide scheduled (future) videos from regular users (admin+dev can see them)
-  // publish_date is stored as an ISO string (toISOString(), "T"/"Z"/ms) — datetime('now') returns
-  // SQLite's own "YYYY-MM-DD HH:MM:SS" format. Comparing those two TEXT formats directly is a raw
-  // string comparison: at the date/time boundary "T" (0x54) sorts after " " (0x20), so ANY video
-  // published earlier *today* still compares as "greater than" now and gets hidden all day.
-  // Wrapping both sides in datetime(...) normalizes them to the same format before comparing.
-  if (!isAdminOrDev) {
-    conditions.push("datetime(v.publish_date) <= datetime('now')");
-  }
-
   // Access control — only dev bypasses category/content restrictions
+  let editableCatIds = [];
   if (!isDev) {
     const userId = req.session.user.id;
     const userRoles = req.session.user.discord_roles || [];
@@ -1743,16 +1734,36 @@ app.get('/api/videos', requireAuth, (req, res) => {
     conditions.push(`(v.access_mode IS NULL OR v.access_mode = 'category' OR (v.access_mode = 'custom' AND v.id IN (SELECT video_id FROM video_access WHERE user_id = ?)))`);
     params.push(userId);
 
-    // Hide videos from categories the user doesn't have access to
+    // Hide videos from categories the user doesn't have access to; separately collect
+    // categories they can EDIT so a category editor still sees that category's own
+    // scheduled (future publish_date) videos below, same as admin/dev already do everywhere.
     const allCats = db.prepare('SELECT id, access_mode FROM categories').all();
     const restrictedCatIds = [];
     for (const cat of allCats) {
-      const { canView } = checkCatAccess(cat.id, cat.access_mode, userId, userRoles, userRankIds);
+      const { canView, canEdit } = checkCatAccess(cat.id, cat.access_mode, userId, userRoles, userRankIds);
       if (!canView) restrictedCatIds.push(cat.id);
+      if (canEdit) editableCatIds.push(cat.id);
     }
     if (restrictedCatIds.length > 0) {
       conditions.push(`(v.category_id IS NULL OR v.category_id NOT IN (${restrictedCatIds.map(() => '?').join(',')}))`);
       params.push(...restrictedCatIds);
+    }
+  }
+
+  // Hide scheduled (future) videos from regular users — admin/dev bypass everywhere, a
+  // category editor bypasses only for their own category's videos (editableCatIds above),
+  // everyone else only ever sees videos whose publish_date has passed.
+  // publish_date is stored as an ISO string (toISOString(), "T"/"Z"/ms) — datetime('now') returns
+  // SQLite's own "YYYY-MM-DD HH:MM:SS" format. Comparing those two TEXT formats directly is a raw
+  // string comparison: at the date/time boundary "T" (0x54) sorts after " " (0x20), so ANY video
+  // published earlier *today* still compares as "greater than" now and gets hidden all day.
+  // Wrapping both sides in datetime(...) normalizes them to the same format before comparing.
+  if (!isAdminOrDev) {
+    if (editableCatIds.length > 0) {
+      conditions.push(`(datetime(v.publish_date) <= datetime('now') OR v.category_id IN (${editableCatIds.map(() => '?').join(',')}))`);
+      params.push(...editableCatIds);
+    } else {
+      conditions.push("datetime(v.publish_date) <= datetime('now')");
     }
   }
 
@@ -4461,12 +4472,35 @@ app.get('/api/stream/token/:videoId', requireAuth, async (req, res) => {
   try {
     const check = resolveStreamVideoForUser(req.params.videoId, req.session.user);
     if (!check.ok) return res.status(check.status).json({ error: check.error });
+
+    // A mirror can be published (and pass the access check above) while its own
+    // self-hosted encode is still running — surface that as a distinct "not ready" state
+    // instead of letting the player fail on a manifest that doesn't exist yet, so the
+    // frontend can show a real "still transcoding, check back later" panel.
+    try {
+      const statusRes = await fetch(`${STREAM_URL}/status/${req.params.videoId}`, {
+        headers: { 'X-Stream-Token': STREAM_SECRET },
+      });
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        if (statusData.status && statusData.status !== 'ready' && statusData.status !== 'not_found') {
+          return res.status(202).json({
+            ready: false,
+            status: statusData.status,
+            progress: statusData.progress || 0,
+            quality: statusData.quality || null,
+          });
+        }
+      }
+    } catch (_) { /* best-effort — fall through and let the token/playback path surface any real error */ }
+
     const r = await fetch(`${STREAM_URL}/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Stream-Token': STREAM_SECRET },
       body: JSON.stringify({ video_id: req.params.videoId, user_id: String(req.session.user.id) })
     });
-    res.json(await r.json());
+    const tokenData = await r.json();
+    res.json({ ready: true, ...tokenData });
   } catch (err) {
     logStreamError('token', err);
     if (isStreamUnreachable(err)) return res.status(503).json({ error: 'Odtwarzacz jest tymczasowo niedostępny. Spróbuj ponownie za chwilę.' });
@@ -4724,7 +4758,11 @@ app.get('/api/stream/transcoding', requireAdmin, async (req, res) => {
     if (!jobs.length) return res.json([]);
     const placeholders = jobs.map(() => '?').join(',');
     const ids = jobs.map(j => j.video_id);
-    // Search in both main stream_video_id and mirror URL fields
+    // Mirror URLs are stored as "self-hosted:<streamId>" (see VideoModal's self-hosted mirror
+    // save path), not the bare stream id — comparing mirrorN_url IN (bare ids) never matched,
+    // so a transcoding MIRROR (as opposed to the main source) always showed up as "not in DB"
+    // in the Dev Tools transcoding panel. Match the mirror columns against the prefixed form.
+    const prefixedIds = ids.map(id => `self-hosted:${id}`);
     const dbRows = db.prepare(`
       SELECT id, title, stream_video_id,
         mirror1_url, mirror2_url, mirror3_url, mirror4_url, mirror5_url
@@ -4733,7 +4771,7 @@ app.get('/api/stream/transcoding', requireAdmin, async (req, res) => {
         OR mirror1_url IN (${placeholders}) OR mirror2_url IN (${placeholders})
         OR mirror3_url IN (${placeholders}) OR mirror4_url IN (${placeholders})
         OR mirror5_url IN (${placeholders})
-    `).all(...ids, ...ids, ...ids, ...ids, ...ids, ...ids);
+    `).all(...ids, ...prefixedIds, ...prefixedIds, ...prefixedIds, ...prefixedIds, ...prefixedIds);
     const dbMap = new Map();
     for (const v of dbRows) {
       const check = (url) => { if (url) { const m = url.match(/^self-hosted:(.+)$/); if (m) dbMap.set(m[1], { id: v.id, title: v.title }); } };

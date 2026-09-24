@@ -27,10 +27,19 @@ services:
       # container just isn't looking at it anymore).
       - ${STREAM_HOST_DATA_DIR:-stream-data}:/data
     environment:
-      - STREAM_SECRET=${STREAM_SECRET:-change-me}
+      # No default here on purpose — a fallback would be a fixed, publicly-known-from-
+      # source secret protecting every video's access control. Set STREAM_SECRET in .env.
+      - STREAM_SECRET=${STREAM_SECRET:?Set STREAM_SECRET in your .env file — it must not be left at its default}
       - STREAM_PORT=4000
       - ALLOWED_ORIGIN=${ALLOWED_ORIGIN:-*}
       - STREAM_PUBLIC_URL=${STREAM_PUBLIC_URL:-http://localhost:4000}
+      # Optional GPU (NVENC) transcoding. Set STREAM_USE_GPU=true in .env AND add
+      # `runtime: nvidia` to this service (see the main repo's docker-compose.gpu.yml for
+      # the equivalent non-standalone setup) — requires the NVIDIA Container Toolkit
+      # already working for a plain custom container on this host.
+      - STREAM_USE_GPU=${STREAM_USE_GPU:-false}
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-}
+      - NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-}
     restart: unless-stopped
 
 volumes:

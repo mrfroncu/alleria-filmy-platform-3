@@ -16,6 +16,20 @@ if (!process.env.STREAM_SECRET) {
   process.exit(1);
 }
 
+// GPU (NVENC) transcoding — opt-in via STREAM_USE_GPU=true, and only actually used if this
+// ffmpeg build reports an nvenc encoder. Detected once at startup rather than per-job so a
+// broken/missing GPU doesn't add a probe to every upload; each quality rendition still falls
+// back to CPU (libx264) on its own if the GPU encode attempt fails at runtime (e.g. driver/
+// session issue), so a bad GPU setup degrades transcoding speed rather than breaking uploads.
+const GPU_REQUESTED = process.env.STREAM_USE_GPU === 'true';
+let GPU_AVAILABLE = false;
+if (GPU_REQUESTED) {
+  try {
+    const encoders = execSync('ffmpeg -hide_banner -encoders', { encoding: 'utf8' });
+    GPU_AVAILABLE = /h264_nvenc/.test(encoders);
+  } catch (e) {}
+}
+
 const app = express();
 app.use(express.json());
 
@@ -86,6 +100,52 @@ app.use('/media', (req, res, next) => {
   next();
 }, express.static(MEDIA_DIR));
 
+// ============ TRANSCODE QUEUE ============
+// One ffmpeg encode at a time, across every upload (main sources and mirrors alike) — running
+// them all concurrently just made every single one slower by fighting over the same CPU cores
+// (and would blow past a consumer GPU's concurrent NVENC session limit once GPU encoding is on).
+const transcodeQueue = [];
+let isTranscoding = false;
+
+function writeQueuedStatus(videoId, queuePosition) {
+  try {
+    const dir = path.join(MEDIA_DIR, videoId);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify({ status: 'queued', queuePosition }));
+  } catch (e) {}
+}
+
+function enqueueTranscode(job) {
+  transcodeQueue.push(job);
+  const queuePosition = transcodeQueue.length;
+  writeQueuedStatus(job.videoId, queuePosition);
+  processQueue();
+  return queuePosition;
+}
+
+async function processQueue() {
+  if (isTranscoding) return;
+  const job = transcodeQueue.shift();
+  if (!job) return;
+  isTranscoding = true;
+  console.log(`[STREAM] Starting queued transcode: ${job.videoId} (${transcodeQueue.length} more waiting)`);
+  try {
+    await transcodeToHLS(job.inputPath, job.videoId, job.enableDrm);
+    console.log(`[STREAM] ✅ Transcode complete: ${job.videoId}`);
+  } catch (err) {
+    console.error(`[STREAM] ❌ Transcode failed: ${job.videoId}`, err.message);
+    try {
+      fs.writeFileSync(path.join(MEDIA_DIR, job.videoId, 'status.json'), JSON.stringify({ status: 'error', error: err.message }));
+    } catch (e) {}
+  } finally {
+    try { fs.unlinkSync(job.inputPath); } catch (e) {}
+    isTranscoding = false;
+    // Positions shift down by one for everything still waiting behind the job that just finished.
+    transcodeQueue.forEach((j, i) => writeQueuedStatus(j.videoId, i + 1));
+    processQueue();
+  }
+}
+
 // ============ UPLOAD & TRANSCODE ============
 app.post('/upload', requireToken, upload.single('video'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -96,26 +156,18 @@ app.post('/upload', requireToken, upload.single('video'), async (req, res) => {
   console.log(`[STREAM] Upload received: ${req.file.originalname} (${(req.file.size / 1024 / 1024).toFixed(1)} MB)`);
   console.log(`[STREAM] Video ID: ${videoId}, Enhanced DRM: ${enableDrm}`);
 
-  // Start transcoding in background
+  // Queued, not started immediately — see the queue section above. Multiple uploads (several
+  // videos' main sources + mirrors) used to all call transcodeToHLS() at once, so their ffmpeg
+  // processes fought over the same CPU cores and everything got slower; now only one ffmpeg
+  // encode ever runs at a time, in submission order.
+  const queuePosition = enqueueTranscode({ inputPath: req.file.path, videoId, enableDrm });
   res.json({
     success: true,
     video_id: videoId,
-    status: 'transcoding',
-    message: 'Transcode started. Check /status/:videoId for progress.'
+    status: 'queued',
+    queuePosition,
+    message: 'Transcode queued. Check /status/:videoId for progress.'
   });
-
-  try {
-    await transcodeToHLS(req.file.path, videoId, enableDrm);
-    console.log(`[STREAM] ✅ Transcode complete: ${videoId}`);
-  } catch (err) {
-    console.error(`[STREAM] ❌ Transcode failed: ${videoId}`, err.message);
-    // Write error status
-    const statusPath = path.join(MEDIA_DIR, videoId, 'status.json');
-    fs.writeFileSync(statusPath, JSON.stringify({ status: 'error', error: err.message }));
-  } finally {
-    // Clean up uploaded file
-    try { fs.unlinkSync(req.file.path); } catch (e) {}
-  }
 });
 
 // ============ TRANSCODE STATUS ============
@@ -287,10 +339,16 @@ app.get('/transcoding', requireToken, (req, res) => {
     if (!fs.existsSync(statusPath)) continue;
     try {
       const s = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
-      if (s.status === 'transcoding')
-        result.push({ video_id: d, progress: s.progress || 0, quality: s.quality || null });
+      if (s.status === 'transcoding' || s.status === 'queued')
+        result.push({
+          video_id: d, status: s.status,
+          progress: s.progress || 0, quality: s.quality || null,
+          queuePosition: s.queuePosition || null,
+        });
     } catch (_) {}
   }
+  // Actively-encoding job(s) first, then queued jobs in wait order.
+  result.sort((a, b) => (a.status === b.status ? (a.queuePosition || 0) - (b.queuePosition || 0) : a.status === 'transcoding' ? -1 : 1));
   res.json(result);
 });
 
@@ -443,13 +501,19 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
     // Use faster preset for higher resolutions (4K software encoding is very slow)
     const preset = q.height >= 2160 ? 'veryfast' : (q.height >= 1080 ? 'fast' : 'medium');
 
-    const args = [
+    // GPU (NVENC) uses its own preset/rate-control scheme (p1-p7 speed/quality ladder, -cq
+    // instead of -crf) — everything else (scaling, fps, HLS output) stays identical to the
+    // CPU path so both produce compatible renditions.
+    const buildArgs = (useGpu) => [
       '-i', inputPath,
       ...(q.isSource ? [] : ['-vf', `scale=-2:${q.height}`]),
       ...fpsArgs,
-      '-c:v', 'libx264', '-preset', preset,
-      // Use CRF for source quality (faster, better adaptive bitrate), bitrate for presets
-      ...(q.isSource ? ['-crf', '18'] : ['-b:v', q.bitrate, '-maxrate', q.maxrate, '-bufsize', q.bufsize]),
+      ...(useGpu
+        ? ['-c:v', 'h264_nvenc', '-preset', 'p6', '-tune', 'hq', '-rc', 'vbr',
+           ...(q.isSource ? ['-cq', '18'] : ['-b:v', q.bitrate, '-maxrate', q.maxrate, '-bufsize', q.bufsize])]
+        : ['-c:v', 'libx264', '-preset', preset,
+           // Use CRF for source quality (faster, better adaptive bitrate), bitrate for presets
+           ...(q.isSource ? ['-crf', '18'] : ['-b:v', q.bitrate, '-maxrate', q.maxrate, '-bufsize', q.bufsize])]),
       '-c:a', 'aac', '-b:a', keepHighFps ? '192k' : '128k', '-ac', '2',
       '-hls_time', '6',
       '-hls_list_size', '0',
@@ -461,8 +525,16 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
       '-y'
     ];
 
-    await runFFmpeg(args, statusPath, progressBase, progressPerQuality, totalDuration);
-    console.log(`[STREAM] ✅ ${qualityLabel} done for ${videoId}${keepHighFps ? ' (60fps)' : ''}`);
+    let usedGpu = GPU_AVAILABLE;
+    try {
+      await runFFmpeg(buildArgs(usedGpu), statusPath, progressBase, progressPerQuality, totalDuration);
+    } catch (err) {
+      if (!usedGpu) throw err;
+      console.warn(`[STREAM] GPU encode failed for ${qualityLabel} (${videoId}), retrying on CPU: ${err.message}`);
+      usedGpu = false;
+      await runFFmpeg(buildArgs(false), statusPath, progressBase, progressPerQuality, totalDuration);
+    }
+    console.log(`[STREAM] ✅ ${qualityLabel} done for ${videoId}${keepHighFps ? ' (60fps)' : ''}${usedGpu ? ' [GPU]' : ' [CPU]'}`);
   }
 
   // Generate master playlist with fps info — also collect the same per-quality bandwidth/fps
@@ -561,5 +633,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n[STREAM] Alleria Streaming Service on port ${PORT}`);
   console.log(`[STREAM] FFmpeg: ${ffmpegOk ? '✅' : '❌ NOT FOUND'}`);
   console.log(`[STREAM] Media dir: ${MEDIA_DIR}`);
-  console.log(`[STREAM] Auth: ${process.env.STREAM_SECRET ? '✅' : '⚠️  STREAM_SECRET not set'}\n`);
+  console.log(`[STREAM] Auth: ${process.env.STREAM_SECRET ? '✅' : '⚠️  STREAM_SECRET not set'}`);
+  console.log(`[STREAM] GPU (NVENC): ${!GPU_REQUESTED ? '➖ disabled (STREAM_USE_GPU not set)' : GPU_AVAILABLE ? '✅ available' : '❌ requested but h264_nvenc not found in this ffmpeg build'}\n`);
 });

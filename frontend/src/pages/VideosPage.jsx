@@ -81,22 +81,37 @@ export default function VideosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, selectedTags, selectedAuthor, sort, categorySlug]);
 
-  // Infinite scroll — reveals more of the already-fetched `videos` array as the sentinel at the
-  // bottom of the grid comes into view, instead of the numbered page buttons. The full result set
-  // is fetched in one go either way (see the effect above); this only changes how much of it is
-  // shown at once.
+  // The backend only ever includes a scheduled (future publish_date) video in this response
+  // for admin/dev or a user who can EDIT that video's category (see GET /api/videos) — so
+  // any such video here is, by construction, already one this viewer is allowed to see early.
+  // Split them into their own "Zaplanowane" section instead of mixing them into the normal
+  // grid/pagination, which is reserved for content everyone with access can already watch.
+  const { publishedVideos, scheduledVideos } = useMemo(() => {
+    const nowMs = Date.now();
+    const scheduled = [];
+    const published = [];
+    for (const v of videos) {
+      (v.publish_date && new Date(v.publish_date).getTime() > nowMs ? scheduled : published).push(v);
+    }
+    return { publishedVideos: published, scheduledVideos: scheduled };
+  }, [videos]);
+
+  // Infinite scroll — reveals more of the already-fetched `publishedVideos` array as the
+  // sentinel at the bottom of the grid comes into view, instead of the numbered page buttons.
+  // The full result set is fetched in one go either way (see the effect above); this only
+  // changes how much of it is shown at once.
   useEffect(() => {
     if (!config.infiniteScroll) return;
     const el = sentinelRef.current;
     if (!el) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting) {
-        setVisibleCount(v => (v >= videos.length ? v : Math.min(videos.length, v + config.videosPerPage)));
+        setVisibleCount(v => (v >= publishedVideos.length ? v : Math.min(publishedVideos.length, v + config.videosPerPage)));
       }
     }, { rootMargin: '600px' });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [config.infiniteScroll, config.videosPerPage, videos.length, visibleCount]);
+  }, [config.infiniteScroll, config.videosPerPage, publishedVideos.length, visibleCount]);
 
   const toggleTag = (id) => {
     setSelectedTags(prev =>
@@ -169,6 +184,94 @@ export default function VideosPage() {
   // simply empty right now.
   const currentCategory = categorySlug ? categories.find(c => c.slug === categorySlug) : null;
   const categoryAccessDenied = categoriesLoaded && !!categorySlug && (!currentCategory || currentCategory.locked);
+
+  // Shared by the normal grid and the "Zaplanowane" section below — a scheduled video is only
+  // ever in `videos` at all because the viewer is allowed to see it early (see the memo above),
+  // so the only visual difference here is the dimmed wrapper + a badge instead of the real date.
+  const renderVideoCard = (video, idx, { scheduled = false } = {}) => (
+    <Link
+      key={video.id}
+      to={currentCategory?.is_shorts_category
+        ? `/shorts/${categorySlug}?start=${video.id}`
+        : `/video/${video.id}${categorySlug ? `?from=${categorySlug}` : ''}`}
+      className={`video-card card overflow-hidden group ${scheduled ? 'opacity-60 hover:opacity-100 transition-opacity' : ''}`}
+      style={{ animationDelay: `${(idx % 12) * 50}ms` }}
+      onMouseEnter={() => setHoveredVideoId(video.id)}
+      onMouseLeave={() => setHoveredVideoId(id => (id === video.id ? null : id))}
+    >
+      <div className={`relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden ${loadedThumbIds.has(video.id) ? '' : 'skeleton'}`}>
+        <HoverScrubThumbnail video={video} hovered={hoveredVideoId === video.id} onLoad={() => markThumbLoaded(video.id)} />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        {scheduled ? (
+          <span className="absolute top-2 right-2 z-10 px-2 py-0.5 rounded-full backdrop-blur-sm bg-black/60 text-white text-[9px] font-bold uppercase tracking-wide">
+            Zaplanowane
+          </span>
+        ) : (
+          <button
+            onClick={(e) => toggleWatched(e, video)}
+            title={video.is_watched ? 'Oznacz jako nieobejrzany' : 'Oznacz jako obejrzany'}
+            className={`absolute top-2 right-2 z-10 p-1 rounded-full backdrop-blur-sm transition-all ${
+              video.is_watched
+                ? 'bg-emerald-500 text-white opacity-100 hover:bg-emerald-600'
+                : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/70'
+            }`}
+          >
+            <CheckCircle2 className="w-4 h-4" />
+          </button>
+        )}
+        {!scheduled && progressMap[video.id] && (() => {
+          const p = progressMap[video.id];
+          const pct = p.duration > 0 ? Math.min(100, (p.position / p.duration) * 100) : 0;
+          return (
+            <>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
+                <div className="h-full bg-violet-500" style={{ width: `${pct}%` }} />
+              </div>
+              <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded backdrop-blur-sm">
+                Kontynuuj oglądanie
+              </div>
+            </>
+          );
+        })()}
+      </div>
+      <div className="p-6">
+        <h3 className="font-bold text-zinc-900 dark:text-white mb-2 line-clamp-2 group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors">
+          {video.title}
+        </h3>
+        <div className="flex items-center justify-between mb-3">
+          <Link
+            to={`/author/${video.author_id}`}
+            onClick={e => e.stopPropagation()}
+            className="text-sm text-zinc-500 font-medium hover:text-violet-500 transition-colors no-underline"
+          >
+            {video.author_display_name || video.author_name}
+          </Link>
+          <span className={`text-xs font-mono ${scheduled ? 'text-violet-500 dark:text-violet-400 font-bold' : 'text-zinc-400'}`}>
+            {formatDateShort(video.publish_date)}
+          </span>
+        </div>
+        {video.category_name && (
+          <div className="mb-2">
+            <span className="inline-flex px-2 py-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 rounded-lg text-[10px] font-bold">
+              {video.category_name}
+            </span>
+          </div>
+        )}
+        {video.tags && video.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {video.tags.slice(0, 4).map(tag => (
+              <span key={tag.id} className="inline-flex px-2 py-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-500 dark:text-violet-300 rounded-lg text-[10px] font-bold">
+                {tag.name}
+              </span>
+            ))}
+            {video.tags.length > 4 && (
+              <span className="text-[10px] text-zinc-400 font-bold self-center">+{video.tags.length - 4}</span>
+            )}
+          </div>
+        )}
+      </div>
+    </Link>
+  );
 
   return (
     <div className="p-6 sm:p-10 mx-auto page-enter" style={{ maxWidth: `${pageMaxWidth}px` }}>
@@ -331,6 +434,20 @@ export default function VideosPage() {
       </div>
       )}
 
+      {/* Scheduled videos — only ever populated for an editor of that category (or admin/dev),
+          see the publishedVideos/scheduledVideos split above. Regular viewers never receive
+          these from the API at all, so this section simply never renders for them. */}
+      {!categoryAccessDenied && !loading && scheduledVideos.length > 0 && (
+        <div className="mb-10">
+          <h2 className="text-sm font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-4">
+            Zaplanowane ({scheduledVideos.length})
+          </h2>
+          <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 video-grid">
+            {scheduledVideos.map((video, idx) => renderVideoCard(video, idx, { scheduled: true }))}
+          </div>
+        </div>
+      )}
+
       {/* Videos Grid */}
       {categoryAccessDenied ? (
         <div className="card p-16 text-center">
@@ -352,7 +469,7 @@ export default function VideosPage() {
             </div>
           ))}
         </div>
-      ) : videos.length === 0 ? (
+      ) : publishedVideos.length === 0 ? (
         <div className="card p-16 text-center">
           <div className="w-20 h-20 bg-zinc-100 dark:bg-zinc-800 rounded-3xl flex items-center justify-center mx-auto mb-6">
             <Film className="w-10 h-10 text-zinc-400" />
@@ -367,99 +484,22 @@ export default function VideosPage() {
               Mobile: 1 col, Tablet (sm): 2 cols, Desktop (≥1280px): fixed-width columns, capped */}
           <style>{`@media(min-width:1280px){.video-grid{grid-template-columns:repeat(auto-fill,minmax(${CARD_MIN_WIDTH}px,1fr))!important;max-width:${gridContentWidth}px!important}}`}</style>
           <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 video-grid">
-            {(config.infiniteScroll ? videos.slice(0, visibleCount) : videos.slice((page - 1) * config.videosPerPage, page * config.videosPerPage)).map((video, idx) => (
-            <Link
-              key={video.id}
-              to={currentCategory?.is_shorts_category
-                ? `/shorts/${categorySlug}?start=${video.id}`
-                : `/video/${video.id}${categorySlug ? `?from=${categorySlug}` : ''}`}
-              className="video-card card overflow-hidden group"
-              style={{ animationDelay: `${(idx % 12) * 50}ms` }}
-              onMouseEnter={() => setHoveredVideoId(video.id)}
-              onMouseLeave={() => setHoveredVideoId(id => (id === video.id ? null : id))}
-            >
-              <div className={`relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden ${loadedThumbIds.has(video.id) ? '' : 'skeleton'}`}>
-                <HoverScrubThumbnail video={video} hovered={hoveredVideoId === video.id} onLoad={() => markThumbLoaded(video.id)} />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                <button
-                  onClick={(e) => toggleWatched(e, video)}
-                  title={video.is_watched ? 'Oznacz jako nieobejrzany' : 'Oznacz jako obejrzany'}
-                  className={`absolute top-2 right-2 z-10 p-1 rounded-full backdrop-blur-sm transition-all ${
-                    video.is_watched
-                      ? 'bg-emerald-500 text-white opacity-100 hover:bg-emerald-600'
-                      : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/70'
-                  }`}
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                </button>
-                {progressMap[video.id] && (() => {
-                  const p = progressMap[video.id];
-                  const pct = p.duration > 0 ? Math.min(100, (p.position / p.duration) * 100) : 0;
-                  return (
-                    <>
-                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
-                        <div className="h-full bg-violet-500" style={{ width: `${pct}%` }} />
-                      </div>
-                      <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded backdrop-blur-sm">
-                        Kontynuuj oglądanie
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-              <div className="p-6">
-                <h3 className="font-bold text-zinc-900 dark:text-white mb-2 line-clamp-2 group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors">
-                  {video.title}
-                </h3>
-                <div className="flex items-center justify-between mb-3">
-                  <Link
-                    to={`/author/${video.author_id}`}
-                    onClick={e => e.stopPropagation()}
-                    className="text-sm text-zinc-500 font-medium hover:text-violet-500 transition-colors no-underline"
-                  >
-                    {video.author_display_name || video.author_name}
-                  </Link>
-                  <span className="text-xs text-zinc-400 font-mono">
-                    {formatDateShort(video.publish_date)}
-                  </span>
-                </div>
-                {video.category_name && (
-                  <div className="mb-2">
-                    <span className="inline-flex px-2 py-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 rounded-lg text-[10px] font-bold">
-                      {video.category_name}
-                    </span>
-                  </div>
-                )}
-                {video.tags && video.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {video.tags.slice(0, 4).map(tag => (
-                      <span key={tag.id} className="inline-flex px-2 py-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-500 dark:text-violet-300 rounded-lg text-[10px] font-bold">
-                        {tag.name}
-                      </span>
-                    ))}
-                    {video.tags.length > 4 && (
-                      <span className="text-[10px] text-zinc-400 font-bold self-center">+{video.tags.length - 4}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </Link>
-            ))}
+            {(config.infiniteScroll ? publishedVideos.slice(0, visibleCount) : publishedVideos.slice((page - 1) * config.videosPerPage, page * config.videosPerPage)).map((video, idx) => renderVideoCard(video, idx))}
           </div>
 
           {/* Infinite scroll — sentinel div triggers loading more as it comes into view; a small
               status line replaces the page buttons entirely while this mode is on. */}
           {config.infiniteScroll ? (
-            visibleCount < videos.length ? (
+            visibleCount < publishedVideos.length ? (
               <div ref={sentinelRef} className="flex items-center justify-center gap-2 mt-10 py-6 text-sm text-zinc-400">
                 <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
                 Wczytywanie kolejnych filmów...
               </div>
-            ) : videos.length > config.videosPerPage && (
-              <p className="text-center text-sm text-zinc-400 mt-10 py-6">To już wszystkie filmy - {videos.length}.</p>
+            ) : publishedVideos.length > config.videosPerPage && (
+              <p className="text-center text-sm text-zinc-400 mt-10 py-6">To już wszystkie filmy - {publishedVideos.length}.</p>
             )
-          ) : videos.length > config.videosPerPage && (() => {
-            const totalPages = Math.ceil(videos.length / config.videosPerPage);
+          ) : publishedVideos.length > config.videosPerPage && (() => {
+            const totalPages = Math.ceil(publishedVideos.length / config.videosPerPage);
             return (
               <div className="flex items-center justify-center gap-2 mt-10">
                 <button

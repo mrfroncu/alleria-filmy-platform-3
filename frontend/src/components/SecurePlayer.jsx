@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
-import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Settings, Cast, Airplay, PictureInPicture2, RotateCcw, RotateCw, WifiOff } from 'lucide-react';
+import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Settings, Cast, Airplay, PictureInPicture2, RotateCcw, RotateCw, WifiOff, Loader2 } from 'lucide-react';
 
 /*
  * SecurePlayer — encrypted HLS player with DRM protections
@@ -44,6 +44,10 @@ export default function SecurePlayer({
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Set when THIS source is still being transcoded server-side (a mirror can be published,
+  // and pass the access check, while its own self-hosted encode is still running) — distinct
+  // from `error`, which is a real failure, not "come back in a minute".
+  const [transcodingStatus, setTranscodingStatus] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(!!startMuted);
   const [volume, setVolume] = useState(1);
@@ -270,7 +274,16 @@ export default function SecurePlayer({
     if (!streamVideoId) return;
     setError(null);
     api.streamToken(streamVideoId)
-      .then(t => setToken(t.token))
+      .then(t => {
+        if (t.ready === false) {
+          // Still transcoding — keep polling below instead of ever setting a token.
+          setTranscodingStatus({ status: t.status, progress: t.progress || 0, quality: t.quality || null });
+          setLoading(false);
+        } else {
+          setTranscodingStatus(null);
+          setToken(t.token);
+        }
+      })
       .catch(err => {
         console.error('[SecurePlayer] Token fetch failed:', err);
         setError(err.message);
@@ -279,10 +292,19 @@ export default function SecurePlayer({
 
   useEffect(() => { fetchToken(); }, [fetchToken]);
 
+  // While the source is still transcoding, check back periodically so playback starts on its
+  // own the moment it's ready — no need for the viewer to manually retry/refresh.
+  useEffect(() => {
+    if (!transcodingStatus) return;
+    const interval = setInterval(fetchToken, 5000);
+    return () => clearInterval(interval);
+  }, [transcodingStatus, fetchToken]);
+
   // Retry button: clear the token too so the HLS-init effect below re-attaches fresh once the
   // new token arrives, covering both "token fetch failed" and "HLS hit a fatal error" cases.
   const retry = () => {
     setToken(null);
+    setTranscodingStatus(null);
     setLoading(true);
     fetchToken();
   };
@@ -832,6 +854,44 @@ export default function SecurePlayer({
       if (playing) setShowControls(false);
     }, 3000);
   };
+
+  if (transcodingStatus) {
+    return (
+      <div className={`${containerClassName || 'aspect-video rounded-[32px]'} bg-black flex items-center justify-center`}>
+        <div className="text-center p-8">
+          <Loader2 className="w-12 h-12 text-violet-400 mx-auto mb-4 animate-spin" />
+          <p className="text-zinc-200 text-base font-bold mb-1">Trwa przetwarzanie tego źródła</p>
+          <p className="text-zinc-500 text-sm">
+            {transcodingStatus.status === 'queued'
+              ? 'W kolejce — zaraz się zacznie...'
+              : `Kodowanie${transcodingStatus.quality ? ` (${transcodingStatus.quality})` : ''}... ${transcodingStatus.progress}%`}
+          </p>
+          {transcodingStatus.status === 'transcoding' && (
+            <div className="w-48 h-1.5 bg-zinc-800 rounded-full overflow-hidden mx-auto mt-4">
+              <div className="h-full bg-violet-500 transition-all duration-500" style={{ width: `${transcodingStatus.progress}%` }} />
+            </div>
+          )}
+          <p className="text-zinc-600 text-xs mt-4">Wróć za chwilę — ten panel odświeży się samo, gdy będzie gotowe.</p>
+          {mirrors?.length > 0 && (
+            <div className="mt-6 pt-5 border-t border-white/10">
+              <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-3">Dostępne mirrory</p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {mirrors.map(m => (
+                  <button
+                    key={m.key}
+                    onClick={() => onSelectMirror?.(m.key)}
+                    className="px-4 py-2 rounded-xl text-sm font-bold bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition-colors"
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (

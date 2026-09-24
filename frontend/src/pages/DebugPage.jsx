@@ -508,32 +508,48 @@ export default function DebugPage() {
 
         {liveTranscoding?.length > 0 && (
           <div className="space-y-3">
-            {liveTranscoding.map(job => (
-              <div key={job.video_id} className="p-4 bg-amber-50/50 dark:bg-amber-500/5 rounded-xl border border-amber-200 dark:border-amber-500/20 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-zinc-900 dark:text-white truncate">
-                      {job.db_video ? job.db_video.title : <span className="text-zinc-400 italic">Brak w bazie danych</span>}
-                    </p>
-                    <p className="text-[10px] font-mono text-zinc-400 mt-0.5">{job.video_id}</p>
+            {liveTranscoding.map(job => {
+              const queued = job.status === 'queued';
+              return (
+                <div key={job.video_id} className={`p-4 rounded-xl border space-y-3 ${queued ? 'bg-zinc-50 dark:bg-zinc-800/40 border-zinc-200 dark:border-zinc-700' : 'bg-amber-50/50 dark:bg-amber-500/5 border-amber-200 dark:border-amber-500/20'}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-zinc-900 dark:text-white truncate">
+                        {job.db_video ? job.db_video.title : <span className="text-zinc-400 italic">Brak w bazie danych</span>}
+                      </p>
+                      <p className="text-[10px] font-mono text-zinc-400 mt-0.5">{job.video_id}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {queued ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-lg font-mono">
+                          W kolejce{job.queuePosition ? ` #${job.queuePosition}` : ''}
+                        </span>
+                      ) : (
+                        <>
+                          {job.quality && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 rounded-lg font-mono">{job.quality}</span>
+                          )}
+                          <span className="text-sm font-mono font-bold text-amber-600 dark:text-amber-400 w-10 text-right">{job.progress}%</span>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {job.quality && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 rounded-lg font-mono">{job.quality}</span>
-                    )}
-                    <span className="text-sm font-mono font-bold text-amber-600 dark:text-amber-400 w-10 text-right">{job.progress}%</span>
-                  </div>
+                  {!queued && (
+                    <div className="space-y-1">
+                      <div className="h-2.5 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-500" style={{ width: `${job.progress}%` }} />
+                      </div>
+                      <p className="text-[10px] text-zinc-400">
+                        {job.quality ? `Kodowanie jakości ${job.quality}` : 'Oczekiwanie na start...'} - odświeżanie co 5s
+                      </p>
+                    </div>
+                  )}
+                  {queued && (
+                    <p className="text-[10px] text-zinc-400">Czeka, aż zwolni się transkoder (jeden film na raz) - odświeżanie co 5s</p>
+                  )}
                 </div>
-                <div className="space-y-1">
-                  <div className="h-2.5 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-500" style={{ width: `${job.progress}%` }} />
-                  </div>
-                  <p className="text-[10px] text-zinc-400">
-                    {job.quality ? `Kodowanie jakości ${job.quality}` : 'Oczekiwanie na start...'} - odświeżanie co 5s
-                  </p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
