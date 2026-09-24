@@ -83,8 +83,16 @@ function userCanViewVideo(video, user) {
 
 // Looks up a video by its opaque stream_video_id (what /api/stream/* and /stream/* are
 // keyed on) and checks the requesting user's access. Returns { ok, status, error, video }.
+// A self-hosted MIRROR's stream lives in mirrorN_url (as "self-hosted:<id>"), not in the
+// stream_video_id column (that's the main source only) — check both, or every mirror
+// playback request 404s here before it ever reaches the streaming service.
 function resolveStreamVideoForUser(streamVideoId, user) {
-  const video = db.prepare('SELECT id, category_id, access_mode, publish_date FROM videos WHERE stream_video_id = ?').get(streamVideoId);
+  const mirrorRef = `self-hosted:${streamVideoId}`;
+  const video = db.prepare(`
+    SELECT id, category_id, access_mode, publish_date FROM videos
+    WHERE stream_video_id = ?
+      OR mirror1_url = ? OR mirror2_url = ? OR mirror3_url = ? OR mirror4_url = ? OR mirror5_url = ?
+  `).get(streamVideoId, mirrorRef, mirrorRef, mirrorRef, mirrorRef, mirrorRef);
   if (!video) return { ok: false, status: 404, error: 'Video not found' };
   const access = userCanViewVideo(video, user);
   if (!access.ok) return { ok: false, status: 403, error: 'Brak dostępu do tego filmu.' };
