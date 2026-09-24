@@ -1,0 +1,18 @@
+# Alleria Streaming Service (Standalone) — GPU (NVENC) transcoding
+#
+# Merge on top of docker-compose.yml in THIS folder. Requires the NVIDIA Container Toolkit
+# already working for a plain custom container on this host (Unraid: the "Nvidia-Driver"
+# plugin) — confirm with something like:
+#   docker run --rm --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+#
+# Also set in .env (the base docker-compose.yml already wires these through, defaulted off):
+#   STREAM_USE_GPU=true
+#   NVIDIA_VISIBLE_DEVICES=all           # or a specific GPU UUID, e.g. GPU-1cb7b75e-20e3-5e0e-4cd8-4151783b3274
+#   NVIDIA_DRIVER_CAPABILITIES=all       # or the minimal "video,compute,utility" needed for NVENC
+
+services:
+  streaming:
+    runtime: nvidia
