@@ -4,7 +4,7 @@
 
 **Prywatna platforma wideo społeczności [Alleria.pl](https://alleria.pl)**
 
-![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white) ![Node](https://img.shields.io/badge/Node-20-339933?logo=node.js&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-better--sqlite3-003B57?logo=sqlite&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white) ![Node](https://img.shields.io/badge/Node-24-339933?logo=node.js&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-better--sqlite3-003B57?logo=sqlite&logoColor=white)
 
 </div>
 
@@ -47,7 +47,7 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 
 ### 🔍 Smart wyszukiwanie
 - **Cmd/Ctrl+K** — command palette z wyszukiwaniem tytułów, opisów, autorów i tagów filmów, dynamicznie i na żywo
-- **Wyszukiwanie stron i funkcji** — Profil, Historia, Ustawienia itd. też są wyszukiwalne; redaktorzy i deweloperzy widzą więcej wyników (dopasowanych do swoich uprawnień); definicje wyszukiwalnych pozycji leżą przy definicji zakładek każdej strony (np. `MANAGE_SEARCH_ITEMS` w `ManagePage.jsx`), więc dodanie nowej zakładki od razu czyni ją wyszukiwalną
+- **Wyszukiwanie stron i funkcji** — Profil, Historia, Ustawienia itd. też są wyszukiwalne; redaktorzy i deweloperzy widzą więcej wyników (dopasowanych do swoich uprawnień); definicje wyszukiwalnych pozycji leżą obok każdej strony (np. `MANAGE_SEARCH_ITEMS` w `ManagePage.search.js`), więc dodanie tam wpisu przy nowej zakładce od razu czyni ją wyszukiwalną; osobny moduł sprawia, że wyszukiwarka nie wciąga leniwie ładowanej strony do głównego bundla
 - **Dopasowanie tagów odporne na interpunkcję** — np. zapytanie „REPO” znajdzie tag „R.E.P.O.”, ale „GTA VI” celowo **nie** dopasuje „GTA V”
 - **Górny pasek (tytuł + wyszukiwarka + profil)** można całkowicie wyłączyć w Zarządzanie → Ustawienia → Wyświetlanie — wtedy strony wracają do własnych, dużych nagłówków, a profil użytkownika trafia z powrotem do lewego dolnego rogu sidebaru
 
@@ -61,6 +61,8 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 - **Planowane publikacje** — film z datą publikacji w przyszłości jest niewidoczny dla zwykłych użytkowników (widzą go tylko redaktorzy/dev w panelu) do momentu jej nadejścia; z chwilą publikacji automatycznie leci webhook Discord, powiadomienie push i/lub e-mail — każdy kanał osobno włączany per kategoria (patrz sekcje niżej)
 - **Progres uploadu** — podwójny progress bar: całość + bieżący chunk
 - **Auto-transkodowanie** — backend co 30s sprawdza status, redaktor widzi % postępu i aktualną jakość
+- **Link do tej chwili** — kopiuje `/video/:id?t=<sekundy>&src=<źródło>`; wejście z takiego linku otwiera film na wskazanym źródle (np. mirrorze z wersją alternatywną) i ustawia odtwarzacz na ten moment (`t` przyjmuje też `12:34` i `1h2m3s`)
+- **Sterowanie systemowe (Media Session)** — tytuł, autor, miniatura oraz play/pauza/przewijanie na ekranie blokady telefonu, w centrum powiadomień i z klawiszy multimedialnych/słuchawek (self-hosted player na stronie filmu; wyłączone dla filmów z rozszerzonym DRM, bo te pauzują przy ukryciu strony)
 - **Podgląd poklatkowy miniaturki** — najechanie myszką na kafelek filmu (self-hosted, ready) pokazuje "filmstrip" ze sprite'a wygenerowanego przy transkodowaniu (do 100 klatek co ~10-60s zależnie od długości filmu), jak na YouTube; YouTube/embed zostaje przy statycznej miniaturce
 
 ### 📊 Analityka wideo *(dla autorów, admin/dev)*
@@ -128,6 +130,8 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 - Hard-delete i ciche edycje dla deweloperów (bez śladu)
 - Komentarze redaktora wstawiane przez panel Debug Tools
 - **Reakcje emoji** — dowolna liczba różnych emoji na komentarz, toggle per emoji (jak na Slacku)
+- **Klikalne znaczniki czasu** — `12:34` / `1:02:03` w komentarzu lub opisie filmu przewija bieżące źródło (YouTube i self-hosted); `[12:34|Nazwa źródła]` wskazuje konkretne źródło (główne albo mirror, także „wersję alternatywną”) i po kliknięciu najpierw się na nie przełącza. Przycisk „Wstaw czas” pod polem komentarza wstawia bieżący moment razem z aktywnym źródłem
+- **@wzmianki** — wpisanie `@` podpowiada osoby, które mają dostęp do filmu; zapis `@[Nazwa](id)` (nazwy użytkowników nie są unikalne, więc wiąże się po ID). Wspomniana osoba dostaje powiadomienie z linkiem prosto do komentarza (`#comment-N`, z podświetleniem) — tylko jeśli sama ma dostęp do filmu; edycja powiadamia wyłącznie nowo dodane osoby, a autor komentarza-rodzica nie dostaje podwójnego powiadomienia
 - **Zgłaszanie komentarzy** — powód z listy (spam / nękanie / spoiler / nieodpowiednia treść / inne) lub „inne” z własnym opisem; opis zawsze wymagany
 - **Kolejka moderacyjna** (Zarządzanie → Zgłoszenia, `admin`+`dev`) — trzy akcje jasno rozróżnione: *odrzuć zgłoszenie* (komentarz bez zmian), *ukryj komentarz* (soft-delete, odwracalne przez dev), *usuń trwale* (hard-delete wraz z odpowiedziami, tylko `dev`, nieodwracalne)
 
@@ -432,10 +436,17 @@ Szczegóły: [streaming-standalone/README.md](streaming-standalone/README.md)
 ```
 alleria-filmy/
 ├── backend/
-│   ├── server.js           # API, auth, proxy streaming, Watch Party REST
+│   ├── server.js           # Bootstrap: middleware, montowanie routerów, WebSocket, start serwera
+│   ├── db.js               # Współdzielone połączenie better-sqlite3
+│   ├── database.js         # Otwarcie bazy + uruchomienie migracji
+│   ├── jobs.js             # Pętle w tle: status transkodowania, publikacje planowane (webhook/e-mail/push)
+│   ├── migrations/         # Numerowane migracje schematu (001_baseline, 002_indexes, …) + runner
+│   ├── routes/             # express.Router per obszar: videos, comments, stream, auth, teamspeak,
+│   │                       #   profile, gdpr, debug, settings, categories, ranks, users, logs, …
+│   ├── lib/                # Logika współdzielona: config, auth (middleware), access (uprawnienia),
+│   │                       #   sessions + sessionStore, settings, notify/email, stream, accounts, gdpr, …
 │   ├── watchParty.js       # WebSocket Watch Party — in-memory parties, sync
 │   ├── notifications.js    # WebSocket centrum powiadomień — token auth, per-user rejestr
-│   ├── database.js         # SQLite schema + migracje
 │   ├── defaultTos.js       # Wbudowana domyślna treść Regulaminu
 │   ├── versions.js         # Wersja panelu i minimum streamingu
 │   └── package.json
@@ -450,7 +461,10 @@ alleria-filmy/
 │   │   │   ├── NotificationBell.jsx # Dzwonek + panel powiadomień (desktop dropdown / mobile full-screen)
 │   │   │   ├── WatchPartyTab.jsx   # Floating tab + slide-out panel Watch Party
 │   │   │   ├── VideoModal.jsx      # Dodawanie/edycja filmów
-│   │   │   ├── SecurePlayer.jsx    # HLS player z DRM, castingiem (Chromecast/AirPlay) + controlRef dla Watch Party/Shorts
+│   │   │   ├── SecurePlayer.jsx    # HLS player z DRM, castingiem (Chromecast/AirPlay), Media Session + controlRef dla Watch Party/Shorts
+│   │   │   ├── CommentText.jsx     # Treść komentarza/opisu: klikalne znaczniki czasu i @wzmianki
+│   │   │   ├── MentionTextarea.jsx # Pole tekstowe z podpowiedziami @wzmianek
+│   │   │   ├── DatabaseStatusCard.jsx # Zarządzanie → Ustawienia → Baza danych (migracje, kopie)
 │   │   │   ├── AvatarCropModal.jsx # Przycinanie własnego avatara przed uploadem
 │   │   │   ├── HoverScrubThumbnail.jsx # Podgląd poklatkowy miniaturki na hover
 │   │   │   └── DateTimePicker.jsx  # Polski kalendarz
@@ -462,6 +476,7 @@ alleria-filmy/
 │   │   │   ├── WatchPartyPage.jsx  # Dedykowana strona Watch Party
 │   │   │   ├── AdminPage.jsx       # Panel Redaktora (biblioteka, tagi)
 │   │   │   ├── ManagePage.jsx      # Zarządzanie — kategorie, rangi, użytkownicy, zgłoszenia, RODO, regulamin, ustawienia (dev only)
+│   │   │   ├── *.search.js         # Wpisy do Cmd/Ctrl+K dla danej strony — osobny moduł, żeby wyszukiwarka nie wciągała strony do głównego bundla
 │   │   │   ├── LogsPage.jsx        # Logi systemowe — dev only
 │   │   │   ├── DebugPage.jsx       # Dev Tools — streaming, administracyjne, kategorie, debug (dev only)
 │   │   │   ├── StatsPage.jsx       # Statystyki
@@ -475,8 +490,10 @@ alleria-filmy/
 │   │   ├── utils/
 │   │   │   ├── api.js
 │   │   │   ├── helpers.js
+│   │   │   ├── commentTokens.js   # Parser znaczników czasu / wzmianek, format linków ?t=
+│   │   │   ├── videoSources.js    # Lista źródeł filmu (główne + mirrory) i dopasowanie po kluczu/nazwie
 │   │   │   └── roleColors.js
-│   │   └── App.jsx
+│   │   └── App.jsx                # Routing; strony poza listą i filmem ładowane leniwie (code splitting)
 │   └── package.json
 ├── streaming/
 │   ├── server.js           # FFmpeg transcoding service
@@ -498,6 +515,12 @@ alleria-filmy/
 ---
 
 ## 💾 Baza danych (SQLite)
+
+Schemat jest zarządzany **numerowanymi migracjami** (`backend/migrations/`). Przy starcie aplikacji każda migracja, której nie ma jeszcze w tabeli `schema_migrations`, wykonuje się dokładnie raz (w transakcji) i jest tam zapisywana razem z `PRAGMA user_version`. Nieudana migracja zatrzymuje start aplikacji zamiast uruchamiać ją na połowicznie zmienionym schemacie. Przed zmianą schematu istniejącej bazy powstaje kopia `data/backups/alleria-before-vNNN-….db` (przechowywanych jest 5 ostatnich). Stan, historia migracji i kopie są widoczne w **Zarządzanie → Ustawienia → Baza danych**, gdzie można też zrobić kopię ręcznie.
+
+Nowa zmiana schematu to nowy plik `NNN_opis.js` z `version: NNN`, dopisany do listy w `migrations/index.js`. Migracji, która już trafiła na produkcję, się nie edytuje. `001_baseline` to cały dotychczasowy (idempotentny) schemat: na istniejącej bazie jest no-opem i zostaje tylko zapisany jako zastosowany.
+
+Sesje logowania trzymane są osobno w `data/sessions.db` (własny store na better-sqlite3, zgodny z formatem dawnego `connect-sqlite3`, więc zmiana nikogo nie wylogowała).
 
 <details>
 <summary><b>Kliknij, aby rozwinąć pełną listę tabel</b></summary>
@@ -529,7 +552,8 @@ alleria-filmy/
 | `audit_logs` | Audit trail akcji redaktorów i deweloperów |
 | `gdpr_requests` | Zgłoszenia eksportu/usunięcia danych — typ, status, termin (30 dni), plik eksportu, kto i kiedy rozpatrzył, `activity_purged_at` |
 | `app_settings` | Ustawienia runtime edytowalne w panelu (klucz/wartość) — m.in. `tos_content`/`tos_updated_at`, klucze VAPID, konfiguracja SMTP i szablony e-mail |
-| `sessions` | Sesje express-session (z metadanymi urządzenia/IP dla „Aktywnych sesji") |
+| `schema_migrations` | Zastosowane migracje schematu (`version`, `name`, `applied_at`, `duration_ms`) — pomijana przy eksporcie/imporcie bazy |
+| `sessions` | Pozostałość po starszej wersji — aktywne sesje żyją w osobnym pliku `data/sessions.db` (z metadanymi urządzenia/IP dla „Aktywnych sesji") |
 
 </details>
 
@@ -580,6 +604,7 @@ alleria-filmy/
 - `DELETE /api/comments/:id/hard` — Hard-delete (dev only)
 - `POST /api/comments/admin` — Wstaw komentarz jako redaktor (dev only)
 - `POST /api/comments/:id/react` — Toggle reakcji emoji
+- `GET /api/videos/:id/mentionable?q=` — Podpowiedzi osób do @wzmianki (tylko osoby z dostępem do filmu, max 8)
 - `POST /api/comments/:id/report` — Zgłoś komentarz (powód + wymagany opis)
 - `GET /api/admin/comment-reports` / `GET /api/admin/comment-reports/pending-count` — Kolejka moderacyjna (admin/dev)
 - `POST /api/admin/comment-reports/:id/resolve` — Rozstrzygnij zgłoszenie (`dismiss` / `delete_comment` / `hard_delete` — ostatnie tylko dev)
@@ -677,6 +702,8 @@ alleria-filmy/
 - `GET /api/debug/category-role-overview` — Kategorie z niestandardowymi rolami/userami Discord, role rozwiązane do nazw na żywo
 - `GET /api/debug/export` / `POST /api/debug/import` — Eksport/import bazy JSON
 - `GET /api/debug/db-stats` — Rozmiar pliku bazy + liczba wierszy
+- `GET /api/debug/migrations` — Wersja schematu, historia migracji, oczekujące migracje, kopie zapasowe
+- `POST /api/debug/migrations/backup` — Ręczna kopia bazy do `data/backups/`
 - `POST /api/debug/sql` — Konsola SQL
 - `POST /api/debug/clear` — Wyczyść bazę danych (nieodwracalne)
 - `POST /api/debug/create-user` — Ręczne utworzenie konta
@@ -696,7 +723,7 @@ alleria-filmy/
 | Warstwa | Stack |
 |---------|-------|
 | **Frontend** | React 18, Tailwind CSS 3, Vite 6, hls.js, YouTube IFrame API, Google Cast Sender SDK, Lucide icons, React Router 7, Recharts (analityka) |
-| **Backend** | Express.js, better-sqlite3, express-session, multer, ws (WebSocket), web-push, nodemailer |
+| **Backend** | Node.js 24 LTS, Express.js, better-sqlite3 (baza + store sesji), express-session, multer, ws (WebSocket), web-push, nodemailer |
 | **Streaming** | FFmpeg (Alpine), AES-128 HLS encryption |
 | **Deploy** | Docker, Docker Compose, Cloudflare Tunnel, GitHub Actions |
 

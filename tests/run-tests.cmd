@@ -1,5 +1,5 @@
 @echo off
-rem Uruchamia testy API. Preferuje lokalny Node.js 20+; Docker uzywany tylko
+rem Uruchamia testy API. Preferuje lokalny Node.js 22+; Docker uzywany tylko
 rem awaryjnie, gdy Node nie jest zainstalowany.
 rem Uzycie:
 rem   .\tests\run-tests.cmd                     - wszystkie testy
@@ -14,11 +14,11 @@ if not errorlevel 1 goto native
 docker info >nul 2>&1
 if errorlevel 1 (
     echo Nie znaleziono Node.js ani dzialajacego Dockera.
-    echo Zainstaluj Node.js 20+ ^(https://nodejs.org^) - to preferowany sposob.
+    echo Zainstaluj Node.js 22+ ^(https://nodejs.org^) - to preferowany sposob.
     exit /b 1
 )
 echo Node.js nie znaleziony - fallback: uruchamiam testy w kontenerze Docker...
-docker run --rm -v "%REPO%:/work" -w /work node:20 bash -c "cd backend && npm install --no-audit --no-fund --loglevel=error && cd ../tests && npm install --no-audit --no-fund --loglevel=error && node --test %~1"
+docker run --rm -v "%REPO%:/work" -w /work node:24 bash -c "cd backend && npm install --no-audit --no-fund --loglevel=error && cd ../tests && npm install --no-audit --no-fund --loglevel=error && node --test %~1"
 exit /b %errorlevel%
 
 :native

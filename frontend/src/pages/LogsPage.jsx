@@ -8,16 +8,6 @@ import { useConfirm } from '../contexts/ConfirmContext';
 
 const LOGS_TAB_IDS = ['audit', 'watchparty', 'watch', 'login'];
 
-// Search metadata for the global command palette (Cmd/Ctrl+K, GlobalSearch.jsx) — add an entry
-// here whenever a tab above is added, so it's searchable automatically instead of relying on
-// someone remembering to also edit GlobalSearch.jsx.
-export const LOGS_SEARCH_ITEMS = [
-  { label: 'Audit Log', section: 'Logi systemowe', to: '/logs?tab=audit', icon: Shield, devOnly: true },
-  { label: 'Logi Watch Party', section: 'Logi systemowe', to: '/logs?tab=watchparty', icon: Users, devOnly: true },
-  { label: 'Logi wyświetleń', section: 'Logi systemowe', to: '/logs?tab=watch', icon: Eye, devOnly: true },
-  { label: 'Logi logowania', section: 'Logi systemowe', to: '/logs?tab=login', icon: LogIn, devOnly: true },
-];
-
 const WP_ACTIONS = [
   { key: '', label: 'Wszystkie' },
   { key: 'party_created', label: 'Utworzono', color: 'bg-emerald-500/10 text-emerald-400' },

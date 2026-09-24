@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Film, MessageCircle, Download, Flag, X, Loader2, CheckCheck } from 'lucide-react';
+import { Bell, Film, MessageCircle, Download, Flag, X, Loader2, CheckCheck, AtSign } from 'lucide-react';
 import { useNotifications } from '../contexts/NotificationsContext';
 import { formatDate } from '../utils/helpers';
 
 const TYPE_ICON = {
   new_video: Film,
   comment_reply: MessageCircle,
+  comment_mention: AtSign,
   gdpr_export_ready: Download,
   report_resolved: Flag,
 };
@@ -39,7 +40,13 @@ function NotificationPanel({ onClose }) {
   const handleOpen = (n) => {
     if (!n.read) markRead(n.id);
     onClose();
-    if (n.url) navigate(n.url);
+    if (!n.url) return;
+    // Older rows store an absolute URL (https://…/video/5) — the router only understands paths,
+    // so same-origin links are reduced to path+hash; anything else is a real navigation.
+    let target;
+    try { target = new URL(n.url, window.location.origin); } catch (e) { return; }
+    if (target.origin === window.location.origin) navigate(target.pathname + target.search + target.hash);
+    else window.location.href = target.href;
   };
 
   return (

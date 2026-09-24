@@ -10,7 +10,7 @@ FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 # Ubuntu's ffmpeg package (unlike Alpine's) is built with h264_nvenc/hevc_nvenc support.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl gnupg ca-certificates ffmpeg && \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
 

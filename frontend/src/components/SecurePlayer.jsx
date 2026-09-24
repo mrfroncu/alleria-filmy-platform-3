@@ -36,6 +36,10 @@ export default function SecurePlayer({
   // that have nothing to offer here (Shorts, Watch Party) simply omit both and the section stays
   // hidden entirely rather than showing an empty "Dostępne mirrory" list.
   mirrors, onSelectMirror,
+  // Opt-in OS media integration (lock screen, notification shade, headset/keyboard media keys):
+  // { artist, artwork } — only VideoPage passes it. Shorts/Watch Party leave it off (a lock-screen
+  // "pause" there would desync the party or fight the Shorts feed).
+  mediaSession,
 }) {
   const { user } = useAuth();
   const videoRef = useRef(null);
@@ -538,6 +542,61 @@ export default function SecurePlayer({
     };
   });
 
+  // Media Session — never for DRM-enhanced videos: those pause whenever the page is hidden, and a
+  // lock-screen "play" would quietly bypass that. Handlers go through the same functions as the
+  // on-screen buttons (via a ref, so they never go stale), which keeps casting working too.
+  // Registered on first play rather than on mount, so a player that is merely mounted never
+  // steals the OS controls; cleared on unmount.
+  const mediaSessionOn = !!mediaSession && !drmEnhanced && typeof navigator !== 'undefined' && 'mediaSession' in navigator;
+  const mediaActionsRef = useRef({});
+  mediaActionsRef.current = { togglePlay: () => togglePlay(), skip: (s) => skip(s), seekTo: (t) => seekToTime(t), playing };
+  const [mediaSessionClaimed, setMediaSessionClaimed] = useState(false);
+  useEffect(() => { if (playing && mediaSessionOn) setMediaSessionClaimed(true); }, [playing, mediaSessionOn]);
+  const msArtist = mediaSession?.artist || '';
+  const msArtwork = mediaSession?.artwork || '';
+  useEffect(() => {
+    if (!mediaSessionOn || !mediaSessionClaimed) return;
+    const ms = navigator.mediaSession;
+    try {
+      ms.metadata = new window.MediaMetadata({
+        title: title || '',
+        artist: msArtist,
+        album: 'Alleria Filmy',
+        artwork: msArtwork ? [{ src: new URL(msArtwork, window.location.href).href }] : [],
+      });
+    } catch (e) {}
+    const handlers = {
+      play: () => { if (!mediaActionsRef.current.playing) mediaActionsRef.current.togglePlay(); },
+      pause: () => { if (mediaActionsRef.current.playing) mediaActionsRef.current.togglePlay(); },
+      seekbackward: (d) => mediaActionsRef.current.skip(-(d?.seekOffset || 10)),
+      seekforward: (d) => mediaActionsRef.current.skip(d?.seekOffset || 10),
+      seekto: (d) => { if (Number.isFinite(d?.seekTime)) mediaActionsRef.current.seekTo(d.seekTime); },
+    };
+    for (const [action, handler] of Object.entries(handlers)) {
+      try { ms.setActionHandler(action, handler); } catch (e) { /* action not supported by this browser */ }
+    }
+    return () => {
+      for (const action of Object.keys(handlers)) {
+        try { ms.setActionHandler(action, null); } catch (e) {}
+      }
+      try { ms.metadata = null; ms.playbackState = 'none'; } catch (e) {}
+    };
+  }, [mediaSessionOn, mediaSessionClaimed, title, msArtist, msArtwork]);
+  useEffect(() => {
+    if (!mediaSessionOn || !mediaSessionClaimed) return;
+    try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch (e) {}
+  }, [mediaSessionOn, mediaSessionClaimed, playing]);
+  useEffect(() => {
+    if (!mediaSessionOn || !mediaSessionClaimed || !duration || !Number.isFinite(duration)) return;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration,
+        playbackRate: videoRef.current?.playbackRate || 1,
+        position: Math.min(Math.max(currentTime, 0), duration),
+      });
+    } catch (e) {}
+  }, [mediaSessionOn, mediaSessionClaimed, currentTime, duration]);
+
   const togglePlay = () => {
     if (casting && castControllerRef.current) {
       castControllerRef.current.playOrPause();
@@ -604,6 +663,21 @@ export default function SecurePlayer({
     const v = videoRef.current;
     if (!v) return;
     const newTime = Math.min(Math.max(v.currentTime + seconds, 0), v.duration || Infinity);
+    v.currentTime = newTime;
+    if (onSeek) onSeek(newTime);
+  };
+
+  const seekToTime = (t) => {
+    if (casting && castControllerRef.current) {
+      castPlayerRef.current.currentTime = t;
+      castControllerRef.current.seek();
+      setCurrentTime(t);
+      if (onSeek) onSeek(t);
+      return;
+    }
+    const v = videoRef.current;
+    if (!v) return;
+    const newTime = Math.min(Math.max(t, 0), v.duration || Infinity);
     v.currentTime = newTime;
     if (onSeek) onSeek(newTime);
   };

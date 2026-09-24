@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { FolderOpen, Plus, Pencil, Trash2, Users, Shield, Lock, FileText, Settings, ShieldCheck, LayoutGrid, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail, Play, AlertTriangle, Flag, ExternalLink, Loader2, Image } from 'lucide-react';
+import { FolderOpen, Plus, Pencil, Trash2, Users, Shield, Lock, FileText, Settings, ShieldCheck, LayoutGrid, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail, Play, AlertTriangle, Flag, ExternalLink, Loader2, Image, Database } from 'lucide-react';
 import { api } from '../utils/api';
 import { buildCategoryTreeOptions, formatDate } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
@@ -11,25 +11,9 @@ import { useUnsavedForm, useUnsavedGuard } from '../contexts/UnsavedChangesConte
 import { renderMarkdown } from '../utils/markdown';
 import CategoryModal from '../components/CategoryModal';
 import RankModal from '../components/RankModal';
+import DatabaseStatusCard from '../components/DatabaseStatusCard';
 
 const MANAGE_TAB_IDS = ['categories', 'ranks', 'users', 'reports', 'gdpr', 'tos', 'settings'];
-
-// Search metadata for the global command palette (Cmd/Ctrl+K, GlobalSearch.jsx) — add an entry
-// here whenever a tab or settings subsection above is added, so it's searchable automatically
-// instead of relying on someone remembering to also edit GlobalSearch.jsx.
-export const MANAGE_SEARCH_ITEMS = [
-  { label: 'Kategorie', section: 'Zarządzanie', to: '/manage?tab=categories', icon: FolderOpen, devOnly: true },
-  { label: 'Rangi', section: 'Zarządzanie', to: '/manage?tab=ranks', icon: Shield, devOnly: true },
-  { label: 'Użytkownicy', section: 'Zarządzanie', to: '/manage?tab=users', icon: Users, devOnly: true },
-  { label: 'Zgłoszenia', section: 'Zarządzanie', to: '/manage?tab=reports', icon: Flag, devOnly: true },
-  { label: 'Zgłoszenia RODO (GDPR / LGPD)', section: 'Zarządzanie', to: '/manage?tab=gdpr', icon: Lock, devOnly: true },
-  { label: 'Regulamin (edycja)', section: 'Zarządzanie', to: '/manage?tab=tos', icon: FileText, devOnly: true },
-  { label: 'Limity treści', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=display', icon: Settings, devOnly: true },
-  { label: 'Ograniczenie domen webhooków', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=security', icon: ShieldCheck, devOnly: true },
-  { label: 'Region RODO / LGPD', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=security', icon: ShieldCheck, devOnly: true },
-  { label: 'Wysyłka kodu logowania (TS3)', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=login', icon: ShieldCheck, devOnly: true },
-  { label: 'Ustawienia SMTP', section: 'Zarządzanie', to: '/manage?tab=settings&subtab=email', icon: Mail, devOnly: true },
-];
 
 const REPORT_REASON_LABELS = { spam: 'Spam', harassment: 'Nękanie / obraźliwe treści', spoiler: 'Spoiler', inappropriate: 'Nieodpowiednia treść', other: 'Inne' };
 
@@ -79,7 +63,7 @@ export default function ManagePage() {
   }, [searchParams]);
   // Deep-links (e.g. from GlobalSearch) point at a settings section via ?subtab=; since all
   // sections now live on one scrollable page, this just scrolls to the section on arrival.
-  const settingsScrollTarget = ["display","security","email","login"].includes(searchParams.get('subtab')) ? searchParams.get('subtab') : null;
+  const settingsScrollTarget = ["display","security","email","login","database"].includes(searchParams.get('subtab')) ? searchParams.get('subtab') : null;
   useEffect(() => {
     if (tab === 'settings' && settingsScrollTarget) {
       document.getElementById(`settings-section-${settingsScrollTarget}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2055,6 +2039,10 @@ export default function ManagePage() {
             </div>
           </div>
           </div>
+
+        {/* ============ BAZA DANYCH ============ */}
+        <SettingsSectionHeader id="settings-section-database" icon={Database} label="Baza danych" />
+        <DatabaseStatusCard />
       </div>
       )}
     </div>

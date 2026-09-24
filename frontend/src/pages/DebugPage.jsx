@@ -43,22 +43,6 @@ function ToggleSwitch({ checked, onChange, disabled, label }) {
 
 const TAB_IDS = TABS.map(t => t.id);
 
-// Search metadata for the global command palette (Cmd/Ctrl+K, GlobalSearch.jsx) — add an entry
-// here whenever a tab or tool above is added, so it's searchable automatically instead of relying
-// on someone remembering to also edit GlobalSearch.jsx.
-export const DEBUG_SEARCH_ITEMS = [
-  { label: 'Pliki streamera', section: 'Narzędzia Developerskie', to: '/debug?tab=streaming', icon: HardDrive, devOnly: true },
-  { label: 'Czyszczenie streamingu', section: 'Narzędzia Developerskie', to: '/debug?tab=streaming', icon: Trash2, devOnly: true },
-  { label: 'Aktywne Watch Parties', section: 'Narzędzia Developerskie', to: '/debug?tab=admin', icon: Users, devOnly: true },
-  { label: 'Dodaj użytkownika', section: 'Narzędzia Developerskie', to: '/debug?tab=admin', icon: UserPlus, devOnly: true },
-  { label: 'Sprawdź uprawnienia', section: 'Narzędzia Developerskie', to: '/debug?tab=categories', icon: ShieldCheck, devOnly: true },
-  { label: 'Eksportuj bazę danych', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: Download, devOnly: true },
-  { label: 'Importuj bazę danych', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: Upload, devOnly: true },
-  { label: 'Czyszczenie logów', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: Trash2, devOnly: true },
-  { label: 'Wyczyść bazę danych', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: AlertTriangle, devOnly: true },
-  { label: 'Konsola SQL', section: 'Narzędzia Developerskie', to: '/debug?tab=debug', icon: Terminal, devOnly: true },
-];
-
 export default function DebugPage() {
   const { config } = useSettings();
   const confirm = useConfirm();

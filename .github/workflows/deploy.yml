@@ -39,7 +39,10 @@ jobs:
           sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -o StrictHostKeyChecking=no deploy@${{ secrets.SSH_HOST }} << 'EOF'
             cd /home/deploy/video-platform/
 
-            docker compose -f docker-compose.panel-only.yml down
+            # Build first while the old container keeps serving — only `up -d` swaps it for the new
+            # image, so the site is down for a container restart instead of the whole build.
             docker compose -f docker-compose.panel-only.yml build --no-cache
             docker compose -f docker-compose.panel-only.yml up -d
+            # --no-cache builds leave the previous image behind untagged on every deploy.
+            docker image prune -f
           EOF

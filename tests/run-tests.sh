@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Uruchamia testy API (macOS / Linux). Preferuje lokalny Node.js 20+;
+# Uruchamia testy API (macOS / Linux). Preferuje lokalny Node.js 22+;
 # Docker uzywany tylko awaryjnie, gdy Node nie jest zainstalowany.
 # Uzycie:
 #   ./tests/run-tests.sh                     # wszystkie testy
@@ -16,8 +16,8 @@ fi
 
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   echo "Node.js nie znaleziony - fallback: uruchamiam testy w kontenerze Docker..."
-  exec docker run --rm -v "$REPO:/work" -w /work node:20 bash -c "cd backend && npm install --no-audit --no-fund --loglevel=error && cd ../tests && npm install --no-audit --no-fund --loglevel=error && node --test $*"
+  exec docker run --rm -v "$REPO:/work" -w /work node:24 bash -c "cd backend && npm install --no-audit --no-fund --loglevel=error && cd ../tests && npm install --no-audit --no-fund --loglevel=error && node --test $*"
 fi
 
-echo "Nie znaleziono Node.js ani Dockera. Zainstaluj Node.js 20+: https://nodejs.org" >&2
+echo "Nie znaleziono Node.js ani Dockera. Zainstaluj Node.js 22+: https://nodejs.org" >&2
 exit 1

@@ -10,14 +10,6 @@ import { useToast } from '../contexts/ToastContext';
 
 const ADMIN_TAB_IDS = ['videos', 'tags'];
 
-// Search metadata for the global command palette (Cmd/Ctrl+K, GlobalSearch.jsx) — add an entry
-// here whenever a tab above is added, so it's searchable automatically instead of relying on
-// someone remembering to also edit GlobalSearch.jsx.
-export const ADMIN_SEARCH_ITEMS = [
-  { label: 'Biblioteka filmów', section: 'Panel Redaktora', to: '/admin?tab=videos', icon: Film, adminOnly: true },
-  { label: 'Zarządzanie tagami', section: 'Panel Redaktora', to: '/admin?tab=tags', icon: Tag, adminOnly: true },
-];
-
 export default function AdminPage() {
   const { config } = useSettings();
   const confirm = useConfirm();
@@ -455,5 +447,4 @@ export default function AdminPage() {
     </div>
   );
 }
-
 

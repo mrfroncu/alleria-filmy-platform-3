@@ -7,7 +7,7 @@ i sprawdzają, że uprawnienia oraz funkcjonalności działają tak, jak powinny
 Po każdej większej zmianie w backendzie odpal testy — jeśli wszystko świeci się na
 zielono, stare funkcjonalności nie zostały zepsute.
 
-**Stan: 181 testów w 10 plikach, pełny przebieg ~1 sekunda.**
+**Stan: 192 testy w 12 plikach, pełny przebieg ~1 sekunda.**
 
 Testy używają wbudowanego runnera Node.js (`node --test`) + `supertest` —
 **nie wymagają Dockera** i działają na Windows, macOS i Linux.
@@ -16,7 +16,7 @@ Testy używają wbudowanego runnera Node.js (`node --test`) + `supertest` —
 
 ## Wymagania
 
-- **Node.js 20 lub nowszy** (na Windows: `winget install OpenJS.NodeJS.LTS`,
+- **Node.js 22 lub nowszy** (na Windows: `winget install OpenJS.NodeJS.LTS`,
   na macOS: `brew install node` albo instalator z https://nodejs.org)
 - Docker jest potrzebny **tylko** jako awaryjny fallback, gdy Node nie jest
   zainstalowany — skrypty same go wtedy użyją.
@@ -45,7 +45,7 @@ blokuje skrypty .ps1 — wtedy: `powershell -ExecutionPolicy Bypass -File tests\
 
 (przy pierwszym użyciu może być potrzebne `chmod +x tests/run-tests.sh`)
 
-### Ręcznie (dowolny system z Node 20+)
+### Ręcznie (dowolny system z Node 22+)
 
 ```bash
 cd backend && npm install     # zależności backendu (raz)
@@ -179,11 +179,10 @@ albo nie zmieniają zachowania wcale):
    bezpośrednim uruchomieniu (`node server.js`).
 3. `backend/watchParty.js` — timery oznaczone `unref()`, żeby proces testów mógł
    się zakończyć (bez wpływu na działanie serwera).
-4. `backend/package.json` — `better-sqlite3` podbity do `~12.4.1` i przypięty do
-   linii 12.4.x. Powód: v11 nie ma prekompilowanych binarek dla Node 24 (świeże
-   instalacje na Windows/macOS wymagałyby kompilatora C++), a 12.5+ porzuca
-   Node 20 używany w produkcyjnym Dockerze. Linia 12.4.x ma gotowe binarki dla
-   wszystkich potrzebnych platform (sprawdzone: Windows/macOS/Linux/Alpine).
+4. `backend/package.json` — `better-sqlite3` w linii 12.x (`^12.11.1`), z gotowymi
+   binarkami dla Node 22/24 na Windows/macOS/Linux/Alpine. Produkcyjny Docker
+   działa na Node 24 LTS (wcześniejsze przypięcie do 12.4.x wynikało tylko z Node 20,
+   któremu skończyło się wsparcie 30.04.2026).
 
 ## Deploy
 

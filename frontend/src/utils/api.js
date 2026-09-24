@@ -267,6 +267,8 @@ export const api = {
   }),
   clearDB: () => request('/debug/clear', { method: 'POST' }),
   dbStats: () => request('/debug/db-stats'),
+  getMigrations: () => request('/debug/migrations'),
+  createDbBackup: () => request('/debug/migrations/backup', { method: 'POST' }),
   getSettings: () => request('/debug/settings'),
   setSettings: (data) => request('/debug/settings', {
     method: 'POST',
@@ -351,6 +353,7 @@ export const api = {
 
   // Comments
   getComments: (videoId) => request(`/videos/${videoId}/comments`),
+  getMentionable: (videoId, q) => request(`/videos/${videoId}/mentionable?q=${encodeURIComponent(q || '')}`),
   addComment: (videoId, content, parentId) => request(`/videos/${videoId}/comments`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, parent_id: parentId || null }),
   }),

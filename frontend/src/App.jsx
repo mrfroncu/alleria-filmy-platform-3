@@ -11,23 +11,42 @@ import LoginPage from './pages/LoginPage';
 import Layout from './components/Layout';
 import TosGate from './components/TosGate';
 import SetupGate from './components/SetupGate';
-import SetupWizardPage from './pages/SetupWizardPage';
 import VideosPage from './pages/VideosPage';
 import VideoPage from './pages/VideoPage';
-import AdminPage from './pages/AdminPage';
-import DebugPage from './pages/DebugPage';
-import FavoritesPage from './pages/FavoritesPage';
-import HistoryPage from './pages/HistoryPage';
-import StatsPage from './pages/StatsPage';
-import ProfilePage from './pages/ProfilePage';
-import LogsPage from './pages/LogsPage';
-import ManagePage from './pages/ManagePage';
-import WatchPartyPage from './pages/WatchPartyPage';
-import AuthorPage from './pages/AuthorPage';
-import ShortsPage from './pages/ShortsPage';
-// Lazy: recharts alone adds ~370KB (raw) to the bundle — not worth every visitor paying for
-// on first load when only authors/admins ever open this page.
-const VideoAnalyticsPage = lazy(() => import('./pages/VideoAnalyticsPage'));
+
+// After a deploy, a tab that's still open has the previous build's index.html, whose chunk
+// hashes no longer exist on the server — the first navigation to a not-yet-loaded page would
+// fail. Reload once to pick up the new build instead (guarded so a real outage can't loop).
+function lazyPage(factory) {
+  return lazy(() => factory().catch((err) => {
+    const KEY = 'alleria_chunk_reload_at';
+    let last = 0;
+    try { last = Number(sessionStorage.getItem(KEY) || 0); } catch (e) {}
+    if (Date.now() - last > 10000) {
+      try { sessionStorage.setItem(KEY, String(Date.now())); } catch (e) {}
+      window.location.reload();
+      return new Promise(() => {});
+    }
+    throw err;
+  }));
+}
+
+// Only the pages almost every visit starts on (list + video) ship in the main bundle; panels,
+// profile, Watch Party etc. load on first use. VideoAnalyticsPage also keeps recharts (~370KB raw)
+// out of it.
+const SetupWizardPage = lazyPage(() => import('./pages/SetupWizardPage'));
+const AdminPage = lazyPage(() => import('./pages/AdminPage'));
+const DebugPage = lazyPage(() => import('./pages/DebugPage'));
+const FavoritesPage = lazyPage(() => import('./pages/FavoritesPage'));
+const HistoryPage = lazyPage(() => import('./pages/HistoryPage'));
+const StatsPage = lazyPage(() => import('./pages/StatsPage'));
+const ProfilePage = lazyPage(() => import('./pages/ProfilePage'));
+const LogsPage = lazyPage(() => import('./pages/LogsPage'));
+const ManagePage = lazyPage(() => import('./pages/ManagePage'));
+const WatchPartyPage = lazyPage(() => import('./pages/WatchPartyPage'));
+const AuthorPage = lazyPage(() => import('./pages/AuthorPage'));
+const ShortsPage = lazyPage(() => import('./pages/ShortsPage'));
+const VideoAnalyticsPage = lazyPage(() => import('./pages/VideoAnalyticsPage'));
 
 function ProtectedRoute({ children, adminOnly, devOnly }) {
   const { user, loading, isAdmin, isDev } = useAuth();
@@ -58,7 +77,16 @@ function LoadingScreen() {
   );
 }
 
-const P = ({ children, ...props }) => <ProtectedRoute {...props}><Layout>{children}</Layout></ProtectedRoute>;
+// In-layout fallback while a lazy page's chunk loads — the sidebar/top bar stay put.
+function PageLoading() {
+  return (
+    <div className="flex items-center justify-center py-32">
+      <div className="w-8 h-8 border-4 border-violet-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
+
+const P = ({ children, ...props }) => <ProtectedRoute {...props}><Layout><Suspense fallback={<PageLoading />}>{children}</Suspense></Layout></ProtectedRoute>;
 
 export default function App() {
   return (
@@ -73,10 +101,10 @@ export default function App() {
         <SetupGate />
         <Routes>
           <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
-          <Route path="/setup" element={<ProtectedRoute devOnly><SetupWizardPage /></ProtectedRoute>} />
+          <Route path="/setup" element={<ProtectedRoute devOnly><Suspense fallback={<LoadingScreen />}><SetupWizardPage /></Suspense></ProtectedRoute>} />
           <Route path="/" element={<P><VideosPage /></P>} />
           <Route path="/video/:id" element={<P><VideoPage /></P>} />
-          <Route path="/video/:id/analytics" element={<P><Suspense fallback={<LoadingScreen />}><VideoAnalyticsPage /></Suspense></P>} />
+          <Route path="/video/:id/analytics" element={<P><VideoAnalyticsPage /></P>} />
           <Route path="/category/:categorySlug" element={<P><VideosPage /></P>} />
           <Route path="/favorites" element={<P><FavoritesPage /></P>} />
           <Route path="/history" element={<P><HistoryPage /></P>} />

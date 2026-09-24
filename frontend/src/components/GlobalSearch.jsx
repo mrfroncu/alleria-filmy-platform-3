@@ -8,11 +8,11 @@ import {
 import { api } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useUnsavedGuard } from '../contexts/UnsavedChangesContext';
-import { ADMIN_SEARCH_ITEMS } from '../pages/AdminPage';
-import { MANAGE_SEARCH_ITEMS } from '../pages/ManagePage';
-import { LOGS_SEARCH_ITEMS } from '../pages/LogsPage';
-import { DEBUG_SEARCH_ITEMS } from '../pages/DebugPage';
-import { PROFILE_SEARCH_ITEMS } from '../pages/ProfilePage';
+import { ADMIN_SEARCH_ITEMS } from '../pages/AdminPage.search';
+import { MANAGE_SEARCH_ITEMS } from '../pages/ManagePage.search';
+import { LOGS_SEARCH_ITEMS } from '../pages/LogsPage.search';
+import { DEBUG_SEARCH_ITEMS } from '../pages/DebugPage.search';
+import { PROFILE_SEARCH_ITEMS } from '../pages/ProfilePage.search';
 
 const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || navigator.userAgent || '');
 

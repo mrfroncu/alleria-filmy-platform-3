@@ -1,13 +1,18 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw, SmilePlus, Flag, BarChart3, Lock } from 'lucide-react';
+import { useParams, Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw, SmilePlus, Flag, BarChart3, Lock, Clock, Link2 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { useToast } from '../contexts/ToastContext';
 import SecurePlayer from '../components/SecurePlayer';
 import VideoModal from '../components/VideoModal';
+import CommentText from '../components/CommentText';
+import MentionTextarea from '../components/MentionTextarea';
+import { buildSources, resolveSourceRef } from '../utils/videoSources';
+import { formatClock, parseTimeParam, timestampToken } from '../utils/commentTokens';
 
 function Portal({ children }) { return ReactDOM.createPortal(children, document.body); }
 
@@ -52,6 +57,18 @@ const EDGE_ZONE = 0.35;
 // IFrame API has no seek event of its own (native controls, our own custom bar, and double-tap
 // skip all end up going through this same detector uniformly).
 const YT_SEEK_JUMP_THRESHOLD_S = 1.5;
+
+// Same control surface SecurePlayer exposes on controlRef, so VideoPage can drive either kind of
+// player uniformly (resume banner, clickable timestamps, "link do tej chwili").
+function ytControls(player) {
+  return {
+    seek: (pos) => player.seekTo(pos, true),
+    play: () => player.playVideo?.(),
+    pause: () => player.pauseVideo?.(),
+    getCurrentTime: () => player.getCurrentTime?.() ?? 0,
+    getDuration: () => player.getDuration?.() ?? 0,
+  };
+}
 
 // YouTube player with progress tracking — React owns wrapper div only, YT owns inner element
 function YouTubeTrackingPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, controlRef }) {
@@ -106,7 +123,7 @@ function YouTubeTrackingPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek,
         playerVars: { autoplay: 0, controls: 1, rel: 0, origin: window.location.origin },
         events: {
           onReady: () => {
-            if (controlRef) controlRef.current = { seek: (pos) => player.seekTo(pos, true) };
+            if (controlRef) controlRef.current = ytControls(player);
           },
           onStateChange: ({ data }) => {
             // A real seek routes through BUFFERING (YouTube re-buffers at the new position)
@@ -221,7 +238,7 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, c
             setVolume(player.getVolume() / 100);
             setMuted(player.isMuted());
             setDuration(player.getDuration() || 0);
-            if (controlRef) controlRef.current = { seek: (pos) => player.seekTo(pos, true) };
+            if (controlRef) controlRef.current = ytControls(player);
           },
           onStateChange: ({ data }) => {
             if (destroyed) return;
@@ -540,6 +557,44 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, c
   );
 }
 
+// { url, type } of one of a video's sources (see utils/videoSources for the key scheme).
+function sourceSpec(video, key) {
+  const n = /^mirror([1-5])$/.exec(key)?.[1];
+  if (!n) return { url: video.main_source, type: video.main_source_type };
+  const legacyEmbed = (n === '1' || n === '2') && video[`mirror${n}_is_embed`];
+  return { url: video[`mirror${n}_url`], type: video[`mirror${n}_type`] || (legacyEmbed ? 'embed' : 'link') };
+}
+
+// Clipboard API only exists in secure contexts (HTTPS / localhost) — plain-HTTP LAN access falls
+// back to the legacy selection-based copy.
+async function copyText(text) {
+  try {
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; }
+  } catch (e) { /* fall through */ }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+  return ok;
+}
+
+// Whether VideoPage renders a player it can seek for this source (self-hosted or YouTube) —
+// raw HTML embeds and Plex hand-offs have no control surface.
+function isSeekableSource(video, key) {
+  if (!video) return false;
+  const spec = sourceSpec(video, key);
+  if (key === 'main' && video.stream_video_id && video.stream_status === 'ready') return true;
+  if (spec.type === 'streamer') return !!spec.url;
+  if (spec.type === 'embed' || spec.type === 'html' || spec.type === 'plex') return false;
+  return !!youtubeToEmbed(spec.url);
+}
+
 const COMMENT_REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
 const COMMENT_REPORT_REASONS = [
@@ -596,7 +651,7 @@ function CommentReactions({ reactions, onReact }) {
 }
 
 // Comment — stable component outside render
-function CommentNode({ c, depth, replies, user, editingId, editContent, setEditContent, silentEdit, setSilentEdit, onStartEdit, onSaveEdit, onCancelEdit, onReply, onDelete, onHardDelete, onReact, onReport, editHistoryId, setEditHistoryId }) {
+function CommentNode({ c, depth, replies, user, editingId, editContent, setEditContent, silentEdit, setSilentEdit, onStartEdit, onSaveEdit, onCancelEdit, onReply, onDelete, onHardDelete, onReact, onReport, editHistoryId, setEditHistoryId, videoId, sources, onTimestamp, highlightId }) {
   const isEditing = editingId === c.id;
   const isDev = user?.role === 'dev';
   const canMod = c.user_id === user?.id || user?.role === 'admin' || isDev;
@@ -604,8 +659,8 @@ function CommentNode({ c, depth, replies, user, editingId, editContent, setEditC
   let history = []; try { history = JSON.parse(c.edit_history || '[]'); } catch (e) {}
 
   return (
-    <div className={depth > 0 ? 'ml-6 sm:ml-10 border-l-2 border-violet-200/50 dark:border-violet-800/30 pl-4' : ''}>
-      <div className="flex gap-3 group py-2 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 -mx-2 px-2 rounded-xl transition-colors">
+    <div id={`comment-${c.id}`} className={`scroll-mt-24 ${depth > 0 ? 'ml-6 sm:ml-10 border-l-2 border-violet-200/50 dark:border-violet-800/30 pl-4' : ''}`}>
+      <div className={`flex gap-3 group py-2 -mx-2 px-2 rounded-xl transition-colors duration-700 ${highlightId === c.id ? 'bg-violet-100/70 dark:bg-violet-500/15' : 'hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20'}`}>
         <img src={c.avatar || `https://ui-avatars.com/api/?name=${c.display_name || c.username || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className={`w-8 h-8 rounded-xl shrink-0 object-cover mt-0.5 ${isDeleted ? 'opacity-40 grayscale' : ''}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
@@ -616,14 +671,16 @@ function CommentNode({ c, depth, replies, user, editingId, editContent, setEditC
           {isDeleted ? <p className="text-sm text-zinc-400 italic">(komentarz usunięty)</p>
           : isEditing ? (
             <div className="space-y-2" onClick={e => e.stopPropagation()}>
-              <textarea value={editContent} onChange={e => setEditContent(e.target.value)} className="input-field !py-2 !px-3 text-sm resize-none" rows={2} autoFocus />
+              <div className="relative">
+                <MentionTextarea value={editContent} onChange={setEditContent} videoId={videoId} className="input-field !py-2 !px-3 text-sm resize-none" rows={2} autoFocus />
+              </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => onSaveEdit(c.id)} className="btn-icon-emerald"><Check className="w-4 h-4" /></button>
                 <button onClick={onCancelEdit} className="btn-icon-zinc"><X className="w-4 h-4" /></button>
                 {isDev && <label className="flex items-center gap-1.5 text-[10px] text-amber-500 cursor-pointer ml-2 select-none"><input type="checkbox" checked={silentEdit} onChange={e => setSilentEdit(e.target.checked)} className="w-3 h-3 rounded" /> Ciche</label>}
               </div>
             </div>
-          ) : <p className="text-sm text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap break-words">{c.content}</p>}
+          ) : <p className="text-sm text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap break-words"><CommentText text={c.content} sources={sources} currentUserId={user?.id} onTimestamp={onTimestamp} /></p>}
           {editHistoryId === c.id && history.length > 0 && (
             <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700 animate-scale-in">
               <p className="text-[10px] font-bold text-zinc-500 uppercase mb-2">Historia edycji</p>
@@ -642,7 +699,7 @@ function CommentNode({ c, depth, replies, user, editingId, editContent, setEditC
           {!isDeleted && !isEditing && <CommentReactions reactions={c.reactions} onReact={emoji => onReact(c.id, emoji)} />}
         </div>
       </div>
-      {replies.map(r => <CommentNode key={r.id} c={r} depth={depth + 1} replies={r._replies || []} user={user} editingId={editingId} editContent={editContent} setEditContent={setEditContent} silentEdit={silentEdit} setSilentEdit={setSilentEdit} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete} onReact={onReact} onReport={onReport} editHistoryId={editHistoryId} setEditHistoryId={setEditHistoryId} />)}
+      {replies.map(r => <CommentNode key={r.id} c={r} depth={depth + 1} replies={r._replies || []} user={user} editingId={editingId} editContent={editContent} setEditContent={setEditContent} silentEdit={silentEdit} setSilentEdit={setSilentEdit} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete} onReact={onReact} onReport={onReport} editHistoryId={editHistoryId} setEditHistoryId={setEditHistoryId} videoId={videoId} sources={sources} onTimestamp={onTimestamp} highlightId={highlightId} />)}
     </div>
   );
 }
@@ -653,8 +710,10 @@ export default function VideoPage() {
   const fromCategory = searchParams.get('from') || '';
   const slideDir = searchParams.get('slide') || '';
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { config } = useSettings();
+  const toast = useToast();
 
   const [video, setVideo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -692,6 +751,14 @@ export default function VideoPage() {
 
   // Continue Watching
   const playerControlRef = useRef(null);
+  const playerWrapRef = useRef(null);
+  const commentInputRef = useRef(null);
+  // Clickable timestamps / ?t= links: a seek that has to wait for the (possibly just-switched)
+  // player to become ready. Applied by the effect below once playerControlRef reports a duration.
+  const pendingSeekRef = useRef(null); // { time, play } | null
+  const [seekTick, setSeekTick] = useState(0);
+  const activeSourceRef = useRef('main');
+  const [highlightComment, setHighlightComment] = useState(null);
   const progressStateRef = useRef({ id: null, position: 0, duration: 0, completed: false, lastSaved: 0 });
   const [resumePosition, setResumePosition] = useState(null);
   const [showResumeBanner, setShowResumeBanner] = useState(false);
@@ -733,6 +800,12 @@ export default function VideoPage() {
       api.checkFavorite(id).catch(() => ({ isFavorite: false, count: 0 })),
     ]).then(([v, f]) => {
       setVideo(v); setIsFav(f.isFavorite); setFavCount(f.count || 0); setError(null); setNotPublished(null);
+      // Share links: /video/12?t=754&src=mirror2 — open on that source, positioned at that moment
+      // (not auto-played: browsers block unmuted autoplay on a fresh page anyway).
+      const linkTime = parseTimeParam(searchParams.get('t'));
+      const linkSource = resolveSourceRef(buildSources(v), searchParams.get('src'));
+      if (linkSource) { playerControlRef.current = null; setActiveSource(linkSource.key); }
+      if (linkTime !== null) { pendingSeekRef.current = { time: linkTime, play: false }; setSeekTick(x => x + 1); }
       // NEW data is now in state → trigger enter animation
       setPendingSlide(slideDir);
       setPhase('entering');
@@ -748,7 +821,7 @@ export default function VideoPage() {
         if (idx >= 0 && idx < vids.length - 1) setNextVideo(vids[idx + 1]);
       }).catch(() => {});
       api.getComments(vid).then(setComments).catch(() => setComments([]));
-      api.getProgress(vid).then(p => {
+      if (linkTime === null) api.getProgress(vid).then(p => {
         if (p && p.duration > 0 && p.position > p.duration * 0.05 && p.position < p.duration * 0.90) {
           setResumePosition(p.position);
           setShowResumeBanner(true);
@@ -890,6 +963,103 @@ export default function VideoPage() {
     eventBufferRef.current.push({ event_type: 'seek', position: pos, from_position: progressStateRef.current.position });
   }, []);
 
+  useEffect(() => { activeSourceRef.current = activeSource; }, [activeSource]);
+  const sources = useMemo(() => buildSources(video), [video]);
+
+  // Switching sources remounts the player; dropping the old control handle means a pending seek
+  // waits for the NEW player instead of firing into the one being torn down.
+  const selectSource = useCallback((key) => {
+    if (key !== activeSourceRef.current) playerControlRef.current = null;
+    setActiveSource(key);
+  }, []);
+
+  // Clickable timestamp (comment, description) → optionally switch source, then seek + play.
+  const jumpTo = useCallback((seconds, sourceKey) => {
+    const target = sourceKey || activeSourceRef.current;
+    if (!isSeekableSource(video, target)) {
+      selectSource(target);
+      toast.error('To źródło nie obsługuje przewijania — przełączono tylko źródło.');
+      return;
+    }
+    pendingSeekRef.current = { time: seconds, play: true };
+    selectSource(target);
+    setShowResumeBanner(false);
+    setSeekTick(x => x + 1);
+    playerWrapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [video, selectSource, toast]);
+
+  useEffect(() => {
+    if (!pendingSeekRef.current) return;
+    let tries = 0;
+    const iv = setInterval(() => {
+      const pending = pendingSeekRef.current;
+      if (!pending) { clearInterval(iv); return; }
+      tries++;
+      const ctl = playerControlRef.current;
+      const dur = ctl?.getDuration?.() || 0;
+      // Wait for real metadata (duration) — seeking an HLS/YouTube player before that is either
+      // ignored or snaps back to 0. After ~3s with a handle but no duration, seek anyway.
+      if (ctl && (dur > 0 || tries > 12)) {
+        pendingSeekRef.current = null;
+        clearInterval(iv);
+        ctl.seek(dur > 0 ? Math.min(pending.time, Math.max(0, dur - 1)) : pending.time);
+        if (pending.play) ctl.play?.();
+      } else if (tries > 80) {
+        pendingSeekRef.current = null;
+        clearInterval(iv);
+      }
+    }, 250);
+    return () => clearInterval(iv);
+  }, [seekTick, activeSource]);
+
+  // #comment-123 (links from the notification bell) → scroll to it and flash it briefly.
+  useEffect(() => {
+    const m = location.hash.match(/^#comment-(\d+)$/);
+    if (!m || comments.length === 0) return;
+    const cid = Number(m[1]);
+    const el = document.getElementById(`comment-${cid}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlightComment(cid);
+    const t = setTimeout(() => setHighlightComment(null), 2500);
+    return () => clearTimeout(t);
+  }, [location.hash, comments.length]);
+
+  const currentPlayerTime = () => {
+    const t = playerControlRef.current?.getCurrentTime?.();
+    return Number.isFinite(t) ? t : null;
+  };
+
+  // "Wstaw czas": drops the player's current moment into the comment box at the caret — bound to
+  // the current source's label when the video has several, so readers land on the same cut.
+  const insertCurrentTime = () => {
+    const t = currentPlayerTime();
+    if (t === null) { toast.error('Najpierw uruchom film w odtwarzaczu.'); return; }
+    const src = sources.find(s => s.key === activeSource);
+    const token = timestampToken(t, sources.length > 1 ? src?.label : null);
+    const el = commentInputRef.current;
+    const pos = el ? el.selectionStart : newComment.length;
+    const before = newComment.slice(0, pos);
+    const after = newComment.slice(pos);
+    const insert = `${before && !/\s$/.test(before) ? ' ' : ''}${token} `;
+    setNewComment(before + insert + after);
+    requestAnimationFrame(() => {
+      if (!commentInputRef.current) return;
+      commentInputRef.current.focus();
+      commentInputRef.current.setSelectionRange(pos + insert.length, pos + insert.length);
+    });
+  };
+
+  const copyMomentLink = async () => {
+    const t = currentPlayerTime();
+    if (t === null) { toast.error('Najpierw uruchom film w odtwarzaczu.'); return; }
+    const params = new URLSearchParams({ t: String(Math.floor(t)) });
+    if (activeSource !== 'main') params.set('src', activeSource);
+    const url = `${window.location.origin}/video/${id}?${params}`;
+    if (await copyText(url)) toast.success(`Skopiowano link do ${formatClock(t)}`);
+    else toast.error('Nie udało się skopiować linku.');
+  };
+
   const tree = useMemo(() => {
     const m = {}; comments.forEach(c => { m[c.id] = { ...c, _replies: [] }; });
     const roots = [];
@@ -917,33 +1087,17 @@ export default function VideoPage() {
 
   if (error || !video) return <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-scale-in"><div className="card p-16 text-center"><p className="text-red-500 font-bold text-lg mb-2">Błąd</p><p className="text-zinc-500">{error || 'Film nie znaleziony.'}</p><Link to="/" className="btn-primary mt-6 inline-block">Wróć</Link></div></div>;
 
-  const src = activeSource === 'mirror1'
-    ? { url: video.mirror1_url, type: video.mirror1_type || (video.mirror1_is_embed ? 'embed' : 'link') }
-    : activeSource === 'mirror2'
-    ? { url: video.mirror2_url, type: video.mirror2_type || (video.mirror2_is_embed ? 'embed' : 'link') }
-    : activeSource === 'mirror3'
-    ? { url: video.mirror3_url, type: video.mirror3_type || 'link' }
-    : activeSource === 'mirror4'
-    ? { url: video.mirror4_url, type: video.mirror4_type || 'link' }
-    : activeSource === 'mirror5'
-    ? { url: video.mirror5_url, type: video.mirror5_type || 'link' }
-    : { url: video.main_source, type: video.main_source_type };
+  const src = sourceSpec(video, activeSource);
+  const canSeek = isSeekableSource(video, activeSource);
   const isStreamer = src.type === 'streamer';
   const streamerVideoId = isStreamer ? src.url?.replace('self-hosted:', '') : null;
   const isPlex = src.type === 'plex';
   const isHtml = src.type === 'embed' || src.type === 'html';
   const embedUrl = (isHtml || isPlex || isStreamer) ? null : youtubeToEmbed(src.url);
-  const sources = [
-    { key: 'main', label: video.main_source_title || 'Główne źródło' },
-    ...(video.mirror1_url ? [{ key: 'mirror1', label: video.mirror1_name || 'Mirror 1', isAlt: !!video.mirror1_is_alt }] : []),
-    ...(video.mirror2_url ? [{ key: 'mirror2', label: video.mirror2_name || 'Mirror 2', isAlt: !!video.mirror2_is_alt }] : []),
-    ...(video.mirror3_url ? [{ key: 'mirror3', label: video.mirror3_name || 'Mirror 3', isAlt: !!video.mirror3_is_alt }] : []),
-    ...(video.mirror4_url ? [{ key: 'mirror4', label: video.mirror4_name || 'Mirror 4', isAlt: !!video.mirror4_is_alt }] : []),
-    ...(video.mirror5_url ? [{ key: 'mirror5', label: video.mirror5_name || 'Mirror 5', isAlt: !!video.mirror5_is_alt }] : []),
-  ];
   // Passed to SecurePlayer so a broken source's own error state offers a one-click way out
   // instead of only the tab row further down the page.
   const otherSources = sources.filter(s => s.key !== activeSource);
+  const mediaSessionInfo = { artist: video.author_display_name || video.author_name || '', artwork: video.thumbnail || '' };
   const isDev = user?.role === 'dev';
   const activeCount = comments.filter(c => !c.deleted).length;
   // Animation class based on phase
@@ -979,11 +1133,11 @@ export default function VideoPage() {
           </div>
         </div>
 
-        <div className="mb-2 anim-stagger-2" key={`player-${activeSource}`}>
+        <div ref={playerWrapRef} className="mb-2 anim-stagger-2 scroll-mt-6" key={`player-${activeSource}`}>
           {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
-            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={setActiveSource} />
+            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={selectSource} mediaSession={mediaSessionInfo} />
           ) : isStreamer && streamerVideoId ? (
-            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={setActiveSource} />
+            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={selectSource} mediaSession={mediaSessionInfo} />
           ) : isPlex && src.url ? (
             <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in plex-container flex items-center justify-center">
               {/* Floating particles */}
@@ -1035,9 +1189,14 @@ export default function VideoPage() {
           </div>
         )}
 
-        {sources.length > 1 && (
-          <div className="flex gap-2 mb-6 anim-stagger-3">
-            {sources.map(s => <button key={s.key} onClick={() => setActiveSource(s.key)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeSource === s.key ? (s.isAlt ? 'bg-lime-500 text-white shadow-lg shadow-lime-500/30' : 'bg-violet-500 text-white shadow-lg shadow-violet-500/30') : (s.isAlt ? 'bg-lime-50 dark:bg-lime-500/10 text-lime-700 dark:text-lime-400 hover:bg-lime-100 dark:hover:bg-lime-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700')}`}>{s.label}</button>)}
+        {(sources.length > 1 || canSeek) && (
+          <div className="flex flex-wrap items-center gap-2 mb-6 anim-stagger-3">
+            {sources.length > 1 && sources.map(s => <button key={s.key} onClick={() => selectSource(s.key)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeSource === s.key ? (s.isAlt ? 'bg-lime-500 text-white shadow-lg shadow-lime-500/30' : 'bg-violet-500 text-white shadow-lg shadow-violet-500/30') : (s.isAlt ? 'bg-lime-50 dark:bg-lime-500/10 text-lime-700 dark:text-lime-400 hover:bg-lime-100 dark:hover:bg-lime-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700')}`}>{s.label}</button>)}
+            {canSeek && (
+              <button onClick={copyMomentLink} className="btn-ghost ml-auto flex items-center gap-1.5" title="Kopiuje link, który otworzy film w tym momencie i na tym źródle">
+                <Link2 className="w-3.5 h-3.5" /> Link do tej chwili
+              </button>
+            )}
           </div>
         )}
 
@@ -1058,7 +1217,7 @@ export default function VideoPage() {
           </div>
         )}
 
-        {video.description && <div className="card p-8 mb-6 anim-stagger-5"><h3 className="label-field">Opis</h3><div className="text-zinc-700 dark:text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">{video.description}</div></div>}
+        {video.description && <div className="card p-8 mb-6 anim-stagger-5"><h3 className="label-field">Opis</h3><div className="text-zinc-700 dark:text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap break-words"><CommentText text={video.description} sources={sources} currentUserId={user?.id} onTimestamp={jumpTo} /></div></div>}
 
         <div className="card p-8 anim-stagger-6">
           <div className="flex items-center justify-between mb-6">
@@ -1084,13 +1243,20 @@ export default function VideoPage() {
           )}
           <div className="flex gap-3 mb-6">
             <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.display_name || 'U'}&background=8b5cf6&color=fff&size=80`} alt="" className="w-10 h-10 rounded-xl shrink-0 object-cover" />
-            <div className="flex-1 relative">
-              <textarea value={newComment} maxLength={commentLimit} onChange={e => setNewComment(e.target.value)} placeholder={replyTo ? 'Odpowiedz...' : 'Napisz komentarz...'} className="input-field !py-3 !pr-12 resize-none text-sm min-h-[48px] max-h-[120px]" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment(); }}} rows={1} />
-              <button onClick={submitComment} disabled={!newComment.trim() || commentLoading} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-violet-500 hover:text-violet-600 disabled:text-zinc-300 dark:disabled:text-zinc-700 transition-all hover:scale-110 active:scale-90"><Send className="w-4 h-4" /></button>
+            <div className="flex-1 min-w-0">
+              <div className="relative">
+                <MentionTextarea ref={commentInputRef} videoId={id} value={newComment} maxLength={commentLimit} onChange={setNewComment} placeholder={replyTo ? 'Odpowiedz...' : 'Napisz komentarz... (@ aby kogoś oznaczyć)'} className="input-field !py-3 !pr-12 resize-none text-sm min-h-[48px] max-h-[120px] block" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment(); }}} rows={1} />
+                <button onClick={submitComment} disabled={!newComment.trim() || commentLoading} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-violet-500 hover:text-violet-600 disabled:text-zinc-300 dark:disabled:text-zinc-700 transition-all hover:scale-110 active:scale-90"><Send className="w-4 h-4" /></button>
+              </div>
+              {canSeek && (
+                <button type="button" onClick={insertCurrentTime} className="btn-ghost mt-2 flex items-center gap-1.5" title="Wstawia bieżący moment filmu — kliknięcie w komentarzu przewinie do niego (na tym samym źródle)">
+                  <Clock className="w-3.5 h-3.5" /> Wstaw czas
+                </button>
+              )}
             </div>
           </div>
           {tree.length === 0 ? <p className="text-sm text-zinc-400 text-center py-6">Brak komentarzy - bądź pierwszą osobą!</p> : (
-            <div className="space-y-1">{tree.map(c => <CommentNode key={c.id} c={c} depth={0} replies={c._replies} user={user} editingId={editingComment} editContent={editContent} setEditContent={setEditContent} silentEdit={silentEdit} setSilentEdit={setSilentEdit} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete} onReact={handleReact} onReport={openReportModal} editHistoryId={editHistoryPopup} setEditHistoryId={setEditHistoryPopup} />)}</div>
+            <div className="space-y-1">{tree.map(c => <CommentNode key={c.id} c={c} depth={0} replies={c._replies} user={user} editingId={editingComment} editContent={editContent} setEditContent={setEditContent} silentEdit={silentEdit} setSilentEdit={setSilentEdit} onStartEdit={onStartEdit} onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit} onReply={onReply} onDelete={onDelete} onHardDelete={onHardDelete} onReact={handleReact} onReport={openReportModal} editHistoryId={editHistoryPopup} setEditHistoryId={setEditHistoryPopup} videoId={id} sources={sources} onTimestamp={jumpTo} highlightId={highlightComment} />)}</div>
           )}
         </div>
       </div>
