@@ -234,15 +234,15 @@ export default function VideosPage() {
           );
         })()}
       </div>
-      <div className="p-6">
-        <h3 className="font-bold text-zinc-900 dark:text-white mb-2 line-clamp-2 group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors">
+      <div className={scheduled ? 'p-3' : 'p-6'}>
+        <h3 className={`font-bold text-zinc-900 dark:text-white line-clamp-2 group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors ${scheduled ? 'text-sm mb-1' : 'mb-2'}`}>
           {video.title}
         </h3>
-        <div className="flex items-center justify-between mb-3">
+        <div className={`flex items-center justify-between ${scheduled ? 'mb-1.5' : 'mb-3'}`}>
           <Link
             to={`/author/${video.author_id}`}
             onClick={e => e.stopPropagation()}
-            className="text-sm text-zinc-500 font-medium hover:text-violet-500 transition-colors no-underline"
+            className={`font-medium hover:text-violet-500 transition-colors no-underline text-zinc-500 ${scheduled ? 'text-xs' : 'text-sm'}`}
           >
             {video.author_display_name || video.author_name}
           </Link>
@@ -251,13 +251,13 @@ export default function VideosPage() {
           </span>
         </div>
         {video.category_name && (
-          <div className="mb-2">
+          <div className={scheduled ? 'mb-1.5' : 'mb-2'}>
             <span className="inline-flex px-2 py-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 rounded-lg text-[10px] font-bold">
               {video.category_name}
             </span>
           </div>
         )}
-        {video.tags && video.tags.length > 0 && (
+        {!scheduled && video.tags && video.tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {video.tags.slice(0, 4).map(tag => (
               <span key={tag.id} className="inline-flex px-2 py-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-500 dark:text-violet-300 rounded-lg text-[10px] font-bold">
@@ -442,9 +442,13 @@ export default function VideosPage() {
           <h2 className="text-sm font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-4">
             Zaplanowane ({scheduledVideos.length})
           </h2>
-          <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 video-grid">
+          {/* Deliberately its own (smaller, denser) grid — not the .video-grid class the main
+              grid below uses, which is sized off the configurable "Min. szerokość karty" and
+              would make these cards just as prominent as published content. */}
+          <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {scheduledVideos.map((video, idx) => renderVideoCard(video, idx, { scheduled: true }))}
           </div>
+          <hr className="mt-10 border-zinc-200 dark:border-zinc-800" />
         </div>
       )}
 

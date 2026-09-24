@@ -236,6 +236,14 @@ router.get('/api/stream/token/:videoId', requireAuth, async (req, res) => {
       });
       if (statusRes.ok) {
         const statusData = await statusRes.json();
+        if (statusData.status === 'error') {
+          // A real, terminal failure — never going to become "ready" on its own, so this
+          // must NOT go through the "still transcoding, check back later" path below (that
+          // would poll forever showing a bogus progress bar). Falls into SecurePlayer's
+          // normal error panel instead, which already offers a mirror switcher.
+          console.error(`[STREAM] Video ${req.params.videoId} transcode error: ${statusData.error}`);
+          return res.status(500).json({ error: 'Przetwarzanie tego źródła nie powiodło się. Spróbuj innego mirrora lub skontaktuj się z administratorem.' });
+        }
         if (statusData.status && statusData.status !== 'ready' && statusData.status !== 'not_found') {
           return res.status(202).json({
             ready: false,

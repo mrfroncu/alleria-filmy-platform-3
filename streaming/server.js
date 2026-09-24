@@ -106,7 +106,8 @@ app.use('/media', (req, res, next) => {
 // them all concurrently just made every single one slower by fighting over the same CPU cores
 // (and would blow past a consumer GPU's concurrent NVENC session limit once GPU encoding is on).
 const transcodeQueue = [];
-let isTranscoding = false;
+let currentJob = null; // the job actually running right now, if any (distinct from the queue)
+const QUEUE_STATE_PATH = path.join(DATA_ROOT, 'queue.json');
 
 function writeQueuedStatus(videoId, queuePosition) {
   try {
@@ -116,19 +117,33 @@ function writeQueuedStatus(videoId, queuePosition) {
   } catch (e) {}
 }
 
+// Persisted so a container restart (redeploy, crash, host reboot) doesn't silently strand
+// whatever was queued or mid-transcode at the time — see resumeQueueFromDisk() below, which
+// reloads this on startup. The uploaded source file itself survives a restart too (it's only
+// ever deleted in processQueue()'s `finally`, once a job actually finishes one way or another).
+function persistQueueState() {
+  try {
+    const pending = currentJob ? [currentJob, ...transcodeQueue] : [...transcodeQueue];
+    if (pending.length === 0) { try { fs.unlinkSync(QUEUE_STATE_PATH); } catch (e) {} return; }
+    fs.writeFileSync(QUEUE_STATE_PATH, JSON.stringify(pending));
+  } catch (e) {}
+}
+
 function enqueueTranscode(job) {
   transcodeQueue.push(job);
   const queuePosition = transcodeQueue.length;
   writeQueuedStatus(job.videoId, queuePosition);
+  persistQueueState();
   processQueue();
   return queuePosition;
 }
 
 async function processQueue() {
-  if (isTranscoding) return;
+  if (currentJob) return;
   const job = transcodeQueue.shift();
   if (!job) return;
-  isTranscoding = true;
+  currentJob = job;
+  persistQueueState();
   console.log(`[STREAM] Starting queued transcode: ${job.videoId} (${transcodeQueue.length} more waiting)`);
   try {
     await transcodeToHLS(job.inputPath, job.videoId, job.enableDrm);
@@ -140,12 +155,69 @@ async function processQueue() {
     } catch (e) {}
   } finally {
     try { fs.unlinkSync(job.inputPath); } catch (e) {}
-    isTranscoding = false;
+    currentJob = null;
     // Positions shift down by one for everything still waiting behind the job that just finished.
     transcodeQueue.forEach((j, i) => writeQueuedStatus(j.videoId, i + 1));
+    persistQueueState();
     processQueue();
   }
 }
+
+// Reloads any jobs left in QUEUE_STATE_PATH from before a restart. A job whose uploaded source
+// file is gone (already consumed by a completed run before the crash) can't be resumed — mark
+// it as a clear error instead of leaving it stuck on "queued"/"transcoding" forever with no
+// explanation, which is what silently happened before this existed.
+function resumeQueueFromDisk() {
+  let saved;
+  try {
+    if (!fs.existsSync(QUEUE_STATE_PATH)) return;
+    saved = JSON.parse(fs.readFileSync(QUEUE_STATE_PATH, 'utf8'));
+    fs.unlinkSync(QUEUE_STATE_PATH);
+  } catch (e) { return; }
+  if (!Array.isArray(saved) || saved.length === 0) return;
+  for (const job of saved) {
+    if (job?.videoId && job?.inputPath && fs.existsSync(job.inputPath)) {
+      transcodeQueue.push(job);
+    } else if (job?.videoId) {
+      console.warn(`[STREAM] Lost upload for ${job.videoId} across a restart (source file gone) — marking as error`);
+      try {
+        fs.mkdirSync(path.join(MEDIA_DIR, job.videoId), { recursive: true });
+        fs.writeFileSync(path.join(MEDIA_DIR, job.videoId, 'status.json'),
+          JSON.stringify({ status: 'error', error: 'Transkodowanie zostało przerwane restartem serwisu, a oryginalny plik nie jest już dostępny. Wgraj wideo ponownie.' }));
+      } catch (e) {}
+    }
+  }
+  if (transcodeQueue.length > 0) {
+    console.log(`[STREAM] Resumed ${transcodeQueue.length} queued transcode job(s) from before a restart`);
+    transcodeQueue.forEach((j, i) => writeQueuedStatus(j.videoId, i + 1));
+  }
+}
+
+// Catches anything stuck at "queued"/"transcoding" that resumeQueueFromDisk() didn't already
+// account for — e.g. QUEUE_STATE_PATH itself never existed (a restart from before this
+// persistence existed at all, or one where it failed to write). Without this, such a video's
+// status.json stays stuck forever with master.m3u8 never created, and nothing ever surfaces
+// it as an error — playback just 404s with no explanation.
+function markOrphanedJobsAsError() {
+  if (!fs.existsSync(MEDIA_DIR)) return;
+  const active = new Set(transcodeQueue.map(j => j.videoId));
+  if (currentJob) active.add(currentJob.videoId);
+  for (const d of fs.readdirSync(MEDIA_DIR)) {
+    if (active.has(d)) continue;
+    const statusPath = path.join(MEDIA_DIR, d, 'status.json');
+    try {
+      const s = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
+      if (s.status === 'queued' || s.status === 'transcoding') {
+        console.warn(`[STREAM] Found orphaned "${s.status}" status for ${d} with no matching job — marking as error`);
+        fs.writeFileSync(statusPath, JSON.stringify({ status: 'error', error: 'Transkodowanie zostało przerwane restartem serwisu. Wgraj wideo ponownie.' }));
+      }
+    } catch (e) {}
+  }
+}
+
+resumeQueueFromDisk();
+markOrphanedJobsAsError();
+processQueue();
 
 // ============ UPLOAD & TRANSCODE ============
 app.post('/upload', requireToken, upload.single('video'), async (req, res) => {
