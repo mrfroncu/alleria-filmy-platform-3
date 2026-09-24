@@ -2,7 +2,11 @@
 
 Deploy the video streaming/transcoding service on a separate server (e.g. via Tailscale).
 
-All required source files (`server.js`, `package.json`, `versions.js`) are included in this folder.
+This folder holds only deployment config (`docker-compose.yml`, `docker-compose.gpu.yml`,
+`.env`) — it builds directly from `../streaming` (server.js/package.json/versions.js/Dockerfile),
+so the **full repo** must be checked out on this host, not just this one folder. There used to
+be a second, manually-copied set of those files living here; they drifted from `../streaming`
+more than once, so they were removed in favor of building from the one real copy.
 
 ## Setup
 
@@ -15,6 +19,11 @@ All required source files (`server.js`, `package.json`, `versions.js`) are inclu
 2. Build and start:
    ```bash
    docker compose up -d --build
+   ```
+
+   With GPU (NVENC) transcoding — see `docker-compose.gpu.yml` in this folder for prerequisites:
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
    ```
 
 3. On the **main app server**, update `.env`:

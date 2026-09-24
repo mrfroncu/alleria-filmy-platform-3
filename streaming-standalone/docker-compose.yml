@@ -1,17 +1,21 @@
 # Alleria Streaming Service — Standalone Deployment
-# Deploy on a separate server, connect from main app via Tailscale/VPN
+# Deploy on a separate server, connect from main app via Tailscale/VPN. Builds directly from
+# ../streaming — the sibling folder in this same repo checkout — so there's exactly one copy
+# of server.js/package.json/versions.js/Dockerfile in the whole repo (previously this folder
+# had its own manually-copied duplicates, which silently drifted from ../streaming more than
+# once). This means the FULL repo must be present on this host, not just this one folder.
 #
 # Usage:
-#   1. Copy streaming/server.js, streaming/package.json and streaming/versions.js into this folder
-#   2. Copy .env.example to .env and configure
-#   3. docker compose up -d
+#   1. Copy .env.example to .env and configure
+#   2. docker compose up -d --build
 #
 # On the main app server, set:
 #   STREAM_URL=http://<this-server-tailscale-ip>:4000
 
 services:
   streaming:
-    build: .
+    build:
+      context: ../streaming
     container_name: alleria-streaming
     ports:
       # Expose port — accessible via Tailscale IP from main app server
@@ -20,11 +24,11 @@ services:
       - .env
     volumes:
       # Set STREAM_HOST_DATA_DIR in .env to point this at a real host path (NFS/Tailscale/array
-      # mount) — NEVER hardcode a custom path directly on the line below. This file gets
-      # re-copied/reset on updates (see the "Usage" note at the top of this file), which would
-      # silently reset the mount back to the plain `stream-data` Docker volume and make the app
-      # see an empty library (all existing videos' HLS files still exist at the real path — the
-      # container just isn't looking at it anymore).
+      # mount) — NEVER hardcode a custom path directly on the line below. This file is tracked
+      # in git, so a `git pull` on an update overwrites a hand-edit here back to this default,
+      # which would silently reset the mount to the plain `stream-data` Docker volume and make
+      # the app see an empty library (all existing videos' HLS files still exist at the real
+      # path — the container just isn't looking at it anymore).
       - ${STREAM_HOST_DATA_DIR:-stream-data}:/data
     environment:
       # No default here on purpose — a fallback would be a fixed, publicly-known-from-
@@ -33,10 +37,10 @@ services:
       - STREAM_PORT=4000
       - ALLOWED_ORIGIN=${ALLOWED_ORIGIN:-*}
       - STREAM_PUBLIC_URL=${STREAM_PUBLIC_URL:-http://localhost:4000}
-      # Optional GPU (NVENC) transcoding. Set STREAM_USE_GPU=true in .env AND add
-      # `runtime: nvidia` to this service (see the main repo's docker-compose.gpu.yml for
-      # the equivalent non-standalone setup) — requires the NVIDIA Container Toolkit
-      # already working for a plain custom container on this host.
+      # Optional GPU (NVENC) transcoding. Set STREAM_USE_GPU=true in .env and run with
+      # docker-compose.gpu.yml (in this folder) merged in — it adds the `runtime: nvidia`
+      # this alone doesn't provide. Requires the NVIDIA Container Toolkit already working
+      # for a plain custom container on this host.
       - STREAM_USE_GPU=${STREAM_USE_GPU:-false}
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-}
       - NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-}
