@@ -723,7 +723,15 @@ export default function DebugPage() {
                       return;
                     }
                     setCleanupLog(prev => [...prev, '🗑️ Usuwanie...']);
-                    const result = await api.streamCleanupPurge({ clean_db: true });
+                    // Purge only what the scan above actually flagged as orphaned — the
+                    // streaming service's own purge endpoint otherwise only ever deletes
+                    // status "error"/"unknown" files, so a normally-finished ("ready") file
+                    // that's simply no longer referenced by any DB row (e.g. after removing
+                    // a mirror that used to point to it) would never get deleted at all.
+                    // force:true here is safe because it's scoped to exactly this ID list,
+                    // which was already validated against the DB above.
+                    const orphanIds = (data.orphans || []).map(o => o.video_id);
+                    const result = await api.streamCleanupPurge({ clean_db: true, video_ids: orphanIds, force: true });
                     setCleanupLog(prev => [
                       ...prev,
                       `✅ Usunięto ${result.deleted} plików ze streamingu`,

@@ -1129,6 +1129,11 @@ export default function VideoPage() {
             <div className="flex items-center gap-3 mt-2 text-xs text-zinc-400">
               <span>{formatDate(video.publish_date)}</span>
               {video.category_name && <><span>•</span><Link to={`/category/${video.category_slug}`} className="hover:text-violet-500 transition-colors">{video.category_name}</Link></>}
+              {canSeek && (
+                <button onClick={copyMomentLink} className="btn-ghost ml-auto flex items-center gap-1.5 !text-xs" title="Kopiuje link, który otworzy film w tym momencie i na tym źródle">
+                  <Link2 className="w-3.5 h-3.5" /> Link do tej chwili
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1189,14 +1194,9 @@ export default function VideoPage() {
           </div>
         )}
 
-        {(sources.length > 1 || canSeek) && (
+        {sources.length > 1 && (
           <div className="flex flex-wrap items-center gap-2 mb-6 anim-stagger-3">
-            {sources.length > 1 && sources.map(s => <button key={s.key} onClick={() => selectSource(s.key)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeSource === s.key ? (s.isAlt ? 'bg-lime-500 text-white shadow-lg shadow-lime-500/30' : 'bg-violet-500 text-white shadow-lg shadow-violet-500/30') : (s.isAlt ? 'bg-lime-50 dark:bg-lime-500/10 text-lime-700 dark:text-lime-400 hover:bg-lime-100 dark:hover:bg-lime-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700')}`}>{s.label}</button>)}
-            {canSeek && (
-              <button onClick={copyMomentLink} className="btn-ghost ml-auto flex items-center gap-1.5" title="Kopiuje link, który otworzy film w tym momencie i na tym źródle">
-                <Link2 className="w-3.5 h-3.5" /> Link do tej chwili
-              </button>
-            )}
+            {sources.map(s => <button key={s.key} onClick={() => selectSource(s.key)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95 ${activeSource === s.key ? (s.isAlt ? 'bg-lime-500 text-white shadow-lg shadow-lime-500/30' : 'bg-violet-500 text-white shadow-lg shadow-violet-500/30') : (s.isAlt ? 'bg-lime-50 dark:bg-lime-500/10 text-lime-700 dark:text-lime-400 hover:bg-lime-100 dark:hover:bg-lime-500/20' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700')}`}>{s.label}</button>)}
           </div>
         )}
 
