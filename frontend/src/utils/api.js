@@ -21,7 +21,12 @@ async function request(url, options = {}) {
   }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `HTTP ${res.status}`);
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    // Some endpoints send extra fields alongside `error` (e.g. `reason: 'not_published'` +
+    // `publish_date` from GET /api/videos/:id) so a caller can show a friendlier state than
+    // a generic error message — attach the whole body so those survive past the throw.
+    Object.assign(err, data);
+    throw err;
   }
   return res.json();
 }

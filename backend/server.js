@@ -424,33 +424,45 @@ function checkCatAccess(catId, accessMode, userId, userRoles, userRankIds) {
   return { canView, canEdit };
 }
 
-// Shared category/custom-access check for a video row — same rules as GET /api/videos/:id,
-// reused by every route that lets a user reach a video's metadata or actual stream bytes
-// (stream token/keys/media, progress, favorites, comments, watch-party queue) so none of
-// them can be used to bypass the per-category rank/role restrictions.
+// Shared category/custom-access/scheduling check for a video row — same rules as
+// GET /api/videos/:id, reused by every route that lets a user reach a video's metadata or
+// actual stream bytes (stream token/keys/media, progress, favorites, comments, watch-party
+// queue) so none of them can be used to bypass the per-category rank/role restrictions or
+// see a scheduled video before its publish_date. Returns { ok, reason? } — `reason` lets a
+// caller that wants a friendlier response (e.g. a "not published yet" panel instead of a
+// blanket access-denied page) distinguish that case from "no access at all".
 function userCanViewVideo(video, user) {
-  if (!video) return false;
-  if (user.role === 'dev') return true;
+  if (!video) return { ok: false, reason: 'not_found' };
+  if (user.role === 'dev') return { ok: true };
   if (video.access_mode === 'custom') {
     const hasAccess = db.prepare('SELECT 1 FROM video_access WHERE video_id = ? AND user_id = ?').get(video.id, user.id);
-    if (!hasAccess) return false;
+    if (!hasAccess) return { ok: false, reason: 'no_access' };
   }
+  let canEdit = false;
   if (video.category_id) {
     const cat = db.prepare('SELECT access_mode FROM categories WHERE id = ?').get(video.category_id);
     if (cat) {
-      const { canView } = checkCatAccess(video.category_id, cat.access_mode, user.id, user.discord_roles || [], getUserRankIds(user.id));
-      if (!canView) return false;
+      const access = checkCatAccess(video.category_id, cat.access_mode, user.id, user.discord_roles || [], getUserRankIds(user.id));
+      if (!access.canView) return { ok: false, reason: 'no_access' };
+      canEdit = access.canEdit;
     }
   }
-  return true;
+  // Scheduled (future publish_date) videos are hidden from everyone except admin/dev and an
+  // editor of the video's own category — same bypass rule as GET /api/videos' list filter,
+  // but enforced here as the actual access gate rather than just a list-hiding condition.
+  if (video.publish_date && user.role !== 'admin' && !canEdit && new Date(video.publish_date) > new Date()) {
+    return { ok: false, reason: 'not_published' };
+  }
+  return { ok: true };
 }
 
 // Looks up a video by its opaque stream_video_id (what /api/stream/* and /stream/* are
 // keyed on) and checks the requesting user's access. Returns { ok, status, error, video }.
 function resolveStreamVideoForUser(streamVideoId, user) {
-  const video = db.prepare('SELECT id, category_id, access_mode FROM videos WHERE stream_video_id = ?').get(streamVideoId);
+  const video = db.prepare('SELECT id, category_id, access_mode, publish_date FROM videos WHERE stream_video_id = ?').get(streamVideoId);
   if (!video) return { ok: false, status: 404, error: 'Video not found' };
-  if (!userCanViewVideo(video, user)) return { ok: false, status: 403, error: 'Brak dostępu do tego filmu.' };
+  const access = userCanViewVideo(video, user);
+  if (!access.ok) return { ok: false, status: 403, error: 'Brak dostępu do tego filmu.' };
   return { ok: true, video };
 }
 
@@ -460,7 +472,7 @@ function resolveStreamVideoForUser(streamVideoId, user) {
 // Returns the full video row, or null if it doesn't exist or the user can't view it.
 function resolveWatchPartyVideo(videoId, user) {
   const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(videoId);
-  if (!video || !userCanViewVideo(video, user)) return null;
+  if (!video || !userCanViewVideo(video, user).ok) return null;
   return video;
 }
 
@@ -1848,23 +1860,16 @@ app.get('/api/videos/:id', requireAuth, (req, res) => {
     
     if (!video) return res.status(404).json({ error: 'Video not found' });
 
-    // Access enforcement — only dev bypasses category restrictions
+    // Access enforcement (category/custom access + scheduling) — see userCanViewVideo.
     const user = req.session.user;
-    const isDev = user.role === 'dev';
-    if (!isDev) {
-      // Check custom access
-      if (video.access_mode === 'custom') {
-        const hasAccess = db.prepare('SELECT 1 FROM video_access WHERE video_id = ? AND user_id = ?').get(video.id, user.id);
-        if (!hasAccess) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
+    const access = userCanViewVideo(video, user);
+    if (!access.ok) {
+      if (access.reason === 'not_published') {
+        // Distinct from a real access-denied — lets the frontend show a friendly "not
+        // published yet" panel instead of a blanket "brak dostępu" error page.
+        return res.status(403).json({ error: 'Ten film nie został jeszcze opublikowany.', reason: 'not_published', publish_date: video.publish_date });
       }
-      // Check category access
-      if (video.category_id) {
-        const cat = db.prepare('SELECT access_mode FROM categories WHERE id = ?').get(video.category_id);
-        if (cat) {
-          const { canView } = checkCatAccess(video.category_id, cat.access_mode, user.id, user.discord_roles || [], getUserRankIds(user.id));
-          if (!canView) return res.status(403).json({ error: 'Brak dostępu do tej kategorii.' });
-        }
-      }
+      return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     }
 
     const tags = db.prepare(`
@@ -1887,22 +1892,10 @@ app.get('/api/videos/:id', requireAuth, (req, res) => {
 // row per participant per video, logged when it becomes the party's current video.
 app.post('/api/videos/:id/log-view', requireAuth, (req, res) => {
   try {
-    const video = db.prepare('SELECT id, category_id, access_mode FROM videos WHERE id = ?').get(req.params.id);
+    const video = db.prepare('SELECT id, category_id, access_mode, publish_date FROM videos WHERE id = ?').get(req.params.id);
     if (!video) return res.status(404).json({ error: 'Video not found' });
     const user = req.session.user;
-    if (user.role !== 'dev') {
-      if (video.access_mode === 'custom') {
-        const hasAccess = db.prepare('SELECT 1 FROM video_access WHERE video_id = ? AND user_id = ?').get(video.id, user.id);
-        if (!hasAccess) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
-      }
-      if (video.category_id) {
-        const cat = db.prepare('SELECT access_mode FROM categories WHERE id = ?').get(video.category_id);
-        if (cat) {
-          const { canView } = checkCatAccess(video.category_id, cat.access_mode, user.id, user.discord_roles || [], getUserRankIds(user.id));
-          if (!canView) return res.status(403).json({ error: 'Brak dostępu do tej kategorii.' });
-        }
-      }
-    }
+    if (!userCanViewVideo(video, user).ok) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     db.prepare(`INSERT INTO watch_logs (user_id, video_id, context) VALUES (?, ?, 'watch_party')`).run(user.id, video.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2727,7 +2720,7 @@ app.get('/api/favorites', requireAuth, (req, res) => {
       ORDER BY f.created_at DESC
     `).all(user.id);
     // Same rationale as /api/progress: a favorite can outlive access to its video.
-    res.json(favs.filter(v => userCanViewVideo(v, user)).map(v => ({
+    res.json(favs.filter(v => userCanViewVideo(v, user).ok).map(v => ({
       ...v,
       tags: v.tag_names ? v.tag_names.split(',').map((name, i) => ({ id: parseInt(v.tag_ids.split(',')[i]), name })) : []
     })));
@@ -2737,9 +2730,9 @@ app.get('/api/favorites', requireAuth, (req, res) => {
 app.post('/api/favorites/:videoId', requireAuth, (req, res) => {
   try {
     const user = req.session.user;
-    const video = db.prepare('SELECT id, category_id, access_mode FROM videos WHERE id = ?').get(req.params.videoId);
+    const video = db.prepare('SELECT id, category_id, access_mode, publish_date FROM videos WHERE id = ?').get(req.params.videoId);
     if (!video) return res.status(404).json({ error: 'Video not found' });
-    if (!userCanViewVideo(video, user)) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
+    if (!userCanViewVideo(video, user).ok) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     db.prepare('INSERT OR IGNORE INTO favorites (user_id, video_id) VALUES (?, ?)').run(user.id, req.params.videoId);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -4805,9 +4798,9 @@ function attachReactions(comments, userId) {
 app.get('/api/videos/:id/comments', requireAuth, (req, res) => {
   try {
     const user = req.session.user;
-    const video = db.prepare('SELECT id, category_id, access_mode FROM videos WHERE id = ?').get(req.params.id);
+    const video = db.prepare('SELECT id, category_id, access_mode, publish_date FROM videos WHERE id = ?').get(req.params.id);
     if (!video) return res.status(404).json({ error: 'Video not found' });
-    if (!userCanViewVideo(video, user)) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
+    if (!userCanViewVideo(video, user).ok) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     const comments = db.prepare(`
       SELECT c.*, u.username, u.display_name, u.avatar
       FROM comments c JOIN users u ON c.user_id = u.id
@@ -4838,9 +4831,9 @@ app.post('/api/comments/:id/react', requireAuth, (req, res) => {
 app.post('/api/videos/:id/comments', requireAuth, (req, res) => {
   try {
     const user = req.session.user;
-    const video = db.prepare('SELECT id, category_id, access_mode FROM videos WHERE id = ?').get(req.params.id);
+    const video = db.prepare('SELECT id, category_id, access_mode, publish_date FROM videos WHERE id = ?').get(req.params.id);
     if (!video) return res.status(404).json({ error: 'Video not found' });
-    if (!userCanViewVideo(video, user)) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
+    if (!userCanViewVideo(video, user).ok) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     const { content, parent_id } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: 'Treść wymagana.' });
     const maxComment = getLimit('limit_comment');
@@ -5174,9 +5167,9 @@ app.put('/api/progress/:videoId', requireAuth, (req, res) => {
   const { position, duration } = req.body;
   if (isNaN(videoId) || position === undefined) return res.status(400).json({ error: 'Missing params' });
   try {
-    const video = db.prepare('SELECT id, category_id, access_mode FROM videos WHERE id = ?').get(videoId);
+    const video = db.prepare('SELECT id, category_id, access_mode, publish_date FROM videos WHERE id = ?').get(videoId);
     if (!video) return res.status(404).json({ error: 'Video not found' });
-    if (!userCanViewVideo(video, user)) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
+    if (!userCanViewVideo(video, user).ok) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     db.prepare(`
       INSERT INTO watch_progress (user_id, video_id, position, duration, updated_at)
       VALUES (?, ?, ?, ?, datetime('now'))
@@ -5195,7 +5188,7 @@ app.get('/api/progress', requireAuth, (req, res) => {
     const rows = db.prepare(`
       SELECT wp.video_id, wp.position, wp.duration, wp.updated_at,
              v.title, v.thumbnail, v.main_source_type, v.stream_video_id, v.stream_status,
-             v.category_id, v.access_mode, c.name AS category_name, c.slug AS category_slug
+             v.category_id, v.access_mode, v.publish_date, c.name AS category_name, c.slug AS category_slug
       FROM watch_progress wp
       JOIN videos v ON wp.video_id = v.id
       LEFT JOIN categories c ON v.category_id = c.id
@@ -5208,8 +5201,8 @@ app.get('/api/progress', requireAuth, (req, res) => {
     // A progress row can outlive the user's access to its video (rank revoked, category
     // access changed) — never trust wp.* alone to expose video metadata like stream_video_id.
     const visible = rows
-      .filter(r => userCanViewVideo({ id: r.video_id, category_id: r.category_id, access_mode: r.access_mode }, user))
-      .map(({ category_id, access_mode, ...rest }) => rest);
+      .filter(r => userCanViewVideo({ id: r.video_id, category_id: r.category_id, access_mode: r.access_mode, publish_date: r.publish_date }, user).ok)
+      .map(({ category_id, access_mode, publish_date, ...rest }) => rest);
     res.json(visible);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

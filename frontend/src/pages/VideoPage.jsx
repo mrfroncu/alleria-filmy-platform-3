@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw, SmilePlus, Flag, BarChart3 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw, SmilePlus, Flag, BarChart3, Lock } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
@@ -660,6 +660,10 @@ export default function VideoPage() {
   const [loading, setLoading] = useState(true);
   const [activeSource, setActiveSource] = useState('main');
   const [error, setError] = useState(null);
+  // Set instead of `error` when GET /api/videos/:id 403s specifically because the video is
+  // scheduled (future publish_date) — distinct from a real access-denied, so it gets its own
+  // friendlier "locked" panel rather than the generic error page.
+  const [notPublished, setNotPublished] = useState(null); // { publish_date } | null
   const [isFav, setIsFav] = useState(false);
   const [favCount, setFavCount] = useState(0);
   const [favLoading, setFavLoading] = useState(false);
@@ -728,7 +732,7 @@ export default function VideoPage() {
       api.getVideo(id),
       api.checkFavorite(id).catch(() => ({ isFavorite: false, count: 0 })),
     ]).then(([v, f]) => {
-      setVideo(v); setIsFav(f.isFavorite); setFavCount(f.count || 0); setError(null);
+      setVideo(v); setIsFav(f.isFavorite); setFavCount(f.count || 0); setError(null); setNotPublished(null);
       // NEW data is now in state → trigger enter animation
       setPendingSlide(slideDir);
       setPhase('entering');
@@ -750,7 +754,10 @@ export default function VideoPage() {
           setShowResumeBanner(true);
         }
       }).catch(() => {});
-    }).catch(err => setError(err.message)).finally(() => setLoading(false));
+    }).catch(err => {
+      if (err.reason === 'not_published') setNotPublished({ publish_date: err.publish_date });
+      else setError(err.message);
+    }).finally(() => setLoading(false));
   }, [id]);
 
   const flushPlaybackEvents = useCallback((videoId) => {
@@ -891,6 +898,23 @@ export default function VideoPage() {
   }, [comments]);
 
   if (loading && !video) return <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-fade-in"><div className="aspect-video bg-zinc-100 dark:bg-zinc-800 rounded-[32px] skeleton mb-6" /><div className="h-8 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-2/3 mb-4" /><div className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg skeleton w-1/3" /></div>;
+  if (notPublished) return (
+    <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-scale-in">
+      <div className="card p-16 text-center">
+        <div className="w-20 h-20 bg-violet-50 dark:bg-violet-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
+          <Lock className="w-10 h-10 text-violet-400" />
+        </div>
+        <h3 className="text-xl font-bold text-zinc-900 dark:text-white mb-2 font-display">Film jeszcze nie jest dostępny</h3>
+        <p className="text-zinc-500 text-sm">
+          {notPublished.publish_date
+            ? `Zostanie opublikowany ${formatDate(notPublished.publish_date)}.`
+            : 'Ten film nie został jeszcze opublikowany.'}
+        </p>
+        <Link to="/" className="btn-primary mt-6 inline-block">Wróć</Link>
+      </div>
+    </div>
+  );
+
   if (error || !video) return <div className="p-6 sm:p-10 max-w-5xl mx-auto animate-scale-in"><div className="card p-16 text-center"><p className="text-red-500 font-bold text-lg mb-2">Błąd</p><p className="text-zinc-500">{error || 'Film nie znaleziony.'}</p><Link to="/" className="btn-primary mt-6 inline-block">Wróć</Link></div></div>;
 
   const src = activeSource === 'mirror1'

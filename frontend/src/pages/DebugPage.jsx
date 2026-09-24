@@ -111,7 +111,6 @@ export default function DebugPage() {
   const [streamStats, setStreamStats] = useState(null);
   const [dbStats, setDbStats] = useState(null);
   const [dbSize, setDbSize] = useState(null);
-  const [transcodingVideos, setTranscodingVideos] = useState([]);
 
   const loadDbSize = () => api.dbStats().then(setDbSize).catch(() => {});
 
@@ -120,14 +119,25 @@ export default function DebugPage() {
   const [streamErrors, setStreamErrors] = useState(null);
   const loadStreamErrors = () => api.getStreamErrors().then(r => setStreamErrors(r.errors)).catch(() => setStreamErrors([]));
 
-  // Live transcoding from streaming server
+  // Live transcoding from streaming server — the streaming service's own job list is the
+  // single source of truth (covers main sources AND mirrors, always fresh); nothing here is
+  // captured once and left stale between polls.
   const [liveTranscoding, setLiveTranscoding] = useState(null); // null = not yet loaded
   const [transcodingLoading, setTranscodingLoading] = useState(false);
+  const prevTranscodingIdsRef = useRef(new Set());
 
   const loadLiveTranscoding = async () => {
     try {
       const jobs = await api.streamTranscoding();
       setLiveTranscoding(jobs);
+      // A job that was active last poll and is gone now just finished (ready or error) —
+      // refresh storage stats then, instead of a separate polling loop for that alone.
+      const ids = new Set(jobs.map(j => j.video_id));
+      const finished = [...prevTranscodingIdsRef.current].some(id => !ids.has(id));
+      prevTranscodingIdsRef.current = ids;
+      if (finished) {
+        fetch('/api/stream/stats').then(r => r.json()).then(setStreamStats).catch(() => {});
+      }
     } catch (_) { setLiveTranscoding([]); }
   };
 
@@ -178,8 +188,6 @@ export default function DebugPage() {
         });
       }
     }).catch(() => {});
-    // Load transcoding videos
-    loadTranscoding();
     loadLiveTranscoding();
     loadDbSize();
     loadStreamErrors();
@@ -190,33 +198,6 @@ export default function DebugPage() {
     const interval = setInterval(() => { loadLiveTranscoding(); loadStreamErrors(); }, 5000);
     return () => clearInterval(interval);
   }, []);
-
-  const loadTranscoding = () => {
-    api.getVideos({ include_transcoding: '1' }).then(videos => {
-      setTranscodingVideos(videos.filter(v => v.stream_status === 'transcoding'));
-    }).catch(() => {});
-  };
-
-  // Poll transcoding status
-  useEffect(() => {
-    if (transcodingVideos.length === 0) return;
-    const interval = setInterval(async () => {
-      let changed = false;
-      const updated = [...transcodingVideos];
-      for (let i = 0; i < updated.length; i++) {
-        try {
-          const st = await api.streamCheck(updated[i].id);
-          updated[i] = { ...updated[i], _progress: st.progress, _quality: st.quality, _status: st.status };
-          if (st.status === 'ready' || st.status === 'error') changed = true;
-        } catch (e) {}
-      }
-      setTranscodingVideos(updated.filter(v => v._status !== 'ready' && v._status !== 'error'));
-      if (changed) {
-        fetch('/api/stream/stats').then(r => r.json()).then(setStreamStats).catch(() => {});
-      }
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [transcodingVideos.length]);
   // Access checker
   const [accessMode, setAccessMode] = useState('category');
   const [accessCategories, setAccessCategories] = useState([]);
