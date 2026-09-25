@@ -7,7 +7,14 @@
 #   docker run --rm --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
 #
 # Usage:
-#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build --force-recreate
+#
+# --force-recreate is required the first time you add/remove this override (or change anything
+# in it) on an already-running container: `up -d` alone sometimes decides the existing container
+# still matches and only "Starts" it instead of recreating it — silently keeping the OLD runtime
+# (plain runc, no GPU) even though `docker compose config` shows `runtime: nvidia` correctly
+# merged in. Confirmed via `docker inspect <container> --format '{{.HostConfig.Runtime}}'` — if
+# that ever says `runc` right after enabling this file, that's this exact issue.
 #
 # Optional .env keys (defaults below match "give it every GPU, every capability" — narrow them
 # if you have multiple GPUs and want the streaming container pinned to just one, the way the
