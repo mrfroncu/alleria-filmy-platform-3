@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { FolderOpen, Plus, Pencil, Trash2, Users, Shield, Lock, FileText, Settings, ShieldCheck, LayoutGrid, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail, Play, AlertTriangle, Flag, ExternalLink, Loader2, Image, Database } from 'lucide-react';
+import { FolderOpen, Plus, Pencil, Trash2, Users, Shield, Lock, FileText, Settings, ShieldCheck, LayoutGrid, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail, Play, AlertTriangle, Flag, ExternalLink, Loader2, Image, Database, Upload } from 'lucide-react';
 import { api } from '../utils/api';
 import { buildCategoryTreeOptions, formatDate } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
@@ -502,6 +502,19 @@ export default function ManagePage() {
       const r = await api.setSettings({ youtube_custom_player: !settings.youtube_custom_player });
       setSettingsState(s => ({ ...s, youtube_custom_player: r.youtube_custom_player }));
       setStatus({ type: 'success', msg: `Własny odtwarzacz YouTube: ${r.youtube_custom_player ? 'WŁĄCZONY' : 'WYŁĄCZONY'}` });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const toggleChunkedUpload = async () => {
+    if (!settings) return;
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ chunked_upload: !settings.chunked_upload });
+      setSettingsState(s => ({ ...s, chunked_upload: r.chunked_upload }));
+      setStatus({ type: 'success', msg: `Upload w częściach: ${r.chunked_upload ? 'WŁĄCZONY' : 'WYŁĄCZONY'}` });
     } catch (e) {
       setStatus({ type: 'error', msg: e.message });
     }
@@ -1561,6 +1574,29 @@ export default function ManagePage() {
                   onChange={toggleTopBar}
                   disabled={!settings || savingSettings}
                   label={settings == null ? 'Ładowanie...' : (settings.show_top_bar ? 'Górny pasek: WŁĄCZONY' : 'Górny pasek: WYŁĄCZONY')}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Chunked video upload */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-sky-50 dark:bg-sky-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <Upload className="w-6 h-6 text-sky-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Upload w częściach</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  <b>WŁĄCZONY</b>: film jest wysyłany w kawałkach po 50 MB — wymagane, gdy panel stoi za Cloudflare (limit 100 MB na żądanie).
+                  <br />
+                  <b>WYŁĄCZONY</b>: cały plik jednym żądaniem — dla proxy bez limitu (nginx, Traefik). W obu trybach plik trafia wprost na serwer streamingu.
+                </p>
+                <ToggleSwitch
+                  checked={!!settings?.chunked_upload}
+                  onChange={toggleChunkedUpload}
+                  disabled={!settings || savingSettings}
+                  label={settings == null ? 'Ładowanie...' : (settings.chunked_upload ? 'Upload w częściach: WŁĄCZONY' : 'Upload w częściach: WYŁĄCZONY')}
                 />
               </div>
             </div>

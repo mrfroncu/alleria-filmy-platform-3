@@ -53,8 +53,8 @@ const IFRAME_ORIGIN_RE = /^https?:\/\/[^;\s,]+$/;
 const isProduction = process.env.NODE_ENV === 'production';
 const behindHttps = (process.env.DISCORD_REDIRECT_URI || '').startsWith('https://');
 
-// Chunked upload temp dir
-const chunksDir = path.join(DATA_DIR, 'chunks');
-if (!fs.existsSync(chunksDir)) fs.mkdirSync(chunksDir, { recursive: true });
+// Video chunks used to be staged here before being forwarded to the streaming server; uploads are
+// now proxied straight through and nothing is stored on this host. Purge what older versions left.
+try { fs.rmSync(path.join(DATA_DIR, 'chunks'), { recursive: true, force: true }); } catch (e) {}
 
-module.exports = { IS_TEST, PORT, DATA_DIR, SESSION_SECRET, STREAM_SECRET, uploadsDir, gdprDir, IFRAME_ORIGIN_RE, isProduction, behindHttps, chunksDir };
+module.exports = { IS_TEST, PORT, DATA_DIR, SESSION_SECRET, STREAM_SECRET, uploadsDir, gdprDir, IFRAME_ORIGIN_RE, isProduction, behindHttps };

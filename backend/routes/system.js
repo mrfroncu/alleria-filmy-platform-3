@@ -36,6 +36,7 @@ router.get('/api/config', requireAuth, (req, res) => {
     limitComment: s.limit_comment,
     showTopBar: s.show_top_bar,
     allowCustomAvatars: s.allow_custom_avatars,
+    chunkedUpload: s.chunked_upload,
     customYoutubePlayer: s.youtube_custom_player,
     gdprRegion: s.gdpr_region,
   });

@@ -24,6 +24,7 @@ function settingsPayload() {
     iframe_allowed_origins: getSetting('iframe_allowed_origins', '').split(',').map(o => o.trim()).filter(Boolean),
     show_top_bar: getSetting('show_top_bar', '1') === '1',
     allow_custom_avatars: getSetting('allow_custom_avatars', '0') === '1',
+    chunked_upload: getSetting('chunked_upload', '1') === '1',
     youtube_custom_player: getSetting('youtube_custom_player', '0') === '1',
     gdpr_region: getSetting('gdpr_region', 'off'),
 

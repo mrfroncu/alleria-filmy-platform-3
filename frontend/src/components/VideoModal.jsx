@@ -5,6 +5,7 @@ import { extractYoutubeId, buildCategoryTreeOptions } from '../utils/helpers';
 import DateTimePicker from './DateTimePicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 
 function SmartThumbnail({ ytId, customSrc, alt }) {
@@ -32,6 +33,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const isEdit = !!video;
   const { user: currentUser } = useAuth();
   const toast = useToast();
+  const { config } = useSettings();
   const confirm = useConfirm();
   const [promotingSlot, setPromotingSlot] = useState(null);
   const [draggedMirrorIndex, setDraggedMirrorIndex] = useState(null);
@@ -267,8 +269,42 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     if (file) { setThumbnailFile(file); setThumbnailPreview(URL.createObjectURL(file)); setThumbnail(''); }
   };
 
-  // Reusable chunked upload helper
-  const uploadVideoFile = async (file, label) => {
+  // Chunking off (panel not behind a per-request size cap): the whole file in one request.
+  const uploadVideoFileWhole = (file, label, drm) => new Promise((resolve, reject) => {
+    const totalMb = (file.size / 1024 / 1024).toFixed(1);
+    setUploadProgress(`${label}: przesyłanie (${totalMb} MB)...`);
+    setUploadPercent(0);
+    setChunkPercent(0);
+    const form = new FormData();
+    form.append('drm_enhanced', drm ? 'true' : 'false'); // text fields before the file
+    form.append('video', file, file.name);
+    const xhr = new XMLHttpRequest();
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        setChunkPercent(pct);
+        setUploadPercent(Math.round(pct * 0.95));
+      }
+    });
+    xhr.addEventListener('load', () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300 && data.success) { setUploadPercent(100); resolve(data.video_id); }
+        else reject(new Error(data.error || `Upload HTTP ${xhr.status}`));
+      } catch (e) { reject(new Error('Invalid upload response')); }
+    });
+    xhr.addEventListener('error', () => reject(new Error('Upload network error')));
+    xhr.addEventListener('timeout', () => reject(new Error('Upload timeout')));
+    xhr.timeout = 0; // no cap — a multi-GB single request legitimately takes a long time
+    xhr.open('POST', '/api/stream/upload');
+    xhr.withCredentials = true;
+    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    xhr.send(form);
+  });
+
+  // Reusable upload helper (chunked or single-request, per the chunked_upload setting)
+  const uploadVideoFile = async (file, label, drm = false) => {
+    if (!config.chunkedUpload) return uploadVideoFileWhole(file, label, drm);
     const CHUNK_SIZE = 50 * 1024 * 1024;
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     const totalMb = (file.size / 1024 / 1024).toFixed(1);
@@ -280,7 +316,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
       filename: file.name,
       filesize: file.size,
       total_chunks: totalChunks,
-      drm_enhanced: false,
+      drm_enhanced: drm,
     });
     if (!initRes.success) throw new Error(initRes.error || 'Init failed');
     const uploadId = initRes.upload_id;
@@ -341,79 +377,9 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     try {
       let finalStreamId = streamVideoId;
 
-      // Step 1: Chunked upload for self-hosted main source
+      // Step 1: Upload the self-hosted main source
       if (isSelfHosted && videoFile && !streamVideoId) {
-        const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB chunks — safe under Cloudflare 100MB limit
-        const totalChunks = Math.ceil(videoFile.size / CHUNK_SIZE);
-        const totalMb = (videoFile.size / 1024 / 1024).toFixed(1);
-
-        setUploadProgress(`Inicjalizacja uploadu (${totalMb} MB, ${totalChunks} części)...`);
-        setUploadPercent(0);
-
-        // 1a: Init
-        const initRes = await api.streamUploadInit({
-          filename: videoFile.name,
-          filesize: videoFile.size,
-          total_chunks: totalChunks,
-          drm_enhanced: drmEnhanced,
-        });
-        if (!initRes.success) throw new Error(initRes.error || 'Init failed');
-        const uploadId = initRes.upload_id;
-
-        // 1b: Send chunks with per-chunk progress
-        for (let i = 0; i < totalChunks; i++) {
-          const start = i * CHUNK_SIZE;
-          const end = Math.min(start + CHUNK_SIZE, videoFile.size);
-          const chunk = videoFile.slice(start, end);
-          const chunkMb = ((end - start) / 1024 / 1024).toFixed(1);
-
-          const chunkForm = new FormData();
-          chunkForm.append('chunk', chunk, `chunk_${i}`);
-          chunkForm.append('upload_id', uploadId);
-          chunkForm.append('chunk_index', String(i));
-
-          const overallPct = Math.round(((i) / totalChunks) * 90);
-          setUploadPercent(overallPct);
-          setChunkPercent(0);
-          setUploadProgress(`Część ${i + 1}/${totalChunks} (${chunkMb} MB) - przesyłanie...`);
-
-          // XHR for per-chunk progress
-          await new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.upload.addEventListener('progress', (e) => {
-              if (e.lengthComputable) {
-                setChunkPercent(Math.round((e.loaded / e.total) * 100));
-              }
-            });
-            xhr.addEventListener('load', () => {
-              try {
-                const data = JSON.parse(xhr.responseText);
-                if (xhr.status >= 200 && xhr.status < 300 && data.success) {
-                  setChunkPercent(100);
-                  resolve(data);
-                } else reject(new Error(data.error || `Chunk ${i} HTTP ${xhr.status}`));
-              } catch (e) { reject(new Error('Invalid chunk response')); }
-            });
-            xhr.addEventListener('error', () => reject(new Error(`Chunk ${i} network error`)));
-            xhr.addEventListener('timeout', () => reject(new Error(`Chunk ${i} timeout`)));
-            xhr.timeout = 5 * 60 * 1000; // 5 min per chunk
-            xhr.open('POST', '/api/stream/upload/chunk');
-            xhr.withCredentials = true;
-            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-            xhr.send(chunkForm);
-          });
-
-          const sentMb = (end / 1024 / 1024).toFixed(1);
-          setUploadPercent(Math.round(((i + 1) / totalChunks) * 90));
-        }
-
-        // 1c: Complete — assemble and forward to streaming service
-        setUploadProgress('Składanie pliku i przesyłanie do serwera transkodowania...');
-        setUploadPercent(95);
-        const completeRes = await api.streamUploadComplete(uploadId);
-        if (!completeRes.success) throw new Error(completeRes.error || 'Complete failed');
-
-        finalStreamId = completeRes.video_id;
+        finalStreamId = await uploadVideoFile(videoFile, 'Wideo', drmEnhanced);
         setStreamVideoId(finalStreamId);
         setUploadProgress('Plik przesłany. Transkodowanie w tle...');
         setUploadPercent(100);

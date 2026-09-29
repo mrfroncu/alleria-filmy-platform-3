@@ -1,7 +1,7 @@
 const path = require('path');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
-const { chunksDir, gdprDir, uploadsDir } = require('./config');
+const { gdprDir, uploadsDir } = require('./config');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
@@ -23,9 +23,4 @@ const upload = multer({
 // ============ GDPR / RODO (admin review) ============
 const gdprUpload = multer({ dest: gdprDir, limits: { fileSize: 20 * 1024 * 1024 } });
 
-const chunkUpload = multer({
-  dest: chunksDir,
-  limits: { fileSize: 80 * 1024 * 1024 }, // 80MB per chunk — safe under CF 100MB limit
-});
-
-module.exports = { storage, upload, gdprUpload, chunkUpload };
+module.exports = { storage, upload, gdprUpload };

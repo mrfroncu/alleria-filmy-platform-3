@@ -14,6 +14,7 @@ const DEFAULT_CONFIG = {
   limitComment: 3000,
   showTopBar: true,
   allowCustomAvatars: false,
+  chunkedUpload: true,
   customYoutubePlayer: false,
   gdprRegion: 'off',
 };

@@ -5,10 +5,9 @@ const fetch = require('node-fetch');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { CAST_TOKEN_TTL_MS, requireAdmin, requireAuth, requireAuthOrCastToken, requireDev, signCastToken } = require('../lib/auth');
-const { STREAM_SECRET, chunksDir } = require('../lib/config');
+const { STREAM_SECRET } = require('../lib/config');
 const { STREAM_URL, isStreamUnreachable, logStreamError, pullThumbnailLocally, streamErrorLog } = require('../lib/stream');
 const { audit } = require('../lib/helpers');
-const { chunkUpload } = require('../lib/uploads');
 const { resolveStreamVideoForUser } = require('../lib/access');
 
 const router = express.Router();
@@ -17,166 +16,57 @@ router.get('/api/debug/stream-errors', requireDev, (req, res) => {
   res.json({ errors: streamErrorLog.map(({ _ts, ...e }) => e) });
 });
 
-// Step 1: Initialize chunked upload — returns upload_id
+// Chunked upload — the panel is only a pass-through. Every chunk is piped straight from the browser
+// request to the streaming server (which owns assembly, transcoding and stale-chunk cleanup), so
+// no part of a video is ever written to this host's disk.
+async function proxyUpload(req, res, step, { body, headers = {} }) {
+  const ctrl = new AbortController();
+  res.on('close', () => { if (!res.writableEnded) ctrl.abort(); }); // browser gave up → stop upstream too
+  try {
+    const r = await fetch(`${STREAM_URL}/upload${step ? '/' + step : ''}`, {
+      method: 'POST',
+      headers: { 'X-Stream-Token': STREAM_SECRET, ...headers },
+      body,
+      signal: ctrl.signal,
+    });
+    const data = await r.json().catch(() => ({ error: 'Invalid response from streaming server' }));
+    res.status(r.status).json(data);
+  } catch (err) {
+    if (ctrl.signal.aborted) return;
+    logStreamError(`upload/${step}`, err);
+    res.status(isStreamUnreachable(err) ? 503 : 502).json({
+      error: isStreamUnreachable(err) ? 'Serwer streamingu jest niedostępny' : 'Błąd przesyłania: ' + err.message,
+    });
+  }
+}
+
+// Single-request upload, used when chunking is switched off (no per-request size cap in front of the
+// panel). Same pass-through: the multipart body goes straight to the streaming server.
+router.post('/api/stream/upload', requireAdmin, (req, res) => {
+  const headers = { 'Content-Type': req.headers['content-type'] || '' };
+  if (req.headers['content-length']) headers['Content-Length'] = req.headers['content-length'];
+  proxyUpload(req, res, '', { headers, body: req });
+});
+
 router.post('/api/stream/upload/init', requireAdmin, (req, res) => {
   const { filename, filesize, total_chunks, drm_enhanced } = req.body;
-  if (!filename || !total_chunks) return res.status(400).json({ error: 'Missing params' });
-  const safeFilename = (filename || 'upload.mp4').replace(/[^a-zA-Z0-9._\-\s]/g, '_').replace(/\r|\n/g, '').slice(0, 255);
-  const uploadId = uuidv4();
-  const uploadDir = path.join(chunksDir, uploadId);
-  fs.mkdirSync(uploadDir, { recursive: true });
-  fs.writeFileSync(path.join(uploadDir, 'meta.json'), JSON.stringify({
-    filename: safeFilename, filesize: parseInt(filesize) || 0, total_chunks: parseInt(total_chunks),
-    drm_enhanced: drm_enhanced === 'true' || drm_enhanced === true,
-    received: [], created: Date.now()
-  }));
-  console.log(`[CHUNK] Upload init: ${uploadId} — ${safeFilename} (${total_chunks} chunks, ${(parseInt(filesize) / 1024 / 1024).toFixed(1)} MB)`);
-  res.json({ success: true, upload_id: uploadId });
+  proxyUpload(req, res, 'init', {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename, filesize, total_chunks, drm_enhanced }),
+  });
 });
 
-// Step 2: Upload individual chunk
-router.post('/api/stream/upload/chunk', requireAdmin, chunkUpload.single('chunk'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No chunk data' });
-  const { upload_id, chunk_index } = req.body;
-  if (!upload_id || chunk_index === undefined) {
-    try { fs.unlinkSync(req.file.path); } catch (e) {}
-    return res.status(400).json({ error: 'Missing upload_id or chunk_index' });
-  }
-
-  // Validate upload_id is a safe UUID to prevent path traversal
-  if (!upload_id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(upload_id)) {
-    try { fs.unlinkSync(req.file.path); } catch (e) {}
-    return res.status(400).json({ error: 'Invalid upload_id' });
-  }
-  const resolvedUploadDir = path.resolve(chunksDir, upload_id);
-  if (!resolvedUploadDir.startsWith(path.resolve(chunksDir) + path.sep)) {
-    try { fs.unlinkSync(req.file.path); } catch (e) {}
-    return res.status(400).json({ error: 'Invalid upload_id' });
-  }
-
-  const uploadDir = path.join(chunksDir, upload_id);
-  const metaPath = path.join(uploadDir, 'meta.json');
-  if (!fs.existsSync(metaPath)) {
-    try { fs.unlinkSync(req.file.path); } catch (e) {}
-    return res.status(404).json({ error: 'Upload not found' });
-  }
-
-  // Move chunk to upload dir
-  const chunkPath = path.join(uploadDir, `chunk_${String(chunk_index).padStart(6, '0')}`);
-  fs.renameSync(req.file.path, chunkPath);
-
-  // Update meta
-  const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-  if (!meta.received.includes(parseInt(chunk_index))) {
-    meta.received.push(parseInt(chunk_index));
-  }
-  fs.writeFileSync(metaPath, JSON.stringify(meta));
-
-  console.log(`[CHUNK] ${upload_id}: chunk ${chunk_index}/${meta.total_chunks - 1} received (${meta.received.length}/${meta.total_chunks})`);
-  res.json({ success: true, received: meta.received.length, total: meta.total_chunks });
+router.post('/api/stream/upload/chunk', requireAdmin, (req, res) => {
+  const headers = { 'Content-Type': req.headers['content-type'] || '' };
+  if (req.headers['content-length']) headers['Content-Length'] = req.headers['content-length'];
+  proxyUpload(req, res, 'chunk', { headers, body: req });
 });
 
-// Step 3: Complete — assemble chunks and forward to streaming service
-router.post('/api/stream/upload/complete', requireAdmin, async (req, res) => {
-  const { upload_id } = req.body;
-  if (!upload_id) return res.status(400).json({ error: 'Missing upload_id' });
-
-  // Validate upload_id is a safe UUID to prevent path traversal
-  if (!upload_id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(upload_id)) {
-    return res.status(400).json({ error: 'Invalid upload_id' });
-  }
-  const resolvedUploadDir = path.resolve(chunksDir, upload_id);
-  if (!resolvedUploadDir.startsWith(path.resolve(chunksDir) + path.sep)) {
-    return res.status(400).json({ error: 'Invalid upload_id' });
-  }
-
-  const uploadDir = path.join(chunksDir, upload_id);
-  const metaPath = path.join(uploadDir, 'meta.json');
-  if (!fs.existsSync(metaPath)) return res.status(404).json({ error: 'Upload not found' });
-
-  const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-  if (meta.received.length < meta.total_chunks) {
-    return res.status(400).json({ error: `Missing chunks: got ${meta.received.length}/${meta.total_chunks}` });
-  }
-
-  // Assemble chunks into single file
-  const assembledPath = path.join(chunksDir, `${upload_id}_assembled`);
-  console.log(`[CHUNK] Assembling ${meta.total_chunks} chunks for ${upload_id}...`);
-
-  try {
-    await new Promise((resolve, reject) => {
-      const writeStream = fs.createWriteStream(assembledPath);
-      writeStream.on('finish', resolve);
-      writeStream.on('error', reject);
-
-      let i = 0;
-      const pipeNext = () => {
-        if (i >= meta.total_chunks) { writeStream.end(); return; }
-        const chunkPath = path.join(uploadDir, `chunk_${String(i).padStart(6, '0')}`);
-        if (!fs.existsSync(chunkPath)) { writeStream.destroy(new Error(`Chunk ${i} missing`)); return; }
-        const readStream = fs.createReadStream(chunkPath);
-        readStream.on('error', err => writeStream.destroy(err));
-        readStream.on('end', () => { i++; pipeNext(); });
-        readStream.pipe(writeStream, { end: false });
-      };
-      pipeNext();
-    });
-
-    const fileSize = fs.statSync(assembledPath).size;
-    console.log(`[CHUNK] Assembled: ${(fileSize / 1024 / 1024).toFixed(1)} MB — forwarding to streaming service in background...`);
-
-    // Pre-generate video_id so we can respond immediately without waiting for the transfer
-    const { v4: uuidv4 } = require('uuid');
-    const videoId = uuidv4();
-
-    // Respond to the frontend immediately — transfer to streaming service happens in background
-    res.json({ success: true, video_id: videoId, status: 'uploading' });
-
-    // Background upload to streaming service
-    setImmediate(async () => {
-      try {
-        const { PassThrough } = require('stream');
-        const boundary = '----AlleriaBoundary' + Date.now();
-        const safeFilename = (meta.filename || 'upload.mp4').replace(/[^a-zA-Z0-9._\-\s]/g, '_').replace(/\r|\n/g, '').slice(0, 255);
-        const preamble = Buffer.from(
-          `--${boundary}\r\nContent-Disposition: form-data; name="video"; filename="${safeFilename}"\r\nContent-Type: video/mp4\r\n\r\n`
-        );
-        const epilogue = Buffer.from(
-          `\r\n--${boundary}\r\nContent-Disposition: form-data; name="drm_enhanced"\r\n\r\n${meta.drm_enhanced ? 'true' : 'false'}\r\n--${boundary}\r\nContent-Disposition: form-data; name="video_id"\r\n\r\n${videoId}\r\n--${boundary}--\r\n`
-        );
-
-        const bodyStream = new PassThrough();
-        bodyStream.write(preamble);
-        const fileStream = fs.createReadStream(assembledPath);
-        fileStream.on('data', chunk => bodyStream.write(chunk));
-        fileStream.on('end', () => { bodyStream.write(epilogue); bodyStream.end(); });
-        fileStream.on('error', err => bodyStream.destroy(err));
-
-        const streamRes = await fetch(`${STREAM_URL}/upload`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': `multipart/form-data; boundary=${boundary}`,
-            'X-Stream-Token': STREAM_SECRET,
-          },
-          body: bodyStream,
-          duplex: 'half',
-        });
-
-        const data = await streamRes.json();
-        console.log(`[CHUNK] ✅ Transfer complete: ${upload_id} → stream ${data.video_id || 'error'}`);
-      } catch (err) {
-        console.error(`[CHUNK] ❌ Background transfer failed: ${upload_id}:`, err.message);
-      } finally {
-        try { fs.rmSync(uploadDir, { recursive: true }); } catch (e) {}
-        try { fs.unlinkSync(assembledPath); } catch (e) {}
-      }
-    });
-  } catch (err) {
-    console.error(`[CHUNK] Error completing ${upload_id}:`, err);
-    try { fs.rmSync(uploadDir, { recursive: true }); } catch (e) {}
-    try { fs.unlinkSync(assembledPath); } catch (e) {}
-    res.status(500).json({ error: 'Assembly/upload failed: ' + err.message });
-  }
+router.post('/api/stream/upload/complete', requireAdmin, (req, res) => {
+  proxyUpload(req, res, 'complete', {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ upload_id: req.body.upload_id }),
+  });
 });
 
 // Get transcode status

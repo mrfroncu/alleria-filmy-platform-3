@@ -21,6 +21,7 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 - [🚀 Instalacja](#-instalacja)
 - [🔧 Konfiguracja `.env`](#-konfiguracja-env)
 - [📋 Ustawienia w aplikacji](#-ustawienia-w-aplikacji-zarządzanie--ustawienia)
+- [📤 Upload wideo](#-upload-wideo)
 - [🌐 Streaming na osobnym serwerze](#-streaming-na-osobnym-serwerze)
 - [📦 Struktura plików](#-struktura-plików)
 - [💾 Baza danych (SQLite)](#-baza-danych-sqlite)
@@ -53,7 +54,7 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 
 ### 🎬 Filmy
 - **YouTube/Embed** — wklejanie linków YouTube z auto-konwersją na embed i smart thumbnailami
-- **Self-hosted streaming** — upload plików wideo (do 6GB), chunked upload (50MB kawałki dla Cloudflare Tunnel), transkodowanie HLS multi-quality (1080p/720p/480p/360p)
+- **Self-hosted streaming** — upload plików wideo (do 6GB), upload w kawałkach po 50MB (opcjonalny, wymagany za Cloudflare — patrz „📤 Upload wideo”), transkodowanie HLS multi-quality (1080p/720p/480p/360p)
 - **Szyfrowanie AES-128** — pliki HLS szyfrowane, klucze dostarczane z tokenem sesji
 - **Mirrory** — do 5 alternatywnych źródeł z opcją embed/iframe; każdy mirror może być oznaczony jako „wersja alternatywna" (inny cut/behind-the-scenes), renderowana w playerze jako osobno kolorowana zakładka
 - **Casting** — Chromecast (Cast Sender SDK) i AirPlay bezpośrednio z self-hosted playera; krótkotrwały (6h), podpisany token castowania pozwala urządzeniu odbiorczemu grać strumień bez ciasteczka sesji przeglądarki
@@ -377,6 +378,7 @@ Poniższe (ustawiane w kontenerze streaming) reorganizują układ katalogów *we
 | `STREAM_MEDIA_DIR` | `{DATA_DIR}/media` | Transkodowane pliki HLS |
 | `STREAM_KEYS_DIR` | `{DATA_DIR}/keys` | Klucze szyfrowania AES |
 | `STREAM_UPLOAD_DIR` | `{DATA_DIR}/uploads` | Tymczasowe uploady |
+| `STREAM_CHUNKS_DIR` | `{DATA_DIR}/chunks` | Chunki uploadu w toku (sprzątane po złożeniu i po 24 h bezczynności) |
 
 ---
 
@@ -400,10 +402,38 @@ Poniższe ustawienia **nie** są w `.env` — są zapisane w bazie (tabela `app_
 | SMTP i szablony e-mail | — | Serwer poczty (host/port/user/hasło/nadawca) i treść czterech szablonów wiadomości — patrz „📧 Powiadomienia e-mail” |
 | Źródło konfiguracji logowania | `.env` | Czy dane TS3/TS6 i role Discord member/admin czyta się z `.env` czy edytuje w panelu |
 | Osadzanie w iframe | ❌ wyłączone | Zezwala na osadzanie odtwarzacza na domenach z listy dozwolonych domen (dodawanych/usuwanych tuż obok, bez `.env`) |
+| Upload w częściach | ✅ włączony | Film wysyłany w kawałkach po 50 MB (wymagane za Cloudflare, limit 100 MB na żądanie) albo w całości jednym żądaniem (nginx/Traefik bez limitu) — patrz „📤 Upload wideo” |
 | Górny pasek | ✅ włączony | Pokazuje/ukrywa górny pasek (tytuł + smart search + profil); wyłączenie przywraca klasyczny układ z tytułem strony i profilem w sidebarze |
 
 > [!TIP]
 > Zakładka Ustawienia pokazuje też ostrzeżenie, jeśli w `.env` znajdują się **zmienne przeniesione do bazy** (np. stare `VIDEOS_PER_PAGE`) albo **nazwy przypominające literówkę** znanej zmiennej (np. `DISCORD_GULID_ID` zamiast `DISCORD_GUILD_ID`) — bezpieczne do sprawdzenia bez ujawniania wartości.
+
+---
+
+## 📤 Upload wideo
+
+Film **nigdy nie jest zapisywany na serwerze panelu** (VPS). Panel jest tylko przekaźnikiem: strumień z przeglądarki idzie prosto do serwisu streamingu, który zapisuje plik, składa go, transkoduje i sprząta po sobie.
+
+```
+Przeglądarka ──► Panel (VPS, pass-through, bez zapisu) ──► Streaming (np. Unraid)
+                                                            └─ /data/chunks → składanie → /data/uploads → HLS w /data/media
+```
+
+**Tryby** (Zarządzanie → Ustawienia → *Upload w częściach*):
+
+| Tryb | Kiedy | Jak działa |
+|------|-------|-----------|
+| ✅ **W częściach** *(domyślny)* | Panel za Cloudflare (Tunnel/proxy) — limit 100 MB na żądanie | Kawałki po 50 MB: `upload/init` → `upload/chunk` (×N) → `upload/complete` |
+| ❌ **Jednym żądaniem** | Panel za nginx / Traefik bez limitu rozmiaru | Cały plik w jednym `POST /api/stream/upload` |
+
+**Po stronie streamera (chunked):**
+- Chunki lądują w `STREAM_CHUNKS_DIR` (domyślnie `/data/chunks`), każdy jest kasowany zaraz po dołączeniu do złożonego pliku, więc szczyt zajętości dysku ≈ 1× rozmiar filmu.
+- `upload/complete` odpowiada od razu (film ma status `queued`), a składanie trwa w tle — wielogigabajtowe składanie mogłoby przekroczyć timeout Cloudflare.
+- Porzucone uploady (zamknięta karta, zerwane połączenie, restart w trakcie) sprząta `sweepStaleChunks()`: przy starcie i co godzinę usuwa wszystko, czego nie ruszano od 24 h. Każdy przyjęty chunk odświeża licznik, więc wolny, ale żywy upload nie jest kasowany.
+- Panel przy starcie usuwa stary katalog `DATA_DIR/chunks` (pozostałość po wersjach, które składały pliki lokalnie).
+
+> [!WARNING]
+> **Tryb „jednym żądaniem” za nginx wymaga** `client_max_body_size 0;` (albo odpowiednio dużej wartości) oraz **`proxy_request_buffering off;`** dla `/api/stream/upload`. Bez wyłączenia buforowania nginx sam zapisze cały film na dysku serwera panelu, czyli dokładnie to, czego ten przepływ ma unikać. W Traefiku sprawdź limity `maxRequestBodyBytes` (middleware `buffering`) i timeouty entrypointa (`readTimeout`).
 
 ---
 
@@ -646,9 +676,10 @@ Sesje logowania trzymane są osobno w `data/sessions.db` (własny store na bette
 - `GET /api/admin/watch-parties` / `DELETE /api/admin/watch-parties/:code` — Lista/wymuszone usunięcie aktywnych party (dev)
 
 ### Streaming
-- `POST /api/stream/upload/init` — Inicjalizuj chunked upload
-- `POST /api/stream/upload/chunk` — Upload chunk (50MB)
-- `POST /api/stream/upload/complete` — Złóż i transkoduj
+- `POST /api/stream/upload/init` — Inicjalizuj upload w częściach (proxy do streamera)
+- `POST /api/stream/upload/chunk` — Upload chunka (50MB), przekazywany strumieniowo do streamera
+- `POST /api/stream/upload/complete` — Złóż (na streamerze) i zakolejkuj transkodowanie
+- `POST /api/stream/upload` — Upload całego pliku jednym żądaniem (gdy „Upload w częściach” wyłączony)
 - `GET /api/stream/status/:videoId` — Status transkodowania
 - `GET /api/stream/check/:dbVideoId` — Check + update DB status
 - `GET /api/stream/token/:videoId` — Token odtwarzania

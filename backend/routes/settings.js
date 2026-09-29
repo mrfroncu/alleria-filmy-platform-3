@@ -135,6 +135,12 @@ router.post('/api/debug/settings', requireDev, (req, res) => {
     audit(req.session.user.id, 'edit', 'settings', null,
       `allow_custom_avatars → ${req.body.allow_custom_avatars ? 'ON' : 'OFF'}`);
   }
+  // Split video uploads into chunks (needed behind Cloudflare's per-request size cap) vs. one request
+  if (req.body.chunked_upload !== undefined) {
+    setSetting('chunked_upload', req.body.chunked_upload ? '1' : '0');
+    audit(req.session.user.id, 'edit', 'settings', null,
+      `chunked_upload → ${req.body.chunked_upload ? 'ON' : 'OFF'}`);
+  }
   // Custom-chrome YouTube player overlay vs. plain YouTube embed
   if (req.body.youtube_custom_player !== undefined) {
     setSetting('youtube_custom_player', req.body.youtube_custom_player ? '1' : '0');

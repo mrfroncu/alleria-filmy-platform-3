@@ -243,6 +243,121 @@ app.post('/upload', requireToken, upload.single('video'), async (req, res) => {
   });
 });
 
+// ============ CHUNKED UPLOAD ============
+// The panel (VPS) only proxies these three calls — chunks are written here and nowhere else, so
+// the panel host never holds a copy of any video. Chunked because Cloudflare caps a single request
+// on the panel side. Chunks live in CHUNKS_DIR until /complete assembles them into UPLOAD_DIR and
+// queues the transcode; anything abandoned midway is swept by sweepStaleChunks() below.
+const CHUNKS_DIR = process.env.STREAM_CHUNKS_DIR || path.join(DATA_ROOT, 'chunks');
+const CHUNK_TTL_MS = 24 * 60 * 60 * 1000;
+fs.mkdirSync(CHUNKS_DIR, { recursive: true });
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const chunkUpload = multer({ dest: CHUNKS_DIR, limits: { fileSize: 100 * 1024 * 1024 } });
+
+function chunkDirFor(uploadId) {
+  return UUID_RE.test(uploadId || '') ? path.join(CHUNKS_DIR, uploadId) : null;
+}
+
+app.post('/upload/init', requireToken, (req, res) => {
+  const { filename, filesize, total_chunks, drm_enhanced } = req.body;
+  const totalChunks = parseInt(total_chunks);
+  if (!filename || !(totalChunks > 0)) return res.status(400).json({ error: 'Missing params' });
+  const safeFilename = String(filename).replace(/[^a-zA-Z0-9._\-\s]/g, '_').replace(/\r|\n/g, '').slice(0, 255);
+  if (!/\.(mp4|mkv|avi|mov|webm|wmv|flv|m4v|ts)$/i.test(safeFilename)) return res.status(400).json({ error: 'Unsupported video format' });
+  const uploadId = uuidv4();
+  const dir = path.join(CHUNKS_DIR, uploadId);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({
+    filename: safeFilename, filesize: parseInt(filesize) || 0, total_chunks: totalChunks,
+    drm_enhanced: drm_enhanced === true || drm_enhanced === 'true', received: [],
+  }));
+  console.log(`[CHUNK] Upload init: ${uploadId} — ${safeFilename} (${totalChunks} chunks)`);
+  res.json({ success: true, upload_id: uploadId });
+});
+
+app.post('/upload/chunk', requireToken, chunkUpload.single('chunk'), (req, res) => {
+  const discard = () => { if (req.file) try { fs.unlinkSync(req.file.path); } catch (e) {} };
+  if (!req.file) return res.status(400).json({ error: 'No chunk data' });
+  const { upload_id, chunk_index } = req.body;
+  const dir = chunkDirFor(upload_id);
+  const index = parseInt(chunk_index);
+  if (!dir || !(index >= 0)) { discard(); return res.status(400).json({ error: 'Invalid upload_id or chunk_index' }); }
+  const metaPath = path.join(dir, 'meta.json');
+  if (!fs.existsSync(metaPath)) { discard(); return res.status(404).json({ error: 'Upload not found' }); }
+  const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+  if (index >= meta.total_chunks) { discard(); return res.status(400).json({ error: 'chunk_index out of range' }); }
+  fs.renameSync(req.file.path, path.join(dir, `chunk_${String(index).padStart(6, '0')}`));
+  if (!meta.received.includes(index)) meta.received.push(index);
+  fs.writeFileSync(metaPath, JSON.stringify(meta)); // also refreshes mtime, which the stale sweep uses
+  console.log(`[CHUNK] ${upload_id}: ${meta.received.length}/${meta.total_chunks}`);
+  res.json({ success: true, received: meta.received.length, total: meta.total_chunks });
+});
+
+// Responds right away and assembles in the background — a multi-GB concat can outlast the panel /
+// Cloudflare request timeout. status.json is 'queued' meanwhile, so the panel already sees the video.
+app.post('/upload/complete', requireToken, (req, res) => {
+  const dir = chunkDirFor(req.body.upload_id);
+  if (!dir) return res.status(400).json({ error: 'Invalid upload_id' });
+  const metaPath = path.join(dir, 'meta.json');
+  if (!fs.existsSync(metaPath)) return res.status(404).json({ error: 'Upload not found' });
+  const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+  if (meta.received.length < meta.total_chunks) {
+    return res.status(400).json({ error: `Missing chunks: got ${meta.received.length}/${meta.total_chunks}` });
+  }
+  const videoId = uuidv4();
+  writeQueuedStatus(videoId, null);
+  res.json({ success: true, video_id: videoId, status: 'queued' });
+
+  const assembledPath = path.join(UPLOAD_DIR, `${uuidv4()}${path.extname(meta.filename)}`);
+  (async () => {
+    try {
+      const out = fs.createWriteStream(assembledPath);
+      for (let i = 0; i < meta.total_chunks; i++) {
+        const chunkPath = path.join(dir, `chunk_${String(i).padStart(6, '0')}`);
+        await new Promise((resolve, reject) => {
+          const rs = fs.createReadStream(chunkPath);
+          rs.on('error', reject);
+          rs.on('end', resolve);
+          rs.pipe(out, { end: false });
+        });
+        fs.unlinkSync(chunkPath); // keeps peak disk use near 1x the video, not 2x
+      }
+      await new Promise((resolve, reject) => { out.on('error', reject); out.end(resolve); });
+      console.log(`[CHUNK] Assembled ${req.body.upload_id} → ${videoId}`);
+      enqueueTranscode({ inputPath: assembledPath, videoId, enableDrm: !!meta.drm_enhanced });
+    } catch (err) {
+      console.error(`[CHUNK] Assembly failed for ${req.body.upload_id}:`, err.message);
+      try { fs.unlinkSync(assembledPath); } catch (e) {}
+      try { fs.writeFileSync(path.join(MEDIA_DIR, videoId, 'status.json'), JSON.stringify({ status: 'error', error: 'Składanie pliku nie powiodło się: ' + err.message })); } catch (e) {}
+    } finally {
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+    }
+  })();
+});
+
+// Abandoned uploads (tab closed, connection dropped, restart mid-assembly) never reach /complete,
+// so their chunks would sit here forever. Anything untouched for CHUNK_TTL_MS is removed; each
+// received chunk refreshes meta.json, so a slow but live upload is never swept.
+function sweepStaleChunks() {
+  const now = Date.now();
+  let removed = 0;
+  for (const name of fs.readdirSync(CHUNKS_DIR)) {
+    const p = path.join(CHUNKS_DIR, name);
+    try {
+      const st = fs.statSync(p);
+      const lastTouch = st.isDirectory()
+        ? Math.max(st.mtimeMs, fs.statSync(path.join(p, 'meta.json')).mtimeMs)
+        : st.mtimeMs;
+      if (now - lastTouch > CHUNK_TTL_MS) { fs.rmSync(p, { recursive: true, force: true }); removed++; }
+    } catch (e) {
+      try { fs.rmSync(p, { recursive: true, force: true }); removed++; } catch (e2) {}
+    }
+  }
+  if (removed) console.log(`[CHUNK] Swept ${removed} stale upload(s)`);
+}
+sweepStaleChunks();
+setInterval(sweepStaleChunks, 60 * 60 * 1000).unref();
+
 // ============ TRANSCODE STATUS ============
 app.get('/status/:videoId', requireToken, (req, res) => {
   const statusPath = path.join(MEDIA_DIR, req.params.videoId, 'status.json');
