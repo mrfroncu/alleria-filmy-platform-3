@@ -3,5 +3,5 @@
 
 module.exports = {
   VERSION: '3.28.1', // Current platform version
-  STREAM_MIN_VERSION: '1.12.0',   // Minimum compatible streaming version — if streaming reports older, show "deprecated"
+  STREAM_MIN_VERSION: '1.12.1',   // Minimum compatible streaming version — if streaming reports older, show "deprecated"
 };

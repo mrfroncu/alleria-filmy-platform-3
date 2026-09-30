@@ -5,7 +5,15 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { execSync, spawn } = require('child_process');
+const { execSync, exec, spawn } = require('child_process');
+const { promisify } = require('util');
+
+// Non-blocking exec for everything that runs during a transcode (probe, thumbnail, preview sprite).
+// execSync freezes Node's whole event loop while ffmpeg runs — for a long film the preview sprite
+// alone can take minutes, during which /media, /keys and every other request (i.e. the player)
+// hang. `nice` additionally keeps ffmpeg from starving Node of CPU while it encodes.
+const execAsync = promisify(exec);
+const NICE = 'nice -n 19 ';
 
 // STREAM_SECRET protects every video: it's the shared secret backend uses to authorize
 // upload/cleanup/token-mint requests, and the HMAC key behind every playback/key token.
@@ -631,9 +639,8 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
   // Detect source resolution, fps, duration, bitrate
   let sourceHeight = 1080, sourceWidth = 1920, sourceFps = 30, totalDuration = 0;
   try {
-    const probeJson = execSync(
-      `ffprobe -v error -select_streams v:0 -show_entries stream=height,width,r_frame_rate,bit_rate -show_entries format=duration -of json "${inputPath}"`,
-      { encoding: 'utf8' }
+    const { stdout: probeJson } = await execAsync(
+      `ffprobe -v error -select_streams v:0 -show_entries stream=height,width,r_frame_rate,bit_rate -show_entries format=duration -of json "${inputPath}"`
     );
     const probe = JSON.parse(probeJson);
     const stream = probe.streams?.[0] || {};
@@ -692,7 +699,11 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
     // GPU (NVENC) uses its own preset/rate-control scheme (p1-p7 speed/quality ladder, -cq
     // instead of -crf) — everything else (scaling, fps, HLS output) stays identical to the
     // CPU path so both produce compatible renditions.
-    const buildArgs = (useGpu) => [
+    const buildArgs = (useGpu, hwDecode = false) => [
+      // NVDEC: decode on the GPU too. Without it the CPU decodes the (often 4K/HEVC) source once per
+      // rendition and the NVENC engine sits mostly idle waiting for frames. Frames are still
+      // downloaded for the CPU scale filter, so no scale_cuda/npp dependency on the ffmpeg build.
+      ...(useGpu && hwDecode ? ['-hwaccel', 'cuda'] : []),
       '-i', inputPath,
       ...(q.isSource ? [] : ['-vf', `scale=-2:${q.height}`]),
       ...fpsArgs,
@@ -713,16 +724,23 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
       '-y'
     ];
 
-    let usedGpu = GPU_AVAILABLE;
-    try {
-      await runFFmpeg(buildArgs(usedGpu), statusPath, progressBase, progressPerQuality, totalDuration);
-    } catch (err) {
-      if (!usedGpu) throw err;
-      console.warn(`[STREAM] GPU encode failed for ${qualityLabel} (${videoId}), retrying on CPU: ${err.message}`);
-      usedGpu = false;
-      await runFFmpeg(buildArgs(false), statusPath, progressBase, progressPerQuality, totalDuration);
+    // Fallback ladder: NVDEC+NVENC -> CPU decode+NVENC (codec NVDEC can't handle) -> full CPU.
+    const attempts = GPU_AVAILABLE
+      ? [['GPU+NVDEC', true, true], ['GPU', true, false], ['CPU', false, false]]
+      : [['CPU', false, false]];
+    let usedMode = null;
+    for (let a = 0; a < attempts.length; a++) {
+      const [mode, useGpu, hwDecode] = attempts[a];
+      try {
+        await runFFmpeg(buildArgs(useGpu, hwDecode), statusPath, progressBase, progressPerQuality, totalDuration);
+        usedMode = mode;
+        break;
+      } catch (err) {
+        if (a === attempts.length - 1) throw err;
+        console.warn(`[STREAM] ${mode} encode failed for ${qualityLabel} (${videoId}), trying ${attempts[a + 1][0]}: ${err.message}`);
+      }
     }
-    console.log(`[STREAM] ✅ ${qualityLabel} done for ${videoId}${keepHighFps ? ' (60fps)' : ''}${usedGpu ? ' [GPU]' : ' [CPU]'}`);
+    console.log(`[STREAM] ✅ ${qualityLabel} done for ${videoId}${keepHighFps ? ' (60fps)' : ''} [${usedMode}]`);
   }
 
   // Generate master playlist with fps info — also collect the same per-quality bandwidth/fps
@@ -756,7 +774,7 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
   let lastThumbErr = null;
   for (const ts of ['00:00:05', '00:00:01', '00:00:00']) {
     try {
-      execSync(`ffmpeg -i "${inputPath}" -ss ${ts} -vframes 1 -q:v 3 "${path.join(outputDir, 'thumb.jpg')}" -y`, { stdio: 'pipe' });
+      await execAsync(`${NICE}ffmpeg -i "${inputPath}" -ss ${ts} -vframes 1 -q:v 3 "${path.join(outputDir, 'thumb.jpg')}" -y`);
       thumbOk = true;
       break;
     } catch (e) { lastThumbErr = e; }
@@ -777,9 +795,8 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
       const rows = Math.ceil(frameCount / cols);
       // Individual frames scaled to a fixed width, tiled into one grid image — the frontend reads
       // cells back by percentage (cols/rows), so exact pixel size of the sprite doesn't matter.
-      execSync(
-        `ffmpeg -i "${inputPath}" -vf "fps=1/${interval},scale=160:-2,tile=${cols}x${rows}" -frames:v 1 -q:v 4 "${path.join(outputDir, 'preview.jpg')}" -y`,
-        { stdio: 'pipe' }
+      await execAsync(
+        `${NICE}ffmpeg -i "${inputPath}" -vf "fps=1/${interval},scale=160:-2,tile=${cols}x${rows}" -frames:v 1 -q:v 4 "${path.join(outputDir, 'preview.jpg')}" -y`
       );
       fs.writeFileSync(path.join(outputDir, 'preview.json'), JSON.stringify({ frames: frameCount, cols, rows, interval }));
     } catch (e) {
@@ -790,7 +807,7 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
   // Get duration
   let duration = 0;
   try {
-    const d = execSync(`ffprobe -v error -show_entries format=duration -of csv=p=0 "${inputPath}"`, { encoding: 'utf8' });
+    const { stdout: d } = await execAsync(`ffprobe -v error -show_entries format=duration -of csv=p=0 "${inputPath}"`);
     duration = parseFloat(d.trim()) || 0;
   } catch (e) {}
 
@@ -810,7 +827,7 @@ async function transcodeToHLS(inputPath, videoId, enhancedDrm) {
 
 function runFFmpeg(args, statusPath, progressBase, progressRange, totalDuration) {
   return new Promise((resolve, reject) => {
-    const proc = spawn('ffmpeg', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    const proc = spawn('nice', ['-n', '19', 'ffmpeg', ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
     let stderr = '';
     proc.stderr.on('data', d => {
       stderr += d.toString();
