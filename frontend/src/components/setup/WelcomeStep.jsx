@@ -1,10 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { Sparkles, Database } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Sparkles, Database, Upload, Loader2 } from 'lucide-react';
 import { api } from '../../utils/api';
+import { importDatabaseFile, describeImport, reloadAfterImport } from '../../utils/dbImport';
+import { useConfirm } from '../../contexts/ConfirmContext';
+import { useSettings } from '../../contexts/SettingsContext';
 
 export default function WelcomeStep({ onFinish }) {
+  const confirm = useConfirm();
+  const { config } = useSettings();
   const [stats, setStats] = useState(null);
   const [finishing, setFinishing] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState(null);
+  const [importProgress, setImportProgress] = useState('');
+  const fileInputRef = useRef(null);
 
   useEffect(() => { api.getStats().then(setStats).catch(() => {}); }, []);
 
@@ -13,6 +22,26 @@ export default function WelcomeStep({ onFinish }) {
   const finishNow = async () => {
     setFinishing(true);
     try { await onFinish(); } finally { setFinishing(false); }
+  };
+
+  // Restoring an export brings its app_settings along (setup_status included), so a restored
+  // install normally skips the rest of the wizard — the reload lands on / (or /login).
+  const handleRestore = async (e) => {
+    const file = e.target.files?.[0];
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (!file) return;
+    const warn = isExistingInstall ? ' Ta instalacja ma już dane - zostaną zastąpione (kopia trafi do data/backups/).' : '';
+    if (!(await confirm(`Przywrócić bazę z pliku "${file.name}"?${warn}`, { danger: isExistingInstall, confirmLabel: 'Przywróć' }))) return;
+    setImporting(true);
+    setImportError(null);
+    try {
+      const result = await importDatabaseFile(file, { chunked: config.chunkedUpload, onProgress: setImportProgress });
+      await confirm(`Przywrócono: ${describeImport(result)}. Pamiętaj o skopiowaniu katalogu data/uploads/ (miniatury, awatary) ze starego serwera.${result.relogin ? ' Zaloguj się ponownie.' : ''}`, { title: 'Baza przywrócona', confirmLabel: 'Dalej', cancelLabel: 'Zamknij' });
+      reloadAfterImport(result);
+    } catch (err) {
+      setImportError(err.message);
+      setImporting(false);
+    }
   };
 
   return (
@@ -51,6 +80,24 @@ export default function WelcomeStep({ onFinish }) {
           </div>
         </div>
       )}
+
+      <div className="mt-3 p-4 rounded-2xl border bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 flex items-start gap-3">
+        <Upload className="w-4 h-4 shrink-0 mt-0.5 text-zinc-400" />
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Przenosisz platformę z innego serwera?</p>
+          <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">
+            Wgraj plik z Dev Tools → Debug → „Eksportuj JSON” ze starej instalacji - przywróci użytkowników, filmy, kategorie,
+            rangi, statystyki i wszystkie ustawienia panelu. Pliki z <code className="font-mono">data/uploads/</code> (miniatury, awatary)
+            oraz <code className="font-mono">.env</code> trzeba skopiować osobno.
+          </p>
+          <label className={`btn-secondary text-xs mt-3 inline-flex items-center gap-1.5 ${importing ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}>
+            {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+            {importing ? (importProgress || 'Przywracanie...') : 'Przywróć z pliku JSON'}
+            <input ref={fileInputRef} type="file" accept=".json,application/json" onChange={handleRestore} className="hidden" />
+          </label>
+          {importError && <p className="text-xs text-red-600 dark:text-red-400 mt-2">Błąd: {importError}</p>}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,13 +1,18 @@
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const express = require('express');
 const fetch = require('node-fetch');
+const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
+const { uploadsDir, gdprDir } = require('../lib/config');
 const { DB_PATH } = require('../database');
-const { getMigrationStatus, backupDatabase, pad } = require('../migrations');
+const { getMigrationStatus, backupDatabase, pad, LATEST_VERSION } = require('../migrations');
 const { audit } = require('../lib/helpers');
 const { checkCatAccess, getUserRankIds, parseCatModes } = require('../lib/access');
 const { requireDev } = require('../lib/auth');
+const { sessionStore } = require('../lib/sessions');
+const { VERSION } = require('../versions');
 
 const router = express.Router();
 
@@ -91,10 +96,15 @@ router.get('/api/debug/export', requireDev, (req, res) => {
     res.setHeader('Content-Disposition',
       `attachment; filename="alleria-filmy-export-${new Date().toISOString().slice(0, 10)}.json"`);
 
-    res.write('{');
-    tables.forEach((name, ti) => {
-      if (ti > 0) res.write(',');
-      res.write(JSON.stringify(name) + ':[');
+    // `_meta` is an object, not a row array, so even older import code skips it harmlessly.
+    res.write('{"_meta":' + JSON.stringify({
+      format: 'alleria-filmy-export',
+      app_version: VERSION,
+      schema_version: getMigrationStatus(db, DB_PATH).currentVersion,
+      exported_at: new Date().toISOString(),
+    }));
+    tables.forEach((name) => {
+      res.write(',' + JSON.stringify(name) + ':[');
       let ri = 0;
       for (const row of db.prepare(`SELECT * FROM "${name}"`).iterate()) {
         res.write((ri++ > 0 ? ',' : '') + JSON.stringify(row));
@@ -149,45 +159,209 @@ router.post('/api/debug/migrations/backup', requireDev, (req, res) => {
   }
 });
 
-router.post('/api/debug/import', requireDev, express.json({ limit: '50mb' }), (req, res) => {
+// What an export does NOT carry — shown in the "what else to copy" popup after exporting.
+router.get('/api/debug/export/extras', requireDev, (req, res) => {
+  const dirStats = (dir) => {
+    let files = 0, bytes = 0;
+    try {
+      for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (!f.isFile()) continue;
+        files++;
+        try { bytes += fs.statSync(path.join(dir, f.name)).size; } catch (_) {}
+      }
+    } catch (_) {}
+    return { files, bytes };
+  };
+  const pendingGdpr = db.prepare("SELECT COUNT(*) AS c FROM gdpr_requests WHERE export_file IS NOT NULL AND export_file != ''").get().c;
+  res.json({ uploads: dirStats(uploadsDir), gdpr: { ...dirStats(gdprDir), withFile: pendingGdpr } });
+});
+
+// Just under V8's max string length (~512 MiB) — the whole file has to become one string to parse.
+const IMPORT_MAX_BYTES = 500 * 1024 * 1024;
+
+// Replaces every table's contents with the export's. Tolerates schema drift between the two
+// installs: tables/columns the export has but this schema doesn't are skipped (and reported),
+// ones it lacks just stay empty or take their column defaults.
+// Also the restore path of the setup wizard (WelcomeStep.jsx) on a fresh install.
+router.post('/api/debug/import', requireDev, express.json({ limit: IMPORT_MAX_BYTES }), (req, res) => runImport(req, res, req.body));
+
+// Chunked variant, used unless chunked_upload is switched off — same reason as video uploads:
+// Cloudflare refuses any single request over 100 MB. Videos are assembled by the streaming
+// server; an import is assembled here, in the OS temp dir (the container's own filesystem, not
+// the data volume, so a crash mid-upload leaves nothing behind after a restart).
+const IMPORT_CHUNK_DIR = path.join(os.tmpdir(), 'alleria-import');
+const IMPORT_CHUNK_MAX = 64 * 1024 * 1024; // client sends 50 MB parts
+const IMPORT_STALE_MS = 60 * 60 * 1000;
+const importUploads = new Map(); // upload_id -> { dir, total, size, userId, createdAt }
+
+function dropImportUpload(id) {
+  const u = importUploads.get(id);
+  importUploads.delete(id);
+  if (u) fs.rm(u.dir, { recursive: true, force: true }, () => {});
+}
+
+function getImportUpload(req, res, id) {
+  const u = importUploads.get(id);
+  if (!u || u.userId !== req.session.user.id) {
+    res.status(404).json({ error: 'Nieznany lub wygasły upload - wybierz plik ponownie.' });
+    return null;
+  }
+  return u;
+}
+
+router.post('/api/debug/import/init', requireDev, (req, res) => {
+  for (const [id, u] of importUploads) if (Date.now() - u.createdAt > IMPORT_STALE_MS) dropImportUpload(id);
+  const size = Number(req.body.filesize);
+  const total = Number(req.body.total_chunks);
+  if (!Number.isInteger(size) || size <= 0 || size > IMPORT_MAX_BYTES) {
+    return res.status(400).json({ error: `Plik jest pusty albo większy niż ${IMPORT_MAX_BYTES / 1024 / 1024} MB.` });
+  }
+  if (!Number.isInteger(total) || total < Math.ceil(size / IMPORT_CHUNK_MAX) || total > size) {
+    return res.status(400).json({ error: 'Nieprawidłowa liczba części.' });
+  }
+  const id = uuidv4();
+  const dir = path.join(IMPORT_CHUNK_DIR, id);
+  fs.mkdirSync(dir, { recursive: true });
+  importUploads.set(id, { dir, total, size, userId: req.session.user.id, createdAt: Date.now() });
+  res.json({ success: true, upload_id: id });
+});
+
+// Raw application/octet-stream body — neither global body parser touches it, so it streams
+// straight to disk.
+router.post('/api/debug/import/chunk', requireDev, (req, res) => {
+  const u = getImportUpload(req, res, req.query.upload_id);
+  if (!u) return;
+  const index = Number(req.query.index);
+  if (!Number.isInteger(index) || index < 0 || index >= u.total) return res.status(400).json({ error: 'Nieprawidłowy numer części.' });
+  if (Number(req.headers['content-length']) > IMPORT_CHUNK_MAX) return res.status(413).json({ error: 'Część pliku jest za duża.' });
+
+  const file = path.join(u.dir, String(index));
+  const out = fs.createWriteStream(file);
+  let bytes = 0, done = false;
+  const fail = (status, error) => {
+    if (done) return;
+    done = true;
+    req.unpipe(out);
+    out.destroy();
+    fs.rm(file, { force: true }, () => {});
+    res.status(status).json({ error });
+  };
+  req.on('data', (c) => { bytes += c.length; if (bytes > IMPORT_CHUNK_MAX) fail(413, 'Część pliku jest za duża.'); });
+  req.on('aborted', () => fail(400, 'Przerwano wysyłanie.'));
+  out.on('error', (err) => fail(500, 'Nie udało się zapisać części: ' + err.message));
+  out.on('finish', () => { if (!done) { done = true; res.json({ success: true, index, bytes }); } });
+  req.pipe(out);
+});
+
+router.post('/api/debug/import/complete', requireDev, (req, res) => {
+  const id = req.body.upload_id;
+  const u = getImportUpload(req, res, id);
+  if (!u) return;
+  let data;
   try {
-    const data = req.body;
+    const parts = [];
+    for (let i = 0; i < u.total; i++) {
+      const f = path.join(u.dir, String(i));
+      if (!fs.existsSync(f)) return res.status(400).json({ error: `Brak części ${i + 1}/${u.total} - wyślij plik ponownie.` });
+      parts.push(fs.readFileSync(f));
+    }
+    const buf = Buffer.concat(parts);
+    if (buf.length !== u.size) return res.status(400).json({ error: `Niekompletny plik (${buf.length} z ${u.size} bajtów) - wyślij go ponownie.` });
+    try {
+      data = JSON.parse(buf.toString('utf8'));
+    } catch (e) {
+      return res.status(400).json({ error: 'Plik nie jest poprawnym JSON-em: ' + e.message });
+    }
+  } finally {
+    dropImportUpload(id);
+  }
+  runImport(req, res, data);
+});
+
+function runImport(req, res, data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data) || !Array.isArray(data.users) || !Array.isArray(data.app_settings)) {
+    return res.status(400).json({ error: 'To nie wygląda na eksport Alleria Filmy (brak tabel users / app_settings).' });
+  }
+  const meta = data._meta && typeof data._meta === 'object' ? data._meta : null;
+
+  let backup = null;
+  try {
+    // Safety net: a wrong file must never be a one-way trip.
+    if (DB_PATH !== ':memory:') backup = backupDatabase(db, DB_PATH, 'before-import');
+  } catch (err) {
+    return res.status(500).json({ error: 'Nie udało się utworzyć kopii przed importem: ' + err.message });
+  }
+
+  const summary = { tables: 0, rows: 0, skippedTables: [], skippedColumns: {} };
+  try {
     // Disable FK checks outside the transaction (SQLite does not allow PRAGMA inside a transaction)
     db.prepare('PRAGMA foreign_keys = OFF').run();
     try {
-      const transaction = db.transaction(() => {
+      db.transaction(() => {
         const tables = db.prepare(
           "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
         ).all().map(r => r.name).filter(n => !EXPORT_SKIP_TABLES.has(n));
+        const existing = new Set(tables);
 
-        // Clear all tables
-        for (const name of tables) {
-          db.prepare(`DELETE FROM "${name}"`).run();
-        }
+        for (const name of tables) db.prepare(`DELETE FROM "${name}"`).run();
 
-        // Re-insert rows using column names taken from the data itself
         for (const [tableName, rows] of Object.entries(data)) {
-          if (EXPORT_SKIP_TABLES.has(tableName)) continue;
-          if (!Array.isArray(rows) || rows.length === 0) continue;
-          const cols = Object.keys(rows[0]);
-          const colList = cols.map(c => `"${c}"`).join(', ');
-          const placeholders = cols.map(() => '?').join(', ');
-          const stmt = db.prepare(`INSERT OR IGNORE INTO "${tableName}" (${colList}) VALUES (${placeholders})`);
+          if (tableName.startsWith('_') || EXPORT_SKIP_TABLES.has(tableName) || !Array.isArray(rows)) continue;
+          if (!existing.has(tableName)) { summary.skippedTables.push(tableName); continue; }
+          if (rows.length === 0) { summary.tables++; continue; }
+
+          const targetCols = new Set(db.prepare(`PRAGMA table_info("${tableName}")`).all().map(c => c.name));
+          const colSet = new Set();
+          for (const r of rows) if (r && typeof r === 'object') for (const k in r) colSet.add(k);
+          const exportCols = [...colSet];
+          const cols = exportCols.filter(c => targetCols.has(c));
+          const dropped = exportCols.filter(c => !targetCols.has(c));
+          if (dropped.length) summary.skippedColumns[tableName] = dropped;
+          if (cols.length === 0) continue;
+
+          // Plain INSERT on purpose: OR IGNORE would also swallow NOT NULL/UNIQUE failures and
+          // silently drop rows — any bad row must abort (and roll back) the whole import instead.
+          const stmt = db.prepare(
+            `INSERT INTO "${tableName}" (${cols.map(c => `"${c}"`).join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`
+          );
           for (const row of rows) {
-            stmt.run(cols.map(c => row[c]));
+            try {
+              stmt.run(cols.map(c => (row[c] === undefined ? null : row[c])));
+            } catch (e) {
+              throw new Error(`tabela ${tableName}: ${e.message}`);
+            }
+            summary.rows++;
           }
+          summary.tables++;
         }
-      });
-      transaction();
+      })();
     } finally {
       db.prepare('PRAGMA foreign_keys = ON').run();
     }
-    res.json({ success: true });
   } catch (err) {
     console.error('Import error:', err);
-    res.status(500).json({ error: 'Import failed: ' + err.message });
+    return res.status(500).json({ error: 'Import nie powiódł się (baza bez zmian): ' + err.message, backup });
   }
-});
+  summary.fkViolations = db.prepare('PRAGMA foreign_key_check').all().length;
+
+  // User ids from the old install don't line up with this one's — every other session now points
+  // at an arbitrary (or missing) user id, so drop them all. The importing dev is re-bound to their
+  // account in the imported data by Discord id, or has to log in again if there isn't one.
+  if (sessionStore) {
+    for (const row of sessionStore.rows()) if (row.sid !== req.sessionID) sessionStore.destroy(row.sid);
+  }
+  const me = req.session.user.discord_id
+    ? db.prepare('SELECT * FROM users WHERE discord_id = ?').get(req.session.user.discord_id)
+    : null;
+  const finish = () => res.json({ success: true, backup, relogin: !me, meta, schemaVersion: LATEST_VERSION, ...summary });
+  if (me) {
+    Object.assign(req.session.user, { id: me.id, username: me.username, display_name: me.display_name, avatar: me.avatar, role: me.role });
+    audit(me.id, 'import', 'database', null, `${summary.rows} rows, backup ${backup}`);
+    req.session.save(finish);
+  } else {
+    req.session.destroy(finish);
+  }
+}
 
 router.post('/api/debug/clear', requireDev, (req, res) => {
   try {

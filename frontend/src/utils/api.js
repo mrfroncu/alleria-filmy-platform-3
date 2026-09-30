@@ -259,11 +259,30 @@ export const api = {
   forceDeleteWatchParty: (code) => request(`/admin/watch-parties/${code}`, { method: 'DELETE' }),
 
   // Debug
-  exportDB: () => request('/debug/export'),
-  importDB: (data) => request('/debug/import', {
+  // The server streams the export with Content-Disposition: attachment — a plain navigation lets
+  // the browser save it directly instead of holding (and re-serialising) the whole DB in memory.
+  exportDbUrl: `${API}/debug/export`,
+  getExportExtras: () => request('/debug/export/extras'),
+  // The chosen file is sent as-is — see utils/dbImport.js, which callers go through.
+  importDB: (file) => request('/debug/import', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+    body: file,
+  }),
+  importDbInit: (filesize, total_chunks) => request('/debug/import/init', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filesize, total_chunks }),
+  }),
+  importDbChunk: (uploadId, index, blob) => request(`/debug/import/chunk?upload_id=${encodeURIComponent(uploadId)}&index=${index}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: blob,
+  }),
+  importDbComplete: (upload_id) => request('/debug/import/complete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ upload_id }),
   }),
   clearDB: () => request('/debug/clear', { method: 'POST' }),
   dbStats: () => request('/debug/db-stats'),

@@ -24,7 +24,10 @@ const { startBackgroundJobs } = require('./jobs');
 
 const app = express();
 
-app.use(express.json({ limit: '2mb' }));
+// The database import route parses its own (much larger) body — if this 2 MB parser ran first
+// it would reject any real export with 413 before the route's own limit ever applied.
+const jsonParser = express.json({ limit: '2mb' });
+app.use((req, res, next) => (req.path === '/api/debug/import' ? next() : jsonParser(req, res, next)));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // Increase timeout for large video uploads (30 min)

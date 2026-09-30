@@ -432,6 +432,8 @@ Przeglądarka ──► Panel (VPS, pass-through, bez zapisu) ──► Streamin
 - Porzucone uploady (zamknięta karta, zerwane połączenie, restart w trakcie) sprząta `sweepStaleChunks()`: przy starcie i co godzinę usuwa wszystko, czego nie ruszano od 24 h. Każdy przyjęty chunk odświeża licznik, więc wolny, ale żywy upload nie jest kasowany.
 - Panel przy starcie usuwa stary katalog `DATA_DIR/chunks` (pozostałość po wersjach, które składały pliki lokalnie).
 
+To samo ustawienie steruje importem bazy JSON: w trybie „w częściach” plik idzie jako `debug/import/init` → `debug/import/chunk` (×N, po 50 MB) → `debug/import/complete`. Import składa sam panel, w katalogu tymczasowym kontenera (`os.tmpdir()/alleria-import`, nie w wolumenie `data/`). Porzucony upload jest kasowany po godzinie.
+
 > [!WARNING]
 > **Tryb „jednym żądaniem” za nginx wymaga** `client_max_body_size 0;` (albo odpowiednio dużej wartości) oraz **`proxy_request_buffering off;`** dla `/api/stream/upload`. Bez wyłączenia buforowania nginx sam zapisze cały film na dysku serwera panelu, czyli dokładnie to, czego ten przepływ ma unikać. W Traefiku sprawdź limity `maxRequestBodyBytes` (middleware `buffering`) i timeouty entrypointa (`readTimeout`).
 
@@ -551,6 +553,15 @@ Schemat jest zarządzany **numerowanymi migracjami** (`backend/migrations/`). Pr
 Nowa zmiana schematu to nowy plik `NNN_opis.js` z `version: NNN`, dopisany do listy w `migrations/index.js`. Migracji, która już trafiła na produkcję, się nie edytuje. `001_baseline` to cały dotychczasowy (idempotentny) schemat: na istniejącej bazie jest no-opem i zostaje tylko zapisany jako zastosowany.
 
 Sesje logowania trzymane są osobno w `data/sessions.db` (własny store na better-sqlite3, zgodny z formatem dawnego `connect-sqlite3`, więc zmiana nikogo nie wylogowała).
+
+### Przenosiny panelu na nowy serwer
+
+Cały stan panelu to `.env` + wolumen `data/` (`alleria.db`, `uploads/`, `gdpr/`, `backups/`, `sessions.db`). Są dwie drogi:
+
+1. **Kopia wolumenu (zalecana, 1:1)** — zatrzymaj kontener, spakuj katalog wolumenu `alleria-data` (`docker volume inspect` pokaże ścieżkę), rozpakuj go w wolumenie nowej instalacji, skopiuj `.env`, uruchom. Nic więcej nie trzeba.
+2. **Eksport JSON** — Dev Tools → Debug → „Eksportuj JSON” obejmuje wszystkie tabele (także ustawienia panelu), bez sesji i historii migracji. Po kliknięciu eksportu pojawia się okno z listą tego, co trzeba skopiować osobno. Na nowej instalacji plik wgrywa się w Dev Tools → Debug albo od razu w pierwszym kroku kreatora konfiguracji („Przywróć z pliku JSON”), w częściach po 50 MB, jeśli włączony jest upload w częściach (domyślnie tak). Import najpierw robi kopię bieżącej bazy do `data/backups/`, wykonuje się w jednej transakcji (błąd = baza bez zmian), pomija tabele/kolumny, których ten schemat nie zna, i wylogowuje wszystkie inne sesje. **JSON nie zawiera plików** — katalog `data/uploads/` (wgrane i skopiowane ze streamera miniatury, awatary) trzeba przenieść osobno.
+
+Filmy HLS leżą na serwerze streamingu, nie w panelu — przenosiny panelu ich nie dotyczą, o ile `STREAM_URL` i `STREAM_SECRET` w `.env` wskazują ten sam streamer.
 
 <details>
 <summary><b>Kliknij, aby rozwinąć pełną listę tabel</b></summary>
@@ -731,7 +742,9 @@ Sesje logowania trzymane są osobno w `data/sessions.db` (własny store na bette
 - `GET /api/debug/env-check` — Wykrywanie przestarzałych/literówkowych zmiennych `.env`
 - `GET /api/debug/access/:type/:id` — Sprawdzenie uprawnień do kategorii/filmu z powodem
 - `GET /api/debug/category-role-overview` — Kategorie z niestandardowymi rolami/userami Discord, role rozwiązane do nazw na żywo
-- `GET /api/debug/export` / `POST /api/debug/import` — Eksport/import bazy JSON
+- `GET /api/debug/export` / `POST /api/debug/import` — Eksport/import bazy JSON (import: kopia przed importem, jedna transakcja, do 500 MB)
+- `POST /api/debug/import/init` / `chunk?upload_id=&index=` / `complete` — Ten sam import w częściach po 50 MB (za Cloudflare)
+- `GET /api/debug/export/extras` — Liczba i rozmiar plików spoza eksportu (`data/uploads/`, `data/gdpr/`), do okna po eksporcie
 - `GET /api/debug/db-stats` — Rozmiar pliku bazy + liczba wierszy
 - `GET /api/debug/migrations` — Wersja schematu, historia migracji, oczekujące migracje, kopie zapasowe
 - `POST /api/debug/migrations/backup` — Ręczna kopia bazy do `data/backups/`

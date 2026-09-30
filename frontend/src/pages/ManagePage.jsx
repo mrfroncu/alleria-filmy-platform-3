@@ -1591,6 +1591,8 @@ export default function ManagePage() {
                   <b>WŁĄCZONY</b>: film jest wysyłany w kawałkach po 50 MB — wymagane, gdy panel stoi za Cloudflare (limit 100 MB na żądanie).
                   <br />
                   <b>WYŁĄCZONY</b>: cały plik jednym żądaniem — dla proxy bez limitu (nginx, Traefik). W obu trybach plik trafia wprost na serwer streamingu.
+                  <br />
+                  Dotyczy też importu bazy JSON (Dev Tools → Debug i kreator konfiguracji).
                 </p>
                 <ToggleSwitch
                   checked={!!settings?.chunked_upload}

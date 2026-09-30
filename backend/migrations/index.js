@@ -63,7 +63,9 @@ function backupDatabase(db, dbPath, label) {
   const dir = backupDirFor(dbPath);
   fs.mkdirSync(dir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace(/-\d{3}Z$/, 'Z');
-  const file = path.join(dir, `${BACKUP_PREFIX}${label}-${stamp}.db`);
+  // VACUUM INTO refuses an existing file — two snapshots within the same second get a suffix.
+  let file = path.join(dir, `${BACKUP_PREFIX}${label}-${stamp}.db`);
+  for (let n = 2; fs.existsSync(file); n++) file = path.join(dir, `${BACKUP_PREFIX}${label}-${stamp}-${n}.db`);
   db.prepare('VACUUM INTO ?').run(file);
   for (const old of listBackups(dbPath).slice(MAX_BACKUPS)) {
     try { fs.unlinkSync(path.join(dir, old.file)); } catch (e) {}

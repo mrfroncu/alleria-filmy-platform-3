@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Bug, Lock, LogIn } from 'lucide-react';
 import { api } from '../utils/api';
+import { importDatabaseFile, describeImport, reloadAfterImport } from '../utils/dbImport';
+import ExportInfoModal from '../components/ExportInfoModal';
 import { useSettings } from '../contexts/SettingsContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useToast } from '../contexts/ToastContext';
@@ -62,6 +64,8 @@ export default function DebugPage() {
     if (t && TAB_IDS.includes(t)) setActiveTab(t);
   }, [searchParams]);
   const fileInputRef = useRef(null);
+  const [importProgress, setImportProgress] = useState('');
+  const [exportInfoOpen, setExportInfoOpen] = useState(false);
 
   // SQL executor
   const [sqlQuery, setSqlQuery] = useState('');
@@ -255,38 +259,26 @@ export default function DebugPage() {
     }
   };
 
-  const handleExport = async () => {
-    setLoading(true);
-    try {
-      const data = await api.exportDB();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `alleria-filmy-export-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setStatus({ type: 'success', msg: 'Eksport zakończony pomyślnie.' });
-    } catch (err) {
-      setStatus({ type: 'error', msg: 'Błąd eksportu: ' + err.message });
-    }
-    setLoading(false);
+  const handleExport = () => {
+    window.location.href = api.exportDbUrl;
+    setExportInfoOpen(true);
   };
 
   const handleImport = async (e) => {
     const file = e.target.files?.[0];
+    if (fileInputRef.current) fileInputRef.current.value = '';
     if (!file) return;
+    if (!(await confirm(`Zastąpić CAŁĄ bazę danymi z pliku "${file.name}"? Obecna baza zostanie najpierw zapisana w data/backups/.`, { danger: true, confirmLabel: 'Importuj' }))) return;
     setLoading(true);
     try {
-      const text = await file.text();
-      const data = JSON.parse(text);
-      await api.importDB(data);
-      setStatus({ type: 'success', msg: 'Import zakończony pomyślnie.' });
+      const result = await importDatabaseFile(file, { chunked: config.chunkedUpload, onProgress: setImportProgress });
+      await confirm(`Import zakończony: ${describeImport(result)}.${result.relogin ? ' Twojego konta nie ma w zaimportowanych danych - zaloguj się ponownie.' : ''}`, { title: 'Baza zaimportowana', confirmLabel: 'Odśwież', cancelLabel: 'Zamknij' });
+      reloadAfterImport(result);
     } catch (err) {
       setStatus({ type: 'error', msg: 'Błąd importu: ' + err.message });
+      setLoading(false);
     }
-    setLoading(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    setImportProgress('');
   };
 
   const performClear = async () => {
@@ -1151,10 +1143,11 @@ export default function DebugPage() {
             </div>
             <div className="flex-1">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Eksportuj bazę danych</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">Pobierz plik JSON ze wszystkimi danymi platformy (wszystkie tabele oprócz sesji logowania).</p>
-              <button onClick={handleExport} disabled={loading} className="btn-primary text-sm">
-                {loading ? 'Eksportowanie...' : 'Eksportuj JSON'}
-              </button>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-2">Pobierz plik JSON ze wszystkimi danymi platformy (wszystkie tabele oprócz sesji logowania, w tym ustawienia panelu).</p>
+              <p className="text-xs text-zinc-400 mb-4">
+                Nie zawiera plików: wgrane miniatury i awatary leżą w <code className="font-mono">data/uploads/</code> - przy przenosinach skopiuj ten katalog osobno (albo cały wolumen <code className="font-mono">data/</code>).
+              </p>
+              <button onClick={handleExport} className="btn-primary text-sm">Eksportuj JSON</button>
             </div>
           </div>
         </div>
@@ -1167,13 +1160,13 @@ export default function DebugPage() {
             </div>
             <div className="flex-1">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Importuj bazę danych</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-1">Zastąp wszystkie dane w bazie danymi z pliku JSON.</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-1">Zastąp wszystkie dane w bazie danymi z pliku JSON. Przed importem obecna baza jest zapisywana w <code className="font-mono text-xs">data/backups/</code>.</p>
               <p className="text-xs text-amber-600 dark:text-amber-400 font-bold mb-4 flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> Obecne dane zostaną nadpisane!
+                <AlertTriangle className="w-3 h-3" /> Obecne dane zostaną nadpisane! Wszyscy zostaną wylogowani.
               </p>
-              <label className="btn-secondary text-sm inline-flex items-center gap-2 cursor-pointer">
-                <Upload className="w-4 h-4" /> Wybierz plik JSON
-                <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} className="hidden" />
+              <label className={`btn-secondary text-sm inline-flex items-center gap-2 ${loading ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}>
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} {loading ? (importProgress || 'Importowanie...') : 'Wybierz plik JSON'}
+                <input ref={fileInputRef} type="file" accept=".json,application/json" onChange={handleImport} className="hidden" />
               </label>
             </div>
           </div>
@@ -1374,6 +1367,8 @@ export default function DebugPage() {
       )}
 
       {/* Clear DB confirmation modal */}
+      <ExportInfoModal open={exportInfoOpen} onClose={() => setExportInfoOpen(false)} />
+
       {clearDbOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
