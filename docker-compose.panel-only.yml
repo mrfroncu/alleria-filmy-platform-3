@@ -14,8 +14,10 @@ services:
   alleria-filmy:
     build: .
     container_name: alleria-filmy
-    ports:
-      - "${PORT:-3000}:3000"
+    # Zadnego portu na hoscie - Traefik siega tej uslugi po sieci 'edge',
+    # a PORT z .env steruje wylacznie tym, na czym aplikacja slucha w srodku.
+    # (Wczesniej PORT trafial jednoczesnie do publikacji i do nasluchu, co
+    # konczylo sie bledem 502.)
     env_file:
       - .env
     volumes:
