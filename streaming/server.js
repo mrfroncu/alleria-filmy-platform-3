@@ -854,7 +854,10 @@ function runFFmpeg(args, statusPath, progressBase, progressRange, totalDuration)
 }
 
 const PORT = process.env.STREAM_PORT || 4000;
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
+  // Ten sam limit co w panelu: upload pliku z panelu (pass-through) to jedno długie żądanie, a domyślne
+  // 300 s na odbiór całego ciała zrywa go w połowie dla dużych filmów. 0 = bez limitu.
+  server.requestTimeout = 0;
   let ffmpegOk = false;
   try { execSync('ffmpeg -version', { stdio: 'pipe' }); ffmpegOk = true; } catch (e) {}
   console.log(`\n[STREAM] Alleria Streaming Service on port ${PORT}`);

@@ -93,6 +93,8 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const [uploadProgress, setUploadProgress] = useState('');
   const [uploadPercent, setUploadPercent] = useState(0);
   const [chunkPercent, setChunkPercent] = useState(0);
+  const [uploadSpeed, setUploadSpeed] = useState(0); // B/s, tylko upload jednym żądaniem
+  const [uploadEta, setUploadEta] = useState(0); // s
   const [streamVideoId, setStreamVideoId] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [categories, setCategories] = useState([]);
@@ -230,7 +232,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     setMirror5Name(''); setMirror5Url(''); setMirror5Type('link'); setMirror5VideoFile(null); setMirror5StreamVideoId(''); setMirror5IsAlt(false);
     setDescription(''); setPublishDate(new Date().toISOString());
     setSelectedTags([]); setTagInput(''); setShowMirror1(false); setShowMirror2(false); setShowMirror3(false); setShowMirror4(false); setShowMirror5(false);
-    setIsSelfHosted(false); setVideoFile(null); setDrmEnhanced(false); setUploadProgress(''); setUploadPercent(0); setChunkPercent(0); setStreamVideoId(''); setCategoryId(defaultCategoryId ? String(defaultCategoryId) : ''); setAccessMode('category'); setAllowedUsers([]);
+    setIsSelfHosted(false); setVideoFile(null); setDrmEnhanced(false); setUploadProgress(''); setUploadPercent(0); setChunkPercent(0); setUploadSpeed(0); setUploadEta(0); setStreamVideoId(''); setCategoryId(defaultCategoryId ? String(defaultCategoryId) : ''); setAccessMode('category'); setAllowedUsers([]);
   };
 
   useEffect(() => {
@@ -269,6 +271,12 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     if (file) { setThumbnailFile(file); setThumbnailPreview(URL.createObjectURL(file)); setThumbnail(''); }
   };
 
+  const formatEta = (sec) => {
+    if (!Number.isFinite(sec) || sec < 1) return '< 1 s';
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
+    return h ? `${h} godz. ${m} min` : m ? `${m} min ${s} s` : `${s} s`;
+  };
+
   // Chunking off (panel not behind a per-request size cap): the whole file in one request.
   const uploadVideoFileWhole = (file, label, drm) => new Promise((resolve, reject) => {
     const totalMb = (file.size / 1024 / 1024).toFixed(1);
@@ -279,11 +287,14 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     form.append('drm_enhanced', drm ? 'true' : 'false'); // text fields before the file
     form.append('video', file, file.name);
     const xhr = new XMLHttpRequest();
+    const startedAt = Date.now();
     xhr.upload.addEventListener('progress', (e) => {
       if (e.lengthComputable) {
         const pct = Math.round((e.loaded / e.total) * 100);
-        setChunkPercent(pct);
+        const bytesPerSec = e.loaded / Math.max((Date.now() - startedAt) / 1000, 0.001);
         setUploadPercent(Math.round(pct * 0.95));
+        setUploadSpeed(bytesPerSec);
+        setUploadEta((e.total - e.loaded) / bytesPerSec);
       }
     });
     xhr.addEventListener('load', () => {
@@ -291,7 +302,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
         const data = JSON.parse(xhr.responseText);
         if (xhr.status >= 200 && xhr.status < 300 && data.success) { setUploadPercent(100); resolve(data.video_id); }
         else reject(new Error(data.error || `Upload HTTP ${xhr.status}`));
-      } catch (e) { reject(new Error('Invalid upload response')); }
+      } catch (e) { reject(new Error(`Nieprawidłowa odpowiedź serwera (HTTP ${xhr.status}) - brak JSON-a, prawdopodobnie zerwane połączenie przez proxy`)); }
     });
     xhr.addEventListener('error', () => reject(new Error('Upload network error')));
     xhr.addEventListener('timeout', () => reject(new Error('Upload timeout')));
@@ -1050,6 +1061,12 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                   <div className="h-2.5 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
                     <div className="h-full bg-gradient-to-r from-violet-500 to-violet-500 rounded-full transition-all duration-300 ease-out" style={{ width: `${uploadPercent}%` }} />
                   </div>
+                  {uploadSpeed > 0 && uploadPercent < 95 && (
+                    <div className="flex items-center justify-between mt-1.5 text-[10px] font-mono text-zinc-500">
+                      <span>{(uploadSpeed / 1024 / 1024).toFixed(1)} MB/s</span>
+                      <span>pozostało ~{formatEta(uploadEta)}</span>
+                    </div>
+                  )}
                 </div>
                 {chunkPercent > 0 && uploadPercent < 95 && (
                   <div>

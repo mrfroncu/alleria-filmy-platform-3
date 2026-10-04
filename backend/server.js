@@ -135,6 +135,10 @@ app.get('*', (req, res) => {
 });
 
 const httpServer = http.createServer(app);
+// Node 18+ zrywa połączenie, jeśli całe ciało żądania nie dojdzie w 300 s (domyślnie). Upload jednym
+// żądaniem (chunking wyłączony) na duży plik trwa dłużej, a zerwany socket wychodzi przez reverse proxy
+// jako 502 bez JSON-a. 0 = bez limitu.
+httpServer.requestTimeout = 0;
 // Both WSS instances are created with `noServer: true` (see their setup functions) — a single
 // shared 'upgrade' listener here dispatches by pathname instead of each attaching its own,
 // which would otherwise fight over the same event (see the comment in watchParty.js).

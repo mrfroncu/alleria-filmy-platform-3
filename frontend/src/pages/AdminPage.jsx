@@ -108,8 +108,31 @@ export default function AdminPage() {
     } catch (err) { toast.error('Błąd: ' + err.message); }
   };
 
+  // Sekwencyjnie, nie równolegle: każde wywołanie to osobne wycięcie klatki ffmpeg na streamerze,
+  // więc równoległe requesty tylko by się w nim kolejkowały. Pojedynczy endpoint, bez zmian w API.
+  const [bulkRegenProgress, setBulkRegenProgress] = useState(null); // { done, total } podczas pracy
+  const handleBulkRegenerate = async () => {
+    const targets = videos.filter(v => selectedIds.includes(v.id) && v.stream_video_id && v.stream_status === 'ready');
+    const skipped = selectedIds.length - targets.length;
+    if (targets.length === 0) { toast.error('Żaden z zaznaczonych filmów nie jest self-hosted i gotowy.'); return; }
+    const skippedNote = skipped ? ` (pominięto ${skipped}: nie są self-hosted albo nie są gotowe)` : '';
+    if (!(await confirm(`Zregenerować miniaturki ${targets.length} filmów?${skippedNote}`, { confirmLabel: 'Regeneruj' }))) return;
+    let failed = 0;
+    for (let i = 0; i < targets.length; i++) {
+      setBulkRegenProgress({ done: i, total: targets.length });
+      try { await api.regenerateThumbnail(targets[i].id); }
+      catch (err) { failed++; }
+    }
+    setBulkRegenProgress(null);
+    setSelectedIds([]); setBulkAction(''); setBulkValue('');
+    loadData();
+    if (failed) toast.error(`Nie udało się: ${failed} z ${targets.length}`);
+    else toast.success(`Zregenerowano miniaturki: ${targets.length}`);
+  };
+
   const handleBulkAction = async () => {
     if (!bulkAction || selectedIds.length === 0) return;
+    if (bulkAction === 'regen_thumbnails') return handleBulkRegenerate();
     const label = bulkAction === 'delete' ? `USUNĄĆ ${selectedIds.length} filmów` : `zmienić ${selectedIds.length} filmów`;
     if (!(await confirm(`Czy na pewno chcesz ${label}?`, { danger: bulkAction === 'delete', confirmLabel: bulkAction === 'delete' ? 'Usuń' : 'Zmień' }))) return;
     try {
@@ -229,6 +252,7 @@ export default function AdminPage() {
                 <option value="change_category">Zmień kategorię</option>
                 <option value="change_author">Zmień autora</option>
                 <option value="change_access">Zmień uprawnienia</option>
+                <option value="regen_thumbnails">Regeneruj miniaturki</option>
                 <option value="delete">Usuń zaznaczone</option>
               </select>
               {bulkAction === 'change_category' && (
@@ -249,7 +273,8 @@ export default function AdminPage() {
                   <option value="custom">Niestandardowe</option>
                 </select>
               )}
-              <button onClick={handleBulkAction} disabled={!bulkAction} className="btn-sm-primary">Wykonaj</button>
+              {bulkRegenProgress && <span className="text-sm font-mono text-violet-500">{bulkRegenProgress.done}/{bulkRegenProgress.total}</span>}
+              <button onClick={handleBulkAction} disabled={!bulkAction || !!bulkRegenProgress} className="btn-sm-primary">Wykonaj</button>
               <button onClick={() => { setSelectedIds([]); setBulkAction(''); }} className="btn-link-zinc">Anuluj</button>
             </div>
           )}
