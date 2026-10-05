@@ -9,6 +9,7 @@ const { STREAM_SECRET } = require('../lib/config');
 const { STREAM_URL, isStreamUnreachable, logStreamError, pullThumbnailLocally, streamErrorLog } = require('../lib/stream');
 const { audit } = require('../lib/helpers');
 const { resolveStreamVideoForUser } = require('../lib/access');
+const { createThrottle } = require('../lib/uploadThrottle');
 
 const router = express.Router();
 
@@ -22,6 +23,12 @@ router.get('/api/debug/stream-errors', requireDev, (req, res) => {
 async function proxyUpload(req, res, step, { body, headers = {} }) {
   const ctrl = new AbortController();
   res.on('close', () => { if (!res.writableEnded) ctrl.abort(); }); // browser gave up → stop upstream too
+  // Streamed bodies (chunk / single upload) go through the shared bandwidth cap — see uploadThrottle.js
+  if (typeof body?.pipe === 'function') {
+    const throttle = createThrottle();
+    body.on('error', e => throttle.destroy(e));
+    body = body.pipe(throttle);
+  }
   try {
     const r = await fetch(`${STREAM_URL}/upload${step ? '/' + step : ''}`, {
       method: 'POST',

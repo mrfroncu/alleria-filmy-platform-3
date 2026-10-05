@@ -39,6 +39,12 @@ if (GPU_REQUESTED) {
   } catch (e) {}
 }
 
+// A stray async error (aborted upload, ffmpeg spawn failure, ...) must not take the whole service
+// down — that drops every in-flight request ("read ECONNRESET" in the panel) and leaves the
+// streamer offline until Docker restarts it. Log it loudly instead so the cause is in `docker logs`.
+process.on('uncaughtException', (err) => console.error('[STREAM] uncaughtException:', err));
+process.on('unhandledRejection', (err) => console.error('[STREAM] unhandledRejection:', err));
+
 const app = express();
 app.use(express.json());
 

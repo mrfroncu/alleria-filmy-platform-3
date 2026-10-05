@@ -508,6 +508,23 @@ export default function ManagePage() {
     setSavingSettings(false);
   };
 
+  const [uploadLimit, setUploadLimit] = useState('');
+  useEffect(() => {
+    if (settings) setUploadLimit(String(settings.upload_limit_mbps ?? 0));
+  }, [settings?.upload_limit_mbps]);
+
+  const saveUploadLimit = async () => {
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ upload_limit_mbps: parseFloat(uploadLimit) || 0 });
+      setSettingsState(r);
+      setStatus({ type: 'success', msg: r.upload_limit_mbps ? `Limit uploadu: ${r.upload_limit_mbps} Mbit/s` : 'Limit uploadu wyłączony.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
   const toggleChunkedUpload = async () => {
     if (!settings) return;
     setSavingSettings(true);
@@ -1600,6 +1617,33 @@ export default function ManagePage() {
                   disabled={!settings || savingSettings}
                   label={settings == null ? 'Ładowanie...' : (settings.chunked_upload ? 'Upload w częściach: WŁĄCZONY' : 'Upload w częściach: WYŁĄCZONY')}
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* Upload bandwidth limit */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <Upload className="w-6 h-6 text-amber-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Limit przepustowości uploadu</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Maksymalna łączna prędkość wgrywania filmów przez panel (wszystkie uploady razem), w Mbit/s. Zostawia zapas łącza dla innych usług na serwerze (np. TeamSpeak).
+                  Ustaw nieco poniżej limitu łącza VPS (np. 300 przy 400). <b>0</b> = bez limitu. Działa od razu, także na trwających uploadach.
+                  <br />
+                  Nie dotyczy odtwarzania — wideo też płynie przez panel, ale ten limit go nie obejmuje.
+                </p>
+                <div className="max-w-[160px]">
+                  <label className="label-field">Limit (Mbit/s)</label>
+                  <input type="number" min="0" step="1" value={uploadLimit}
+                    onChange={e => setUploadLimit(e.target.value)}
+                    className="input-field !py-3 text-sm" />
+                </div>
+                <button onClick={saveUploadLimit} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
+                  {savingSettings ? 'Zapisywanie...' : 'Zapisz'}
+                </button>
               </div>
             </div>
           </div>

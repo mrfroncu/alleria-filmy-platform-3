@@ -2,6 +2,7 @@ const { EMAIL_TEMPLATE_DEFAULTS } = require('./email');
 const { WEBHOOK_ALLOWED_HOSTS } = require('./notify');
 const { discordRolesConfigSource, getDiscordRoleSetting, getTsBotNickname, getTsSetting, tsConfigSource } = require('./tsConfig');
 const { getLimit, getSetting } = require('./settings');
+const { getUploadLimitMbps } = require('./uploadThrottle');
 
 // ============ APP SETTINGS API (dev only) ============
 const TS3_DELIVERY_VALUES = ['pm', 'poke', 'both'];
@@ -25,6 +26,7 @@ function settingsPayload() {
     show_top_bar: getSetting('show_top_bar', '1') === '1',
     allow_custom_avatars: getSetting('allow_custom_avatars', '0') === '1',
     chunked_upload: getSetting('chunked_upload', '1') === '1',
+    upload_limit_mbps: getUploadLimitMbps(),
     youtube_custom_player: getSetting('youtube_custom_player', '0') === '1',
     gdpr_region: getSetting('gdpr_region', 'off'),
 

@@ -141,6 +141,15 @@ router.post('/api/debug/settings', requireDev, (req, res) => {
     audit(req.session.user.id, 'edit', 'settings', null,
       `chunked_upload → ${req.body.chunked_upload ? 'ON' : 'OFF'}`);
   }
+  // Cap on total video-upload bandwidth through the panel, in Mbit/s (0 = unlimited)
+  if (req.body.upload_limit_mbps !== undefined) {
+    const n = parseFloat(req.body.upload_limit_mbps);
+    if (!Number.isFinite(n) || n < 0 || n > 100000) {
+      return res.status(400).json({ error: 'Nieprawidłowy limit uploadu (0 = bez limitu, maks. 100000 Mbit/s).' });
+    }
+    setSetting('upload_limit_mbps', n);
+    audit(req.session.user.id, 'edit', 'settings', null, `upload_limit_mbps → ${n || 'bez limitu'}`);
+  }
   // Custom-chrome YouTube player overlay vs. plain YouTube embed
   if (req.body.youtube_custom_player !== undefined) {
     setSetting('youtube_custom_player', req.body.youtube_custom_player ? '1' : '0');
