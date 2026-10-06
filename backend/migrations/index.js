@@ -15,6 +15,7 @@ const path = require('path');
 const MIGRATIONS = [
   require('./001_baseline'),
   require('./002_indexes'),
+  require('./003_authentik'),
 ];
 
 const BACKUP_PREFIX = 'alleria-';

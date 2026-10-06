@@ -37,12 +37,13 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 - **Discord OAuth2** — logowanie przez Discord, sprawdzanie ról, automatyczne przypisywanie uprawnień (member/admin/dev)
 - **TeamSpeak 6** — logowanie przez ServerQuery HTTP API, dopasowanie po IP klienta, sprawdzanie grup serwera
 - **TeamSpeak 3** — logowanie przez ServerQuery po TCP, ta sama logika dopasowania po IP i grupach co TS6
+- **Authentik SSO (OpenID Connect, opcjonalnie)** — przycisk „Zaloguj przez …” pojawia się, gdy w `.env` są ustawione `AUTHENTIK_*`; flow authorization code + PKCE, role nadawane po nazwach grup Authentik (`AUTHENTIK_MEMBER_GROUPS` / `AUTHENTIK_ADMIN_GROUPS` / `AUTHENTIK_DEV_GROUPS`)
 - **Bot do uwierzytelniania ServerQuery** — kod logowania wysyłany na TS3/TS6 przychodzi od `TS_BOT_NICKNAME`
 - **Redirect po logowaniu** — niezalogowany użytkownik wchodzący na `/video/24` zostaje przekierowany na login, a po zalogowaniu wraca na `/video/24`
 - **Konfiguracja logowania w panelu albo w `.env`** — dane połączenia TS3/TS6 oraz role Discord member/admin można trzymać wyłącznie w `.env` (domyślnie) albo w pełni edytować z Zarządzanie → Ustawienia → Logowanie bez restartu kontenera (`TS_CONFIG_SOURCE` / `DISCORD_ROLES_CONFIG_SOURCE`); rola `dev` zawsze zostaje tylko w `.env`
 
 ### 🔗 Łączenie i scalanie kont
-- W Profilu można dopiąć dodatkową metodę logowania (Discord / TeamSpeak 3 / TeamSpeak 6) do już posiadanego konta
+- W Profilu można dopiąć dodatkową metodę logowania (Discord / TeamSpeak 3 / TeamSpeak 6 / Authentik SSO) do już posiadanego konta
 - Jeśli dopinana tożsamość należy już do innego, istniejącego konta, zamiast cichego połączenia powstaje **propozycja scalenia** — porównanie statystyk obu kont i wymagane jawne potwierdzenie, zanim komentarze/filmy/historia zostaną złączone w jedno konto
 - Odpięcie metody logowania jest możliwe, dopóki nie jest to jedyny pozostały sposób zalogowania się na konto
 
@@ -321,6 +322,20 @@ Lub konfiguracja permanentna w `~/.cloudflared/config.yml`.
 | `DISCORD_MEMBER_ROLE_ID` | ID roli dającej dostęp do platformy |
 | `DISCORD_ADMIN_ROLE_ID` | ID roli admina/redaktora |
 | `DISCORD_DEV_ROLE_ID` | ID roli developera — zawsze tylko `.env`, nawet gdy `DISCORD_ROLES_CONFIG_SOURCE=panel` |
+
+### Authentik SSO (opcjonalnie)
+W Authentik: **Applications → Providers → OAuth2/OpenID Provider** (Client type: *Confidential*, Redirect URI w trybie *Strict* = wartość `AUTHENTIK_REDIRECT_URI`), potem **Application** podpięta do tego providera. Dostęp można ograniczyć politykami/grupami przypiętymi do aplikacji w Authentik albo zmiennymi `*_GROUPS` poniżej. Wszystko tylko w `.env` (bez edycji z panelu).
+
+| Zmienna | Opis |
+|---------|------|
+| `AUTHENTIK_URL` | Adres instancji Authentik, np. `https://auth.alleria.pl` (bez ścieżki) |
+| `AUTHENTIK_CLIENT_ID` | Client ID providera |
+| `AUTHENTIK_CLIENT_SECRET` | Client Secret providera |
+| `AUTHENTIK_REDIRECT_URI` | URL callback (z `/auth/authentik/callback`) |
+| `AUTHENTIK_DISPLAY_NAME` | Nazwa na przycisku i w profilu (domyślnie `Authentik`) |
+| `AUTHENTIK_MEMBER_GROUPS` | Nazwy grup (po przecinku) dające dostęp; puste = każdy, kogo Authentik przepuści |
+| `AUTHENTIK_ADMIN_GROUPS` | Nazwy grup dające rolę admin/redaktor |
+| `AUTHENTIK_DEV_GROUPS` | Nazwy grup dające rolę dev |
 
 ### TeamSpeak 6 (opcjonalnie)
 | Zmienna | Opis |
@@ -608,6 +623,8 @@ Filmy HLS leżą na serwerze streamingu, nie w panelu — przenosiny panelu ich 
 ### Auth
 - `GET /auth/discord` — Start Discord OAuth2 (+`?returnTo=` dla redirect)
 - `GET /auth/discord/callback` — Discord OAuth2 callback
+- `GET /auth/authentik` — Start Authentik OIDC (+`?returnTo=`, `?mode=link` do łączenia kont)
+- `GET /auth/authentik/callback` — Authentik OIDC callback
 - `POST /api/auth/teamspeak` / `POST /api/auth/teamspeak3` — logowanie po IP (TS6 / TS3)
 - `GET /api/auth/me` — Current user
 - `POST /api/auth/logout` — Wylogowanie

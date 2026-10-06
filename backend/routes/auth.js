@@ -8,8 +8,67 @@ const { createPendingMerge, getMergeStats, identityList, maxRole, tosNeedsAccept
 const { getDiscordRoleSetting } = require('../lib/tsConfig');
 const { getSetting } = require('../lib/settings');
 const { stampSessionMeta } = require('../lib/sessions');
+const { isAuthentikConfigured, authentikDisplayName, authentikEndpoints, createPkcePair, computeAuthentikRole } = require('../lib/authentik');
 
 const router = express.Router();
+
+// Shared by the Discord and Authentik redirect steps: remember where to go afterwards, whether
+// this is the iframe popup flow, and whether we're linking onto the already-logged-in account
+// (silently ignored if there's no session to link onto).
+function stashOAuthIntent(req) {
+  if (req.query.returnTo) {
+    const r = String(req.query.returnTo);
+    if (isSafeReturnTo(r)) req.session.returnTo = r;
+  }
+  // Reset leftovers from an earlier, abandoned round-trip on this same session.
+  if (req.query.popup === 'true') req.session.popup = true;
+  else delete req.session.popup;
+  if (req.query.mode === 'link' && req.session.user) {
+    req.session.linkPrimaryUserId = req.session.user.id;
+  } else {
+    delete req.session.linkPrimaryUserId;
+  }
+}
+
+// Shared by the Discord and Authentik callbacks once the user row is settled: regenerate the
+// session (prevents session fixation), store `sessionUser`, then either close the popup (iframe
+// flow) or redirect to the saved returnTo.
+function finishOAuthLogin(req, res, sessionUser, popupMessageType) {
+  // Capture session values before regenerating
+  const savedPopup = req.session.popup;
+  const savedReturnTo = req.session.returnTo;
+
+  req.session.regenerate((err) => {
+    if (err) {
+      console.error('[AUTH] Session regenerate error:', err);
+      return res.redirect('/login?error=auth_failed');
+    }
+    req.session.user = sessionUser;
+    stampSessionMeta(req);
+    // CRITICAL: explicitly save session before redirect to prevent race condition
+    req.session.save((saveErr) => {
+      if (saveErr) {
+        console.error('[AUTH] Session save error:', saveErr);
+        return res.redirect('/login?error=auth_failed');
+      }
+      const rawReturnTo = savedReturnTo || '/';
+      // Validate returnTo before redirecting
+      const returnTo = isSafeReturnTo(rawReturnTo) ? rawReturnTo : '/';
+
+      if (savedPopup) {
+        // Serve a minimal page that notifies the opener and closes the popup.
+        // Using inline HTML avoids React's auth guards (GuestRoute redirects
+        // authenticated users away from /login, preventing the postMessage effect
+        // from ever running).
+        console.log('[AUTH] Session saved, closing popup and notifying opener');
+        return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>try{if(window.opener){window.opener.postMessage({type:'${popupMessageType}'},window.location.origin);}window.close();}catch(e){window.close();}</script></body></html>`);
+      }
+
+      console.log(`[AUTH] Session saved, redirecting to ${returnTo}`);
+      res.redirect(returnTo);
+    });
+  });
+}
 
 // ============ DISCORD AUTH ============
 function discordRedirectHandler(req, res) {
@@ -17,25 +76,10 @@ function discordRedirectHandler(req, res) {
     console.error('Discord auth failed: DISCORD_CLIENT_ID or DISCORD_REDIRECT_URI not set');
     return res.redirect('/login?error=config_missing');
   }
-  // Save return URL so user gets redirected back after login (validate to prevent open redirect)
-  if (req.query.returnTo) {
-    const r = String(req.query.returnTo);
-    if (isSafeReturnTo(r)) {
-      req.session.returnTo = r;
-    }
-  }
-  // Track popup flow — used when the app is embedded in an iframe
-  const isPopupFlow = req.query.popup === 'true';
-  if (isPopupFlow) {
-    req.session.popup = true;
-  }
-  // Account-linking mode: attach the Discord identity to the already-logged-in user on
-  // callback instead of logging in as a (possibly different) Discord-origin account.
-  // Silently ignored if there's no session to link onto.
-  const isLinkMode = req.query.mode === 'link' && !!req.session.user;
-  if (isLinkMode) {
-    req.session.linkPrimaryUserId = req.session.user.id;
-  }
+  // returnTo (validated against open redirect), iframe popup flow, and account-linking mode —
+  // in link mode the callback attaches the Discord identity to the already-logged-in user
+  // instead of logging in as a (possibly different) Discord-origin account.
+  stashOAuthIntent(req);
   // CSRF protection for the OAuth round-trip: a random, single-use state tied to this
   // session is required back on the callback. Without it, an attacker who has obtained
   // their own valid Discord authorization code could drive a victim's browser through
@@ -206,51 +250,16 @@ async function discordCallbackHandler(req, res) {
     console.log('[AUTH] ✅ Login successful:', user.display_name, '(role:', role, ')');
     console.log('[AUTH] Session ID:', req.sessionID);
 
-    // Capture session values before regenerating
-    const savedPopup = req.session.popup;
-    const savedReturnTo = req.session.returnTo;
-
-    // Regenerate session to prevent session fixation
-    req.session.regenerate((err) => {
-      if (err) {
-        console.error('[AUTH] Session regenerate error:', err);
-        return res.redirect('/login?error=auth_failed');
-      }
-      req.session.user = {
-        id: user.id,
-        discord_id: user.discord_id,
-        username: user.username,
-        display_name: user.display_name,
-        avatar: user.avatar,
-        role: user.role,
-        auth_method: 'discord',
-        discord_roles: roles
-      };
-      stampSessionMeta(req);
-      // CRITICAL: explicitly save session before redirect to prevent race condition
-      req.session.save((saveErr) => {
-        if (saveErr) {
-          console.error('[AUTH] Session save error:', saveErr);
-          return res.redirect('/login?error=auth_failed');
-        }
-        const isPopup = savedPopup;
-        const rawReturnTo = savedReturnTo || '/';
-        // Validate returnTo before redirecting
-        const returnTo = isSafeReturnTo(rawReturnTo) ? rawReturnTo : '/';
-
-        if (isPopup) {
-          // Serve a minimal page that notifies the opener and closes the popup.
-          // Using inline HTML avoids React's auth guards (GuestRoute redirects
-          // authenticated users away from /login, preventing the postMessage effect
-          // from ever running).
-          console.log('[AUTH] Session saved, closing popup and notifying opener');
-          return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>try{if(window.opener){window.opener.postMessage({type:'discord_auth_success'},window.location.origin);}window.close();}catch(e){window.close();}</script></body></html>`);
-        }
-
-        console.log(`[AUTH] Session saved, redirecting to ${returnTo}`);
-        res.redirect(returnTo);
-      });
-    });
+    finishOAuthLogin(req, res, {
+      id: user.id,
+      discord_id: user.discord_id,
+      username: user.username,
+      display_name: user.display_name,
+      avatar: user.avatar,
+      role: user.role,
+      auth_method: 'discord',
+      discord_roles: roles
+    }, 'discord_auth_success');
 
   } catch (err) {
     console.error('[AUTH] Discord auth error:', err);
@@ -262,6 +271,185 @@ async function discordCallbackHandler(req, res) {
 // Register callback on BOTH paths — works whether DISCORD_REDIRECT_URI has /api/ or not
 router.get('/api/auth/discord/callback', discordCallbackHandler);
 router.get('/auth/discord/callback', discordCallbackHandler);
+
+// ============ AUTHENTIK (OIDC SSO) AUTH ============
+// See lib/authentik.js for the flow and the env vars. Mirrors the Discord flow above: same
+// returnTo/popup/link-mode handling, same single-use state, plus PKCE.
+function authentikRedirectHandler(req, res) {
+  if (!isAuthentikConfigured()) {
+    console.error('Authentik auth failed: AUTHENTIK_URL / AUTHENTIK_CLIENT_ID / AUTHENTIK_CLIENT_SECRET / AUTHENTIK_REDIRECT_URI not set');
+    return res.redirect('/login?error=config_missing');
+  }
+  stashOAuthIntent(req);
+  const state = crypto.randomBytes(24).toString('hex');
+  const { verifier, challenge } = createPkcePair();
+  req.session.authentikState = state;
+  req.session.authentikCodeVerifier = verifier;
+  const params = new URLSearchParams({
+    client_id: process.env.AUTHENTIK_CLIENT_ID,
+    redirect_uri: process.env.AUTHENTIK_REDIRECT_URI,
+    response_type: 'code',
+    scope: 'openid profile email',
+    state,
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+  });
+  // Save before redirecting — the callback can't work without state/verifier in the store.
+  req.session.save(() => res.redirect(`${authentikEndpoints().authorize}?${params}`));
+}
+
+router.get('/api/auth/authentik', authLimiter, authentikRedirectHandler);
+router.get('/auth/authentik', authLimiter, authentikRedirectHandler);
+
+async function authentikCallbackHandler(req, res) {
+  const { code, state, error } = req.query;
+  const clientIp = req.ip || req.socket.remoteAddress;
+  const linking = !!req.session.linkPrimaryUserId;
+  const fail = (reason) => {
+    // A failed link attempt goes back to the profile page, not the login page.
+    if (linking) {
+      delete req.session.linkPrimaryUserId;
+      return req.session.save(() => res.redirect('/profile?error=link_failed'));
+    }
+    res.redirect(`/login?error=${reason}`);
+  };
+
+  // State check first — and consume it, together with the PKCE verifier (single use).
+  const expectedState = req.session.authentikState;
+  const codeVerifier = req.session.authentikCodeVerifier;
+  delete req.session.authentikState;
+  delete req.session.authentikCodeVerifier;
+  if (!expectedState || !state || state !== expectedState) {
+    console.warn('[AUTH] Authentik OAuth state mismatch — rejecting callback');
+    return fail('invalid_state');
+  }
+  // e.g. ?error=access_denied when the user cancels on the consent screen, or when an
+  // Authentik policy bound to the application denies this user.
+  if (error) {
+    console.warn('[AUTH] Authentik returned error:', error);
+    logLogin(null, 'unknown', 'authentik', clientIp, 0, `Authentik: ${error}`);
+    return fail('authentik_denied');
+  }
+  if (!code) return fail('no_code');
+
+  try {
+    const { token: tokenUrl, userinfo: userinfoUrl } = authentikEndpoints();
+    const tokenRes = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: process.env.AUTHENTIK_REDIRECT_URI,
+        client_id: process.env.AUTHENTIK_CLIENT_ID,
+        client_secret: process.env.AUTHENTIK_CLIENT_SECRET,
+        code_verifier: codeVerifier || '',
+      }),
+    });
+    const tokenData = await tokenRes.json().catch(() => ({}));
+    if (!tokenRes.ok || !tokenData.access_token) {
+      console.error('[AUTH] Authentik token exchange failed:', tokenRes.status, JSON.stringify(tokenData));
+      throw new Error('No access token: ' + (tokenData.error_description || tokenData.error || `HTTP ${tokenRes.status}`));
+    }
+
+    const userRes = await fetch(userinfoUrl, {
+      headers: { Authorization: `Bearer ${tokenData.access_token}`, Accept: 'application/json' },
+    });
+    if (!userRes.ok) throw new Error(`userinfo HTTP ${userRes.status}`);
+    const info = await userRes.json();
+    if (!info.sub) throw new Error('userinfo has no "sub" claim');
+
+    const sub = String(info.sub);
+    const akUsername = info.preferred_username || info.nickname || info.email || sub;
+    const akDisplayName = info.name || akUsername;
+    const akEmail = info.email || null;
+    const groups = Array.isArray(info.groups) ? info.groups.map(String) : [];
+    console.log('[AUTH] Authentik user:', akUsername, '(' + sub + '), groups:', groups);
+
+    const role = computeAuthentikRole(groups);
+    if (!role) {
+      console.warn('[AUTH] Authentik user is in none of the required groups');
+      logLogin(null, akUsername, 'authentik', clientIp, 0, 'Missing required Authentik group');
+      return fail('authentik_no_group');
+    }
+
+    const existing = db.prepare('SELECT * FROM users WHERE authentik_sub = ?').get(sub);
+
+    // Account-linking mode — same rules as Discord: attach to the logged-in account, or hand
+    // back a pending-merge token if this Authentik identity already has its own account.
+    const linkPrimaryUserId = req.session.linkPrimaryUserId;
+    if (linkPrimaryUserId) {
+      delete req.session.linkPrimaryUserId;
+      const label = `${authentikDisplayName()}: ${akUsername}`;
+      if (existing && existing.id !== linkPrimaryUserId) {
+        const stats = getMergeStats(existing.id);
+        const mergeId = createPendingMerge({
+          primaryId: linkPrimaryUserId, secondaryId: existing.id,
+          secondaryLabel: label, stats, identities: identityList(existing),
+        });
+        return req.session.save(() => res.redirect(`/profile?mergeId=${mergeId}`));
+      }
+      const primary = db.prepare('SELECT authentik_sub, role FROM users WHERE id = ?').get(linkPrimaryUserId);
+      if (!primary) return req.session.save(() => res.redirect('/profile?error=link_failed'));
+      if (primary.authentik_sub && primary.authentik_sub !== sub) {
+        return req.session.save(() => res.redirect('/profile?error=already_linked_authentik'));
+      }
+      const finalRole = maxRole(primary.role, role);
+      db.prepare('UPDATE users SET authentik_sub = ?, authentik_username = ?, role = ?, email = COALESCE(email, ?) WHERE id = ?')
+        .run(sub, akUsername, finalRole, akEmail, linkPrimaryUserId);
+      if (req.session.user) req.session.user.role = finalRole;
+      audit(linkPrimaryUserId, 'link_account', 'user', linkPrimaryUserId, `linked Authentik (${akUsername})`);
+      return req.session.save(() => res.redirect('/profile?linked=authentik'));
+    }
+
+    let userId;
+    if (existing) {
+      // Never downgrade a role earned via another linked identity — see maxRole's comment.
+      // display_name is left alone (the user may have edited it, or it comes from Discord on a
+      // linked account); username only tracks Authentik on Authentik-origin accounts.
+      const finalRole = maxRole(existing.role, role);
+      const username = existing.auth_method === 'authentik' ? akUsername : existing.username;
+      db.prepare(`UPDATE users SET username = ?, authentik_username = ?, role = ?, last_login = datetime('now') WHERE id = ?`)
+        .run(username, akUsername, finalRole, existing.id);
+      userId = existing.id;
+    } else {
+      // Avatar only if the provider has a custom mapping emitting `picture` — Authentik's default
+      // scopes don't, so new accounts usually start with the generated fallback avatar.
+      const picture = typeof info.picture === 'string' && /^https:\/\//.test(info.picture) ? info.picture : null;
+      const result = db.prepare(`INSERT INTO users (username, display_name, avatar, role, auth_method, authentik_sub, authentik_username, email)
+        VALUES (?, ?, ?, ?, 'authentik', ?, ?, ?)`)
+        .run(akUsername, akDisplayName, picture, role, sub, akUsername, akEmail);
+      userId = result.lastInsertRowid;
+    }
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    let discordRoles = [];
+    try { discordRoles = JSON.parse(user.discord_roles || '[]'); } catch (e) {}
+
+    logLogin(userId, akUsername, 'authentik', clientIp, 1, null);
+    console.log('[AUTH] ✅ Authentik login successful:', user.display_name, '(role:', user.role, ')');
+
+    finishOAuthLogin(req, res, {
+      id: user.id,
+      discord_id: user.discord_id,
+      username: user.username,
+      display_name: user.display_name,
+      avatar: user.avatar,
+      role: user.role,
+      auth_method: 'authentik',
+      // Last-known Discord roles of a linked account, so category access by Discord role keeps
+      // working when logging in through Authentik instead.
+      discord_roles: Array.isArray(discordRoles) ? discordRoles : [],
+    }, 'authentik_auth_success');
+  } catch (err) {
+    console.error('[AUTH] Authentik auth error:', err);
+    logLogin(null, 'unknown', 'authentik', clientIp, 0, err.message);
+    fail('auth_failed');
+  }
+}
+
+router.get('/api/auth/authentik/callback', authentikCallbackHandler);
+router.get('/auth/authentik/callback', authentikCallbackHandler);
 
 // ============ AUTH STATUS & LOGOUT ============
 router.get('/api/auth/me', (req, res) => {

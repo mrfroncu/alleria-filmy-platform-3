@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, AlertCircle, Info, X, ChevronDown, ExternalLink, Film, Users, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, AlertCircle, Info, X, ChevronDown, ExternalLink, Film, Users, ShieldCheck, KeyRound } from 'lucide-react';
 import { api } from '../utils/api';
 import { getCurrentYear, parseTsError } from '../utils/helpers';
 import { renderMarkdown } from '../utils/markdown';
@@ -17,6 +17,7 @@ export default function LoginPage() {
   const [tsLoading, setTsLoading]   = useState(false);
   const [ts3Loading, setTs3Loading] = useState(false);
   const [configOk, setConfigOk]     = useState(true);
+  const [authentik, setAuthentik]   = useState(null); // { name } when Authentik SSO is configured
   const [regulaminOpen, setRegulaminOpen] = useState(false);
   const [tos, setTos] = useState(null);
   const [tsInfoOpen, setTsInfoOpen] = useState(false);
@@ -45,16 +46,22 @@ export default function LoginPage() {
       not_member:     'Nie jesteś członkiem serwera Discord.',
       no_role:        'Nie posiadasz wymaganej roli na serwerze Discord.',
       auth_failed:    'Logowanie nie powiodło się. Spróbuj ponownie.',
-      no_code:        'Discord nie zwrócił kodu autoryzacji. Spróbuj ponownie.',
+      no_code:        'Nie otrzymano kodu autoryzacji. Spróbuj ponownie.',
       config_missing: 'Serwer nie jest poprawnie skonfigurowany.',
+      invalid_state:  'Sesja logowania wygasła lub jest nieprawidłowa. Spróbuj ponownie.',
+      authentik_denied:   'Logowanie przez SSO zostało anulowane lub odrzucone.',
+      authentik_no_group: 'Twoje konto SSO nie należy do wymaganej grupy.',
     };
-    setDiscordError(map[err] ?? 'Logowanie przez Discord nie powiodło się.');
+    setDiscordError(map[err] ?? 'Logowanie nie powiodło się.');
   }, []);
 
   useEffect(() => {
     fetch('/api/health')
       .then(r => r.json())
-      .then(data => { if (!data.discord_configured) setConfigOk(false); })
+      .then(data => {
+        if (!data.discord_configured) setConfigOk(false);
+        if (data.authentik_configured) setAuthentik({ name: data.authentik_name || 'Authentik' });
+      })
       .catch(() => setConfigOk(false));
   }, []);
 
@@ -63,7 +70,7 @@ export default function LoginPage() {
   useEffect(() => {
     const handleMessage = (event) => {
       if (event.origin !== window.location.origin) return;
-      if (event.data?.type === 'discord_auth_success') {
+      if (event.data?.type === 'discord_auth_success' || event.data?.type === 'authentik_auth_success') {
         const dest = isSafeReturnTo(returnTo) ? returnTo : '/';
         window.location.href = dest;
       }
@@ -72,19 +79,23 @@ export default function LoginPage() {
     return () => window.removeEventListener('message', handleMessage);
   }, [returnTo]);
 
-  const handleDiscordLogin = (e) => {
+  // Inside an iframe the provider's page can't be framed — open the OAuth round-trip in a popup,
+  // whose callback page postMessages us back (see handleMessage above).
+  const openOAuthPopup = (provider) => (e) => {
     const inIframe = window.self !== window.top;
     if (inIframe) {
       e.preventDefault();
-      const authUrl = '/auth/discord?popup=true';
+      const authUrl = `/auth/${provider}?popup=true`;
       const w = 600, h = 800;
       const l = Math.round(window.screen.width / 2 - w / 2);
       const t = Math.round(window.screen.height / 2 - h / 2);
-      const popup = window.open(authUrl, 'discord_oauth',
+      const popup = window.open(authUrl, `${provider}_oauth`,
         `width=${w},height=${h},left=${l},top=${t},toolbar=no,menubar=no,scrollbars=yes,status=no`);
       if (!popup) window.top.location.href = authUrl;
     }
   };
+  const handleDiscordLogin = openOAuthPopup('discord');
+  const handleAuthentikLogin = openOAuthPopup('authentik');
 
   const startChallenge = (res, method, version) => {
     setChallenge({
@@ -195,7 +206,9 @@ export default function LoginPage() {
               {[
                 { icon: Film,        label: 'Biblioteka filmów i nagrań' },
                 { icon: Users,       label: 'Dostęp tylko dla społeczności' },
-                { icon: ShieldCheck, label: 'Bezpieczne i wygodne logowanie przez Discord i TeamSpeak' },
+                { icon: ShieldCheck, label: authentik
+                  ? `Bezpieczne i wygodne logowanie przez Discord, TeamSpeak i ${authentik.name}`
+                  : 'Bezpieczne i wygodne logowanie przez Discord i TeamSpeak' },
               ].map(({ icon: Icon, label }) => (
                 <div key={label} className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
@@ -274,6 +287,18 @@ export default function LoginPage() {
             </svg>
             Zaloguj przez Discord
           </a>
+
+          {/* ── Authentik SSO button — only when AUTHENTIK_* is set in .env ── */}
+          {authentik && (
+            <a
+              href={`/auth/authentik${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`}
+              onClick={handleAuthentikLogin}
+              className="mt-2.5 w-full flex items-center justify-center gap-3 py-3.5 px-5 bg-violet-600 hover:bg-violet-700 active:scale-[0.98] text-white font-semibold rounded-2xl transition-all shadow-lg shadow-violet-600/30 text-sm no-underline anim-stagger-2"
+            >
+              <KeyRound className="w-5 h-5 shrink-0" />
+              Zaloguj przez {authentik.name}
+            </a>
+          )}
 
           {/* ── Separator ── */}
           <div className="relative my-5 anim-stagger-3">

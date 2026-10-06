@@ -51,6 +51,7 @@ function identityList(u) {
     u.discord_id ? 'discord' : null,
     u.ts3_uid ? 'teamspeak3' : null,
     u.ts6_uid ? 'teamspeak' : null,
+    u.authentik_sub ? 'authentik' : null,
   ].filter(Boolean);
 }
 
@@ -70,8 +71,8 @@ function tosNeedsAcceptance(tosAcceptedAt) {
 // carry over regardless of which linked method is used: the stored role only ever moves
 // up to what the current login computes, never down. TS3/TS6 can only ever compute
 // 'member'/'admin' (no dev group concept exists there), so 'dev' — once granted by an
-// actual live Discord role check — is naturally preserved and can never be granted by a
-// TS login; a later Discord login without the dev role also won't strip it here (role
+// actual live Discord role check (or an AUTHENTIK_DEV_GROUPS group) — is naturally preserved
+// and can never be granted by a TS login; a later Discord login without the dev role also won't strip it here (role
 // demotion is an explicit admin action elsewhere, not a side effect of logging in).
 const ROLE_RANK = { member: 0, admin: 1, dev: 2 };
 function maxRole(a, b) {
@@ -149,6 +150,9 @@ function mergeUsers(primaryId, secondaryId, { performedBy } = {}) {
     }
     if (!primary.ts6_uid && secondary.ts6_uid) {
       Object.assign(patch, { ts6_uid: secondary.ts6_uid, ts6_ip: secondary.ts6_ip });
+    }
+    if (!primary.authentik_sub && secondary.authentik_sub) {
+      Object.assign(patch, { authentik_sub: secondary.authentik_sub, authentik_username: secondary.authentik_username });
     }
     // Contact email is a general field, not tied to one identity type — keep primary's own
     // if it already set one (manually or via Discord), otherwise inherit secondary's along

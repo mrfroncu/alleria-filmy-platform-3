@@ -35,6 +35,7 @@ export default function EnvDiagnosticsStep() {
           <StatusRow ok={health.member_role_set} label="DISCORD_MEMBER_ROLE_ID ustawiony" hint="Bez tego zwykli użytkownicy nie zalogują się przez Discord" />
           <StatusRow ok={health.admin_role_set} label="DISCORD_ADMIN_ROLE_ID ustawiony" hint="Opcjonalne - bez tego nikt nie dostanie roli redaktora automatycznie" />
           <StatusRow ok={health.dev_role_set} label="DISCORD_DEV_ROLE_ID ustawiony" hint="Musi być ustawiony - inaczej nie mógłbyś tu być" />
+          <StatusRow ok={health.authentik_configured} label="Authentik SSO skonfigurowany (AUTHENTIK_URL, Client ID, Secret, Redirect URI)" hint="Opcjonalne - bez tego przycisk SSO nie pojawi się na stronie logowania" />
         </div>
       )}
 

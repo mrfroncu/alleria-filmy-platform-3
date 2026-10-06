@@ -21,6 +21,7 @@ const { sessionStore } = require('./lib/sessions');
 const { getSetting } = require('./lib/settings');
 const { resolveWatchPartyVideo } = require('./lib/access');
 const { startBackgroundJobs } = require('./jobs');
+const { isAuthentikConfigured } = require('./lib/authentik');
 
 const app = express();
 
@@ -178,6 +179,7 @@ if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`  Member Role ID:    ${process.env.DISCORD_MEMBER_ROLE_ID || '❌ Not set'}`);
   console.log(`  Admin Role ID:     ${process.env.DISCORD_ADMIN_ROLE_ID || '❌ Not set'}`);
   console.log(`  Dev Role ID:       ${process.env.DISCORD_DEV_ROLE_ID || '❌ Not set'}`);
+  console.log(`  Authentik SSO:     ${isAuthentikConfigured() ? `✅ ${process.env.AUTHENTIK_URL}` : '⚪ Off (AUTHENTIK_* not set)'}`);
   if (rUri && !rUriOk) {
     console.log('  ─────────────────────────────────────');
     console.log(`  🚨 REDIRECT URI does not contain /auth/discord/callback`);

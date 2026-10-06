@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Film, Eye, Heart, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink, Download, Trash2, Clock, ShieldCheck, Mail, Bell, Monitor, Smartphone, LogOut, Upload } from 'lucide-react';
+import { User, Film, Eye, Heart, Pencil, Check, X, Globe, Server, RefreshCw, Link2, CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronDown, ExternalLink, Download, Trash2, Clock, ShieldCheck, Mail, Bell, Monitor, Smartphone, LogOut, Upload, KeyRound } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, parseTsError, urlBase64ToUint8Array } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
@@ -84,14 +84,22 @@ export default function ProfilePage() {
       .catch(() => {});
   }, []);
 
-  // Discord link redirect lands back here with ?linked=discord / ?error=... / ?mergeId=...
+  // Authentik SSO name (AUTHENTIK_DISPLAY_NAME), or null when it isn't configured in .env.
+  const [authentikName, setAuthentikName] = useState(null);
+  useEffect(() => {
+    api.getHealth().then(h => { if (h.authentik_configured) setAuthentikName(h.authentik_name || 'Authentik'); }).catch(() => {});
+  }, []);
+
+  // Discord/Authentik link redirect lands back here with ?linked=discord|authentik / ?error=... / ?mergeId=...
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const linked = params.get('linked');
     const err = params.get('error');
     const mergeId = params.get('mergeId');
     if (linked === 'discord') setLinkMsg({ type: 'success', text: 'Połączono konto Discord.' });
+    else if (linked === 'authentik') setLinkMsg({ type: 'success', text: 'Połączono konto SSO.' });
     else if (err === 'already_linked_discord') setLinkMsg({ type: 'error', text: 'To konto ma już połączony inny Discord.' });
+    else if (err === 'already_linked_authentik') setLinkMsg({ type: 'error', text: 'To konto ma już połączone inne konto SSO.' });
     else if (err === 'link_failed') setLinkMsg({ type: 'error', text: 'Nie udało się połączyć konta. Spróbuj ponownie.' });
     if (mergeId) {
       api.getPendingMerge(mergeId).then(data => setPendingMerge({ mergeId, ...data })).catch(() => {
@@ -321,6 +329,10 @@ export default function ProfilePage() {
     window.location.href = '/auth/discord?mode=link&returnTo=/profile';
   };
 
+  const handleLinkAuthentik = () => {
+    window.location.href = '/auth/authentik?mode=link&returnTo=/profile';
+  };
+
   const handleLinkTs = async (method) => {
     setLinkingTs(method);
     if (method === 'teamspeak3') setTs3ConnectError(null); else setTs6ConnectError(null);
@@ -423,7 +435,7 @@ export default function ProfilePage() {
 
   if (!profile) return null;
 
-  const identityCount = [profile.has_discord, profile.has_teamspeak3, profile.has_teamspeak6].filter(Boolean).length;
+  const identityCount = [profile.has_discord, profile.has_teamspeak3, profile.has_teamspeak6, profile.has_authentik].filter(Boolean).length;
   const canUnlink = identityCount > 1;
 
   return (
@@ -702,6 +714,40 @@ export default function ProfilePage() {
               </div>
             )}
           </div>
+
+          {/* Authentik SSO — shown when it's configured in .env, or when this account already has
+              it linked (so it can still be unlinked after SSO gets switched off) */}
+          {(authentikName || profile.has_authentik) && (
+            <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
+                  <KeyRound className="w-4 h-4 text-violet-500" />
+                </div>
+                <div className="min-w-0">
+                  <span className="block text-sm font-medium text-zinc-900 dark:text-white">{authentikName || 'Authentik'}</span>
+                  {profile.has_authentik && profile.authentikUsername && (
+                    <span className="block text-[11px] text-zinc-500 truncate">{profile.authentikUsername}</span>
+                  )}
+                </div>
+              </div>
+              {profile.has_authentik ? (
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Połączone
+                  </span>
+                  {canUnlink && (
+                    <button onClick={() => handleUnlink('authentik', authentikName || 'Authentik')} disabled={unlinking !== null} className="btn-link-red text-xs font-bold disabled:opacity-50">
+                      {unlinking === 'authentik' ? 'Rozłączanie…' : 'Rozłącz'}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button onClick={handleLinkAuthentik} className="btn-link-violet inline-flex items-center gap-1.5 text-xs font-bold">
+                  <Link2 className="w-3.5 h-3.5" /> Połącz
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* TS requirements — collapsible, same guidance as the login page */}

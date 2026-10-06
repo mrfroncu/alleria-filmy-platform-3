@@ -12,12 +12,12 @@ const router = express.Router();
 
 // ============ PROFILE API ============
 router.get('/api/profile', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, username, display_name, avatar, role, bio, auth_method, avatar_source, discord_id, discord_email, ts3_uid, ts6_uid, discord_guild_avatar_hash, custom_avatar, email, email_notifications, created_at, last_login FROM users WHERE id = ?').get(req.session.user.id);
+  const user = db.prepare('SELECT id, username, display_name, avatar, role, bio, auth_method, avatar_source, discord_id, discord_email, ts3_uid, ts6_uid, authentik_sub, authentik_username, discord_guild_avatar_hash, custom_avatar, email, email_notifications, created_at, last_login FROM users WHERE id = ?').get(req.session.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   const videoCount = db.prepare('SELECT COUNT(*) AS c FROM videos WHERE author_id = ?').get(user.id).c;
   const viewCount = db.prepare('SELECT COUNT(*) AS c FROM watch_logs WHERE user_id = ?').get(user.id).c;
   const favCount = db.prepare('SELECT COUNT(*) AS c FROM favorites WHERE user_id = ?').get(user.id).c;
-  const { discord_guild_avatar_hash, discord_id, discord_email, ts3_uid, ts6_uid, email_notifications, custom_avatar, ...userFields } = user;
+  const { discord_guild_avatar_hash, discord_id, discord_email, ts3_uid, ts6_uid, authentik_sub, authentik_username, email_notifications, custom_avatar, ...userFields } = user;
   const isDevOrAdmin = user.role === 'admin' || user.role === 'dev';
   res.json({
     ...userFields,
@@ -27,6 +27,8 @@ router.get('/api/profile', requireAuth, (req, res) => {
     has_discord: !!discord_id,
     has_teamspeak3: !!ts3_uid,
     has_teamspeak6: !!ts6_uid,
+    has_authentik: !!authentik_sub,
+    authentikUsername: authentik_username || null,
     discordEmail: discord_email || null,
     emailNotifications: !!email_notifications,
     videoCount, viewCount, favCount,
@@ -205,15 +207,15 @@ router.delete('/api/profile/merge/:mergeId', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
-// Unlink a single identity (Discord/TS3/TS6) from the current account. Unlike merge, this
+// Unlink a single identity (Discord/TS3/TS6/Authentik) from the current account. Unlike merge, this
 // never touches another row — it's just a column-clear on this same user row, so id, role,
-// comments, authored videos etc. all stay put. The freed identity (discord_id/ts3_uid/ts6_uid)
+// comments, authored videos etc. all stay put. The freed identity (discord_id/ts3_uid/ts6_uid/authentik_sub)
 // goes back to NULL, so the next login with it won't match this row anymore — it'll either
 // create a brand-new account or be linked fresh into a different one, exactly like an
 // identity that was never connected here in the first place.
 router.post('/api/profile/unlink', requireAuth, (req, res) => {
-  const { method } = req.body; // 'discord' | 'teamspeak3' | 'teamspeak' (TS6 — see identityList)
-  if (!['discord', 'teamspeak3', 'teamspeak'].includes(method)) {
+  const { method } = req.body; // 'discord' | 'teamspeak3' | 'teamspeak' (TS6) | 'authentik' — see identityList
+  if (!['discord', 'teamspeak3', 'teamspeak', 'authentik'].includes(method)) {
     return res.status(400).json({ error: 'Nieprawidłowa metoda.' });
   }
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.user.id);
@@ -238,6 +240,8 @@ router.post('/api/profile/unlink', requireAuth, (req, res) => {
                   discord_guild_avatar_hash = NULL, discord_email = NULL${wasCustom ? '' : `, avatar_source = 'global', avatar = NULL`} WHERE id = ?`).run(user.id);
       req.session.user.discord_id = null;
       if (!wasCustom) req.session.user.avatar = null;
+    } else if (method === 'authentik') {
+      db.prepare('UPDATE users SET authentik_sub = NULL, authentik_username = NULL WHERE id = ?').run(user.id);
     } else {
       const uidCol = method === 'teamspeak3' ? 'ts3_uid' : 'ts6_uid';
       const ipCol = method === 'teamspeak3' ? 'ts3_ip' : 'ts6_ip';
