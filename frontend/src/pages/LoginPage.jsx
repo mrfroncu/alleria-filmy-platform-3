@@ -51,6 +51,8 @@ export default function LoginPage() {
       invalid_state:  'Sesja logowania wygasła lub jest nieprawidłowa. Spróbuj ponownie.',
       authentik_denied:   'Logowanie przez SSO zostało anulowane lub odrzucone.',
       authentik_no_group: 'Twoje konto SSO nie należy do wymaganej grupy.',
+      authentik_no_discord: 'Do logowania przez SSO potrzebne jest konto Discord połączone z kontem SSO.',
+      discord_unavailable:  'Nie udało się sprawdzić Twojej roli na Discordzie. Spróbuj ponownie za chwilę.',
     };
     setDiscordError(map[err] ?? 'Logowanie nie powiodło się.');
   }, []);

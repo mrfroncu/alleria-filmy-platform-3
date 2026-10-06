@@ -14,6 +14,8 @@ let fake;          // serwer udający Authentik
 let fakeUser;      // co zwróci /userinfo/
 let lastTokenBody; // ostatnie żądanie do /token/ (do sprawdzenia PKCE)
 const codeChallenges = new Map(); // code -> code_challenge z przekierowania
+const guildMembers = new Map();   // Discord id -> role na serwerze (brak = nie jest na serwerze)
+let discordDown = false;
 
 beforeAll(async () => {
   seedUsers();
@@ -35,6 +37,14 @@ beforeAll(async () => {
       if (req.url === '/application/o/userinfo/' && req.headers.authorization === 'Bearer at-123') {
         return res.end(JSON.stringify(fakeUser));
       }
+      // Udawane API Discorda dla bota: /discord/guilds/G1/members/<id>
+      const m = req.url.match(/^\/discord\/guilds\/G1\/members\/(\d+)$/);
+      if (m && req.headers.authorization === 'Bot test-bot') {
+        if (discordDown) { res.statusCode = 503; return res.end('{}'); }
+        const roles = guildMembers.get(m[1]);
+        if (!roles) { res.statusCode = 404; return res.end(JSON.stringify({ message: 'Unknown Member' })); }
+        return res.end(JSON.stringify({ roles }));
+      }
       res.statusCode = 404;
       res.end('{}');
     });
@@ -55,6 +65,9 @@ beforeEach(() => {
   delete process.env.AUTHENTIK_TRUST_EMAIL;
   delete process.env.ACCOUNT_LINK_BY_EMAIL;
   delete process.env.DISCORD_BOT_TOKEN; // bez bota — żadnych prawdziwych zapytań do Discorda
+  // Większość testów sprawdza tryb "same grupy Authentik"; wymóg roli Discord ma własny blok niżej
+  process.env.AUTHENTIK_REQUIRE_DISCORD_ROLE = 'false';
+  discordDown = false;
   fakeUser = { sub: 'ak-sub-1', preferred_username: 'jan', name: 'Jan Kowalski', email: 'jan@example.com', groups: [] };
 });
 
@@ -304,6 +317,137 @@ describe('Authentik — dopasowanie do istniejącego konta', () => {
     const me = await ssoLogin();
     expect(me.id).not.toBe(id);
     expect(me.role).toBe('member');
+  });
+});
+
+// Domyślny tryb: przez SSO wejdzie tylko ktoś z rolą MEMBER/ADMIN/DEV na serwerze Discord
+describe('Authentik — wymagana rola na Discordzie (domyślnie włączone)', () => {
+  const MEMBER = '900000000000000001';
+  const ADMIN = '900000000000000002';
+  beforeEach(() => {
+    delete process.env.AUTHENTIK_REQUIRE_DISCORD_ROLE; // = domyślnie włączone
+    process.env.DISCORD_API_URL = `http://127.0.0.1:${fake.address().port}/discord`;
+    process.env.DISCORD_BOT_TOKEN = 'test-bot';
+    process.env.DISCORD_GUILD_ID = 'G1';
+    process.env.DISCORD_MEMBER_ROLE_ID = MEMBER;
+    process.env.DISCORD_ADMIN_ROLE_ID = ADMIN;
+    guildMembers.clear();
+  });
+  afterAll(() => {
+    for (const k of ['DISCORD_API_URL', 'DISCORD_GUILD_ID', 'DISCORD_MEMBER_ROLE_ID', 'DISCORD_ADMIN_ROLE_ID']) delete process.env[k];
+  });
+  const callback = async (agent = supertest.agent(app)) => {
+    const { code, state } = await startFlow(agent);
+    const res = await agent.get(`/auth/authentik/callback?code=${code}&state=${state}`);
+    return { res, agent };
+  };
+  const countUsers = () => db.prepare('SELECT COUNT(*) c FROM users').get().c;
+
+  it('osoba z rolą MEMBER wchodzi', async () => {
+    guildMembers.set('810000000000000001', [MEMBER]);
+    fakeUser = { sub: 'gate-ok', preferred_username: 'ok', groups: [], discord_id: '810000000000000001' };
+    const { res, agent } = await callback();
+    expect(res.headers.location).toBe('/');
+    expect((await agent.get('/api/auth/me')).body.role).toBe('member');
+  });
+
+  it('rola ADMIN na Discordzie daje admina także przez SSO', async () => {
+    guildMembers.set('810000000000000002', [ADMIN]);
+    fakeUser = { sub: 'gate-admin', preferred_username: 'adm', groups: [], discord_id: '810000000000000002' };
+    const { agent } = await callback();
+    expect((await agent.get('/api/auth/me')).body.role).toBe('admin');
+  });
+
+  it('osoba na serwerze, ale bez roli MEMBER — odrzucona, nic nie zapisane', async () => {
+    guildMembers.set('810000000000000003', ['123']);
+    fakeUser = { sub: 'gate-norole', preferred_username: 'x', groups: [], discord_id: '810000000000000003' };
+    const before = countUsers();
+    const { res } = await callback();
+    expect(res.headers.location).toBe('/login?error=no_role');
+    expect(countUsers()).toBe(before);
+  });
+
+  it('osoba spoza serwera Discord — odrzucona', async () => {
+    fakeUser = { sub: 'gate-outsider', preferred_username: 'y', groups: [], discord_id: '810000000000000004' };
+    const { res } = await callback();
+    expect(res.headers.location).toBe('/login?error=no_role');
+  });
+
+  it('konto SSO bez żadnego Discorda (brak claimu, brak połączonego Discorda) — odrzucone', async () => {
+    fakeUser = { sub: 'gate-nodiscord', preferred_username: 'z', groups: [] };
+    const { res } = await callback();
+    expect(res.headers.location).toBe('/login?error=authentik_no_discord');
+  });
+
+  it('gdy nie da się sprawdzić Discorda (awaria) — odrzucone, a nie przepuszczone', async () => {
+    discordDown = true;
+    guildMembers.set('810000000000000005', [MEMBER]);
+    fakeUser = { sub: 'gate-down', preferred_username: 'd', groups: [], discord_id: '810000000000000005' };
+    const { res } = await callback();
+    expect(res.headers.location).toBe('/login?error=discord_unavailable');
+  });
+
+  it('członkostwo w grupach admin Authentika nie omija wymogu roli Discord', async () => {
+    process.env.AUTHENTIK_ADMIN_GROUPS = 'admini';
+    fakeUser = { sub: 'gate-akadmin', preferred_username: 'a', groups: ['admini'], discord_id: '810000000000000006' };
+    const { res } = await callback();
+    expect(res.headers.location).toBe('/login?error=no_role');
+  });
+
+  it('stare konto Discord, które straciło rolę MEMBER, nie wejdzie przez SSO (nawet z zapisaną wcześniej rolą admin)', async () => {
+    const id = db.prepare("INSERT INTO users (username, role, discord_id, auth_method) VALUES ('byly-admin', 'admin', '810000000000000007', 'discord')").run().lastInsertRowid;
+    fakeUser = { sub: 'gate-former', preferred_username: 'f', groups: [], discord_id: '810000000000000007' };
+    const { res } = await callback();
+    expect(res.headers.location).toBe('/login?error=no_role');
+    expect(db.prepare('SELECT authentik_sub FROM users WHERE id = ?').get(id).authentik_sub).toBeNull();
+  });
+
+  // SSO przez inną usługę (np. Google w Authentiku) — bez discord_id, ale z tym samym mailem co stare konto Discord
+  describe('SSO bez Discorda, ten sam e-mail co stare konto Discord', () => {
+    beforeEach(() => {
+      process.env.ACCOUNT_LINK_BY_EMAIL = 'true';
+      process.env.AUTHENTIK_TRUST_EMAIL = 'true';
+    });
+
+    it('konto Discord z rolą MEMBER — wchodzi na to konto, SSO zostaje do niego dopięte', async () => {
+      const id = db.prepare(`INSERT INTO users (username, display_name, role, discord_id, auth_method, discord_email, discord_email_verified)
+        VALUES ('stary-member', 'Stary Member', 'member', '820000000000000001', 'discord', 'stary@example.com', 1)`).run().lastInsertRowid;
+      guildMembers.set('820000000000000001', [MEMBER]);
+      fakeUser = { sub: 'google-1', preferred_username: 'g1', email: 'Stary@Example.com', groups: [] };
+      const before = countUsers();
+      const { res, agent } = await callback();
+      expect(res.headers.location).toBe('/');
+      const me = (await agent.get('/api/auth/me')).body;
+      expect(me.id).toBe(id);
+      expect(me.display_name).toBe('Stary Member');
+      expect(countUsers()).toBe(before);
+      expect(db.prepare('SELECT authentik_sub FROM users WHERE id = ?').get(id).authentik_sub).toBe('google-1');
+    });
+
+    it('konto Discord, które straciło MEMBER — odrzucone i nic nie dopięte', async () => {
+      const id = db.prepare(`INSERT INTO users (username, role, discord_id, auth_method, discord_email, discord_email_verified)
+        VALUES ('byly-member', 'member', '820000000000000002', 'discord', 'byly@example.com', 1)`).run().lastInsertRowid;
+      fakeUser = { sub: 'google-2', preferred_username: 'g2', email: 'byly@example.com', groups: [] };
+      const { res } = await callback();
+      expect(res.headers.location).toBe('/login?error=no_role');
+      expect(db.prepare('SELECT authentik_sub FROM users WHERE id = ?').get(id).authentik_sub).toBeNull();
+    });
+
+    it('nowa, losowa osoba (mail nie pasuje do żadnego konta Discord) — odrzucona', async () => {
+      fakeUser = { sub: 'google-3', preferred_username: 'g3', email: 'obcy@example.com', groups: [] };
+      const before = countUsers();
+      const { res } = await callback();
+      expect(res.headers.location).toBe('/login?error=authentik_no_discord');
+      expect(countUsers()).toBe(before);
+    });
+  });
+
+  it('bez claimu, ale z kontem już połączonym z Discordem — sprawdzany jest ten Discord', async () => {
+    db.prepare("INSERT INTO users (username, role, discord_id, auth_method, authentik_sub) VALUES ('polaczony', 'member', '810000000000000008', 'discord', 'gate-linked')").run();
+    fakeUser = { sub: 'gate-linked', preferred_username: 'l', groups: [] };
+    expect((await callback()).res.headers.location).toBe('/login?error=no_role');
+    guildMembers.set('810000000000000008', [MEMBER]);
+    expect((await callback()).res.headers.location).toBe('/');
   });
 });
 

@@ -8,7 +8,7 @@ const { createPendingMerge, findAccountByVerifiedEmail, getMergeStats, identityL
 const { getDiscordRoleSetting } = require('../lib/tsConfig');
 const { getSetting } = require('../lib/settings');
 const { stampSessionMeta } = require('../lib/sessions');
-const { isAuthentikConfigured, authentikDisplayName, authentikEndpoints, authentikTrustsEmail, createPkcePair, computeAuthentikRole } = require('../lib/authentik');
+const { isAuthentikConfigured, authentikDisplayName, authentikEndpoints, authentikRequiresDiscordRole, authentikTrustsEmail, createPkcePair, computeAuthentikRole } = require('../lib/authentik');
 
 const router = express.Router();
 
@@ -92,8 +92,10 @@ function discordRoleFromRoles(roles) {
 // whatever they knew before instead of treating it as "no roles".
 async function fetchDiscordGuildRoles(discordId) {
   if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_GUILD_ID) return null;
+  // DISCORD_API_URL exists only so the API tests can point this at a fake Discord.
+  const api = process.env.DISCORD_API_URL || 'https://discord.com/api';
   try {
-    const r = await fetch(`https://discord.com/api/guilds/${process.env.DISCORD_GUILD_ID}/members/${discordId}`,
+    const r = await fetch(`${api}/guilds/${process.env.DISCORD_GUILD_ID}/members/${discordId}`,
       { headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` } });
     if (r.status === 404) return [];
     if (!r.ok) { console.warn('[AUTH] Guild member lookup failed:', r.status); return null; }
@@ -414,9 +416,9 @@ async function authentikCallbackHandler(req, res) {
     // or before the discord_id mapping was set up), as long as that account is SSO-only: it's
     // merged into the matched one, which stays primary.
     const ssoOnlyAccount = existing && existing.auth_method === 'authentik' && identityList(existing).join() === 'authentik';
+    let match = null;
+    let matchedBy = null;
     if (!linkPrimaryUserId && (!existing || ssoOnlyAccount)) {
-      let match = null;
-      let matchedBy = null;
       if (claimDiscordId) {
         const byDiscord = db.prepare('SELECT * FROM users WHERE discord_id = ?').get(claimDiscordId);
         if (byDiscord && !byDiscord.authentik_sub) { match = byDiscord; matchedBy = 'Discord id'; }
@@ -426,27 +428,44 @@ async function authentikCallbackHandler(req, res) {
         match = findAccountByVerifiedEmail(akVerifiedEmail, 'authentik_sub');
         if (match) matchedBy = 'verified e-mail';
       }
-      if (match && existing) {
-        console.log(`[AUTH] Authentik ${akUsername}: merging SSO-only account #${existing.id} into #${match.id} (matched by ${matchedBy})`);
-        existing = mergeUsers(match.id, existing.id, { performedBy: match.id });
-      } else if (match) {
-        console.log(`[AUTH] Authentik ${akUsername} matched existing account #${match.id} by ${matchedBy}`);
-        existing = match;
-      }
     }
 
-    // Role: the better of the Authentik groups and — whenever a Discord identity is known (linked
-    // on the account, or from the discord_id claim) — the live Discord guild roles, computed exactly
-    // as a Discord login would. Logging in needs at least one of the two.
-    const discordIdForRoles = (existing && existing.discord_id) || claimDiscordId;
+    // ---- Access check — BEFORE anything is written (merge, link, upsert) ----
+    // The Discord identity of whoever is logging in: their own, from the discord_id claim, or else
+    // the one linked on the account they're about to land in.
+    const target = match || existing || (linkPrimaryUserId ? db.prepare('SELECT * FROM users WHERE id = ?').get(linkPrimaryUserId) : null);
+    const discordIdForRoles = claimDiscordId || (target && target.discord_id) || null;
     const liveDiscordRoles = discordIdForRoles ? await fetchDiscordGuildRoles(discordIdForRoles) : null;
     const groupRole = computeAuthentikRole(groups);
     const discordRole = liveDiscordRoles ? discordRoleFromRoles(liveDiscordRoles) : null;
-    const role = groupRole && discordRole ? maxRole(groupRole, discordRole) : (groupRole || discordRole);
-    if (!role) {
-      console.warn('[AUTH] Authentik user is in none of the required groups (and has no Discord role)');
-      logLogin(null, akUsername, 'authentik', clientIp, 0, 'Missing required Authentik group');
-      return fail('authentik_no_group');
+    const deny = (reason, why) => {
+      console.warn(`[AUTH] Authentik login denied for ${akUsername}: ${why}`);
+      logLogin(null, akUsername, 'authentik', clientIp, 0, why);
+      return fail(reason);
+    };
+    let role;
+    if (authentikRequiresDiscordRole()) {
+      // SSO is just another door for people who could log in with Discord right now: a live
+      // MEMBER/ADMIN/DEV role on the guild is required, exactly like a Discord login. Anything
+      // that can't be confirmed — no known Discord id, Discord/bot unreachable — is a no.
+      if (!discordIdForRoles) return deny('authentik_no_discord', 'No Discord identity (no discord_id claim, no linked Discord)');
+      if (!liveDiscordRoles) return deny('discord_unavailable', 'Discord role check unavailable');
+      if (!discordRole) return deny('no_role', 'Missing required Discord role');
+      // AUTHENTIK_MEMBER_GROUPS, when set, is an extra gate on top
+      if (!groupRole) return deny('authentik_no_group', 'Missing required Authentik group');
+      role = maxRole(groupRole, discordRole);
+    } else {
+      // Authentik groups alone decide access; known Discord roles can only raise the role.
+      role = groupRole && discordRole ? maxRole(groupRole, discordRole) : (groupRole || discordRole);
+      if (!role) return deny('authentik_no_group', 'Missing required Authentik group');
+    }
+
+    if (match && existing) {
+      console.log(`[AUTH] Authentik ${akUsername}: merging SSO-only account #${existing.id} into #${match.id} (matched by ${matchedBy})`);
+      existing = mergeUsers(match.id, existing.id, { performedBy: match.id });
+    } else if (match) {
+      console.log(`[AUTH] Authentik ${akUsername} matched existing account #${match.id} by ${matchedBy}`);
+      existing = match;
     }
 
     // Account-linking mode — same rules as Discord: attach to the logged-in account, or hand
@@ -489,7 +508,8 @@ async function authentikCallbackHandler(req, res) {
       const username = existing.auth_method === 'authentik' ? akUsername : existing.username;
       const attachDiscord = !existing.discord_id && claimDiscordIdFree;
       // Fresh guild roles only belong on a row that has (or now gets) the Discord id they were fetched for.
-      const storeRoles = liveRolesJson && (existing.discord_id || attachDiscord) ? liveRolesJson : null;
+      const ownDiscordId = existing.discord_id || (attachDiscord ? claimDiscordId : null);
+      const storeRoles = liveRolesJson && ownDiscordId === discordIdForRoles ? liveRolesJson : null;
       db.prepare(`UPDATE users SET authentik_sub = ?, username = ?, authentik_username = ?, authentik_email = ?, role = ?,
           discord_id = COALESCE(discord_id, ?), discord_roles = COALESCE(?, discord_roles), last_login = datetime('now') WHERE id = ?`)
         .run(sub, username, akUsername, akVerifiedEmail, finalRole, attachDiscord ? claimDiscordId : null, storeRoles, existing.id);

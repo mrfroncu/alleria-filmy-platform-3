@@ -336,6 +336,7 @@ W Authentik: **Applications → Providers → OAuth2/OpenID Provider** (Client t
 | `AUTHENTIK_MEMBER_GROUPS` | Nazwy grup (po przecinku) dające dostęp; puste = każdy, kogo Authentik przepuści |
 | `AUTHENTIK_ADMIN_GROUPS` | Nazwy grup dające rolę admin/redaktor |
 | `AUTHENTIK_DEV_GROUPS` | Nazwy grup dające rolę dev |
+| `AUTHENTIK_REQUIRE_DISCORD_ROLE` | Domyślnie włączone: logowanie SSO wymaga aktualnej roli MEMBER/ADMIN/DEV na serwerze Discord (sprawdzanej botem dla `discord_id` z Authentik lub połączonego Discorda); brak Discorda / roli / awaria Discorda = brak wejścia. `false` = decydują same grupy Authentik |
 | `AUTHENTIK_TRUST_EMAIL` | `true` = traktuj e-maile z Authentik jako zweryfikowane (domyślny mapping Authentik zawsze wysyła `email_verified: false`) |
 | `ACCOUNT_LINK_BY_EMAIL` | `true` = przy pierwszym logowaniu nową metodą (Discord/Authentik) znajdź istniejące konto po **zweryfikowanym** e-mailu dostawcy (nigdy po e-mailu z profilu) |
 

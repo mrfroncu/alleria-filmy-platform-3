@@ -40,6 +40,13 @@ function authentikTrustsEmail() {
   return /^(1|true|yes)$/i.test(String(process.env.AUTHENTIK_TRUST_EMAIL || '').trim());
 }
 
+// ON unless AUTHENTIK_REQUIRE_DISCORD_ROLE=false: an SSO login needs a live MEMBER/ADMIN/DEV role
+// on the Discord guild (checked via the bot, for the discord_id claim or the account's linked
+// Discord) — the same requirement as a Discord login. Off: Authentik groups alone decide access.
+function authentikRequiresDiscordRole() {
+  return !/^(0|false|no)$/i.test(String(process.env.AUTHENTIK_REQUIRE_DISCORD_ROLE || '').trim());
+}
+
 // PKCE pair — the verifier stays in the session, only its SHA-256 goes to Authentik.
 function createPkcePair() {
   const verifier = crypto.randomBytes(32).toString('base64url');
@@ -63,4 +70,4 @@ function computeAuthentikRole(groups) {
   return null;
 }
 
-module.exports = { isAuthentikConfigured, authentikDisplayName, authentikEndpoints, authentikTrustsEmail, createPkcePair, computeAuthentikRole };
+module.exports = { isAuthentikConfigured, authentikDisplayName, authentikEndpoints, authentikRequiresDiscordRole, authentikTrustsEmail, createPkcePair, computeAuthentikRole };
