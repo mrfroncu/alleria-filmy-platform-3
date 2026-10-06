@@ -4,7 +4,7 @@ const fetch = require('node-fetch');
 const db = require('../db');
 const { audit, isSafeReturnTo, logLogin } = require('../lib/helpers');
 const { authLimiter } = require('../lib/rateLimits');
-const { createPendingMerge, findAccountByVerifiedEmail, getMergeStats, identityList, maxRole, tosNeedsAcceptance } = require('../lib/accounts');
+const { createPendingMerge, findAccountByVerifiedEmail, getMergeStats, identityList, maxRole, mergeUsers, tosNeedsAcceptance } = require('../lib/accounts');
 const { getDiscordRoleSetting } = require('../lib/tsConfig');
 const { getSetting } = require('../lib/settings');
 const { stampSessionMeta } = require('../lib/sessions');
@@ -407,15 +407,32 @@ async function authentikCallbackHandler(req, res) {
 
     const linkPrimaryUserId = req.session.linkPrimaryUserId;
     let existing = db.prepare('SELECT * FROM users WHERE authentik_sub = ?').get(sub);
-    // First Authentik login of someone who already has an account via another method: find it by
-    // Discord id, then by verified e-mail, instead of creating a second account.
-    if (!existing && !linkPrimaryUserId) {
+    // Someone who already has an account via another method (Discord) logging in with SSO: that
+    // account is THE account — found by Discord id, then by verified e-mail — and Authentik just
+    // becomes one more way into it, keeping its role, name and history. This also applies when
+    // the SSO identity already got an account of its own (a login before this matching existed,
+    // or before the discord_id mapping was set up), as long as that account is SSO-only: it's
+    // merged into the matched one, which stays primary.
+    const ssoOnlyAccount = existing && existing.auth_method === 'authentik' && identityList(existing).join() === 'authentik';
+    if (!linkPrimaryUserId && (!existing || ssoOnlyAccount)) {
+      let match = null;
+      let matchedBy = null;
       if (claimDiscordId) {
         const byDiscord = db.prepare('SELECT * FROM users WHERE discord_id = ?').get(claimDiscordId);
-        if (byDiscord && !byDiscord.authentik_sub) existing = byDiscord;
+        if (byDiscord && !byDiscord.authentik_sub) { match = byDiscord; matchedBy = 'Discord id'; }
       }
-      if (!existing && akVerifiedEmail) existing = findAccountByVerifiedEmail(akVerifiedEmail, 'authentik_sub');
-      if (existing) console.log(`[AUTH] Authentik ${akUsername} matched existing account #${existing.id} by ${existing.discord_id && existing.discord_id === claimDiscordId ? 'Discord id' : 'verified e-mail'}`);
+      if (!match && akVerifiedEmail) {
+        // authentik_sub must be empty on the match, so this never finds `existing` itself
+        match = findAccountByVerifiedEmail(akVerifiedEmail, 'authentik_sub');
+        if (match) matchedBy = 'verified e-mail';
+      }
+      if (match && existing) {
+        console.log(`[AUTH] Authentik ${akUsername}: merging SSO-only account #${existing.id} into #${match.id} (matched by ${matchedBy})`);
+        existing = mergeUsers(match.id, existing.id, { performedBy: match.id });
+      } else if (match) {
+        console.log(`[AUTH] Authentik ${akUsername} matched existing account #${match.id} by ${matchedBy}`);
+        existing = match;
+      }
     }
 
     // Role: the better of the Authentik groups and — whenever a Discord identity is known (linked

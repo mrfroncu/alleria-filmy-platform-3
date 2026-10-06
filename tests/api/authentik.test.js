@@ -7,6 +7,7 @@ import { expect } from 'expect';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import supertest from 'supertest';
+import { createRequire } from 'node:module';
 import { app, db, seedUsers, anon, loginAs } from '../helpers/testApp.js';
 
 let fake;          // serwer udający Authentik
@@ -247,6 +248,52 @@ describe('Authentik — dopasowanie do istniejącego konta', () => {
     fakeUser = { sub: 'ak-dup', preferred_username: 'd', email: 'dup@example.com', email_verified: true, groups: [] };
     const me = await ssoLogin();
     expect([a, b]).not.toContain(me.id);
+  });
+
+  it('wcześniej założone konto tylko-SSO zostaje scalone do konta Discord, które zostaje główne', async () => {
+    // Stan "sprzed" dopasowania: osobne konto SSO z historią + stare konto Discord z rolą dev
+    const dcId = addUser({ username: 'stary-dc', display_name: 'Stary Discord', role: 'dev', discord_id: '777000111', auth_method: 'discord' });
+    const ssoId = addUser({ username: 'sso-dup', display_name: 'Duplikat', role: 'member', auth_method: 'authentik', authentik_sub: 'ak-dup-sub' });
+    db.prepare("INSERT INTO login_logs (user_id, username, auth_method, ip_address, success) VALUES (?, 'sso-dup', 'authentik', '1.2.3.4', 1)").run(ssoId);
+
+    fakeUser = { sub: 'ak-dup-sub', preferred_username: 'sso-dup', groups: [], discord_id: '777000111' };
+    const me = await ssoLogin();
+    expect(me.id).toBe(dcId);
+    expect(me.role).toBe('dev');
+    expect(me.display_name).toBe('Stary Discord');
+    expect(db.prepare('SELECT 1 FROM users WHERE id = ?').get(ssoId)).toBeUndefined();
+    expect(db.prepare('SELECT authentik_sub FROM users WHERE id = ?').get(dcId).authentik_sub).toBe('ak-dup-sub');
+    expect(db.prepare('SELECT COUNT(*) c FROM login_logs WHERE user_id = ?').get(ssoId).c).toBe(0); // historia przeniesiona
+  });
+
+  it('to samo przez zweryfikowany e-mail (ACCOUNT_LINK_BY_EMAIL)', async () => {
+    process.env.ACCOUNT_LINK_BY_EMAIL = 'true';
+    process.env.AUTHENTIK_TRUST_EMAIL = 'true';
+    const dcId = addUser({ username: 'dc-mail', role: 'admin', discord_id: '777000222', discord_email: 'old@example.com', discord_email_verified: 1 });
+    const ssoId = addUser({ username: 'sso-mail', role: 'member', auth_method: 'authentik', authentik_sub: 'ak-mail-dup' });
+    fakeUser = { sub: 'ak-mail-dup', preferred_username: 'sso-mail', email: 'old@example.com', groups: [] };
+    const me = await ssoLogin();
+    expect(me.id).toBe(dcId);
+    expect(me.role).toBe('admin');
+    expect(db.prepare('SELECT 1 FROM users WHERE id = ?').get(ssoId)).toBeUndefined();
+  });
+
+  it('konto SSO z inną metodą logowania (np. TS3) nie jest scalane automatycznie', async () => {
+    const dcId = addUser({ username: 'dc-x', role: 'member', discord_id: '777000333', auth_method: 'discord' });
+    const ssoId = addUser({ username: 'sso-x', role: 'member', auth_method: 'authentik', authentik_sub: 'ak-x', ts3_uid: 'ts3-x' });
+    fakeUser = { sub: 'ak-x', preferred_username: 'sso-x', groups: [], discord_id: '777000333' };
+    const me = await ssoLogin();
+    expect(me.id).toBe(ssoId);
+    expect(db.prepare('SELECT 1 FROM users WHERE id = ?').get(dcId)).toBeTruthy();
+  });
+
+  it('migracja 005 oznacza stare e-maile Discord jako zweryfikowane, nowsze logowania zostawia', () => {
+    const migration = createRequire(import.meta.url)('../../backend/migrations/005_backfill_discord_email_verified.js');
+    const oldId = addUser({ username: 'old-dc', discord_id: '777000444', discord_email: 'a@example.com', discord_email_verified: 0, last_login: '2000-01-01 00:00:00' });
+    const newId = addUser({ username: 'new-dc', discord_id: '777000555', discord_email: 'b@example.com', discord_email_verified: 0, last_login: '2999-01-01 00:00:00' });
+    migration.up(db);
+    expect(db.prepare('SELECT discord_email_verified v FROM users WHERE id = ?').get(oldId).v).toBe(1);
+    expect(db.prepare('SELECT discord_email_verified v FROM users WHERE id = ?').get(newId).v).toBe(0);
   });
 
   it('pole e-mail z profilu (edytowalne przez użytkownika) nigdy nie służy do dopasowania', async () => {
