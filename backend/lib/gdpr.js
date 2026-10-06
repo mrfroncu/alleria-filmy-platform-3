@@ -12,7 +12,7 @@ function gdprEnabled() {
 }
 
 function buildUserDataExport(userId) {
-  const user = db.prepare('SELECT id, username, display_name, bio, role, auth_method, discord_id, discord_email, email, email_notifications, ts3_uid, ts6_uid, authentik_sub, authentik_username, created_at, last_login FROM users WHERE id = ?').get(userId);
+  const user = db.prepare('SELECT id, username, display_name, bio, role, auth_method, discord_id, discord_email, email, email_notifications, ts3_uid, ts6_uid, authentik_sub, authentik_username, authentik_email, created_at, last_login FROM users WHERE id = ?').get(userId);
   return {
     exported_at: new Date().toISOString(),
     profile: user,
@@ -29,9 +29,9 @@ function anonymizeUser(userId) {
   if (!u) return;
   db.prepare(`UPDATE users SET
     username = ?, display_name = 'Usunięty użytkownik', bio = '', avatar = NULL, avatar_source = 'global', custom_avatar = NULL,
-    discord_id = NULL, discord_roles = '[]', discord_avatar_hash = NULL, discord_guild_avatar_hash = NULL, discord_email = NULL,
+    discord_id = NULL, discord_roles = '[]', discord_avatar_hash = NULL, discord_guild_avatar_hash = NULL, discord_email = NULL, discord_email_verified = 0,
     email = NULL, email_notifications = 0,
-    ts3_uid = NULL, ts3_ip = NULL, ts6_uid = NULL, ts6_ip = NULL, authentik_sub = NULL, authentik_username = NULL, role = 'member',
+    ts3_uid = NULL, ts3_ip = NULL, ts6_uid = NULL, ts6_ip = NULL, authentik_sub = NULL, authentik_username = NULL, authentik_email = NULL, role = 'member',
     is_anonymized = 1, anonymized_original_username = ?, anonymized_original_display_name = ?,
     anonymized_at = datetime('now')
     WHERE id = ?`).run(`deleted_user_${userId}`, u.username, u.display_name, userId);

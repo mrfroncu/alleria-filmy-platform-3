@@ -4,11 +4,11 @@ const fetch = require('node-fetch');
 const db = require('../db');
 const { audit, isSafeReturnTo, logLogin } = require('../lib/helpers');
 const { authLimiter } = require('../lib/rateLimits');
-const { createPendingMerge, getMergeStats, identityList, maxRole, tosNeedsAcceptance } = require('../lib/accounts');
+const { createPendingMerge, findAccountByVerifiedEmail, getMergeStats, identityList, maxRole, tosNeedsAcceptance } = require('../lib/accounts');
 const { getDiscordRoleSetting } = require('../lib/tsConfig');
 const { getSetting } = require('../lib/settings');
 const { stampSessionMeta } = require('../lib/sessions');
-const { isAuthentikConfigured, authentikDisplayName, authentikEndpoints, createPkcePair, computeAuthentikRole } = require('../lib/authentik');
+const { isAuthentikConfigured, authentikDisplayName, authentikEndpoints, authentikTrustsEmail, createPkcePair, computeAuthentikRole } = require('../lib/authentik');
 
 const router = express.Router();
 
@@ -68,6 +68,41 @@ function finishOAuthLogin(req, res, sessionUser, popupMessageType) {
       res.redirect(returnTo);
     });
   });
+}
+
+// ============ DISCORD ROLES ============
+// 'dev' / 'admin' / 'member' from a guild member's Discord role ids, or null with none of the
+// required ones. Member/admin role ids are optionally panel-managed (DISCORD_ROLES_CONFIG_SOURCE);
+// the dev role always comes straight from .env, no override.
+function discordRoleFromRoles(roles) {
+  const memberRoleId = getDiscordRoleSetting('discord_member_role_id', process.env.DISCORD_MEMBER_ROLE_ID || '');
+  const adminRoleId = getDiscordRoleSetting('discord_admin_role_id', process.env.DISCORD_ADMIN_ROLE_ID || '');
+  const hasMemberRole = roles.includes(memberRoleId);
+  const hasAdminRole = roles.includes(adminRoleId);
+  const hasDevRole = roles.includes(process.env.DISCORD_DEV_ROLE_ID);
+  console.log('[AUTH] Role check - member:', hasMemberRole, 'admin:', hasAdminRole, 'dev:', hasDevRole);
+  if (hasDevRole) return 'dev';
+  if (hasAdminRole) return 'admin';
+  if (hasMemberRole) return 'member';
+  return null;
+}
+
+// Live guild roles of a Discord user via the bot: an array ([] = not on the server), or null when
+// that can't be determined right now (bot not configured, Discord down) — callers then keep
+// whatever they knew before instead of treating it as "no roles".
+async function fetchDiscordGuildRoles(discordId) {
+  if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_GUILD_ID) return null;
+  try {
+    const r = await fetch(`https://discord.com/api/guilds/${process.env.DISCORD_GUILD_ID}/members/${discordId}`,
+      { headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` } });
+    if (r.status === 404) return [];
+    if (!r.ok) { console.warn('[AUTH] Guild member lookup failed:', r.status); return null; }
+    const m = await r.json();
+    return Array.isArray(m.roles) ? m.roles : [];
+  } catch (e) {
+    console.warn('[AUTH] Guild member lookup error:', e.message);
+    return null;
+  }
 }
 
 // ============ DISCORD AUTH ============
@@ -165,33 +200,27 @@ async function discordCallbackHandler(req, res) {
     const roles = member.roles || [];
     console.log('[AUTH] User roles:', roles);
 
-    // Check if user has required role — member/admin role IDs are optionally panel-managed
-    // (DISCORD_ROLES_CONFIG_SOURCE); the dev role always comes straight from .env, no override.
-    const memberRoleId = getDiscordRoleSetting('discord_member_role_id', process.env.DISCORD_MEMBER_ROLE_ID || '');
-    const adminRoleId = getDiscordRoleSetting('discord_admin_role_id', process.env.DISCORD_ADMIN_ROLE_ID || '');
-    const hasMemberRole = roles.includes(memberRoleId);
-    const hasAdminRole = roles.includes(adminRoleId);
-    const hasDevRole = roles.includes(process.env.DISCORD_DEV_ROLE_ID);
-
-    console.log('[AUTH] Role check - member:', hasMemberRole, 'admin:', hasAdminRole, 'dev:', hasDevRole);
-
-    if (!hasMemberRole && !hasAdminRole && !hasDevRole) {
+    const role = discordRoleFromRoles(roles);
+    if (!role) {
       console.warn('[AUTH] User has none of the required roles');
       logLogin(null, discordUser.username, 'discord', clientIp, 0, 'Missing required role');
       return res.redirect('/login?error=no_role');
     }
 
-    let role = 'member';
-    if (hasDevRole) role = 'dev';
-    else if (hasAdminRole) role = 'admin';
-
     // Discord avatar hashes — global (account) and per-server (guild, Nitro-only)
     const discordAvatarHash = discordUser.avatar || null;
     const discordGuildAvatarHash = member.avatar || null;
     const discordEmail = discordUser.email || null;
+    // Discord's own flag — only a verified address may be used to match accounts across methods.
+    const discordEmailVerified = discordEmail && discordUser.verified === true ? 1 : 0;
 
-    // Upsert user
-    const existing = db.prepare('SELECT * FROM users WHERE discord_id = ?').get(discordUser.id);
+    // Upsert user — by Discord id, or (first Discord login of someone who already has an account
+    // via Authentik) by verified e-mail, see findAccountByVerifiedEmail.
+    let existing = db.prepare('SELECT * FROM users WHERE discord_id = ?').get(discordUser.id);
+    if (!existing && !req.session.linkPrimaryUserId && discordEmailVerified) {
+      existing = findAccountByVerifiedEmail(discordEmail, 'discord_id');
+      if (existing) console.log(`[AUTH] Discord ${discordUser.username} matched existing account #${existing.id} by verified e-mail`);
+    }
     const rolesJson = JSON.stringify(roles);
 
     // Account-linking mode: attach this Discord identity to the already-logged-in primary
@@ -213,8 +242,8 @@ async function discordCallbackHandler(req, res) {
       if (primary.discord_id && primary.discord_id !== discordUser.id) {
         return req.session.save(() => res.redirect('/profile?error=already_linked_discord'));
       }
-      db.prepare(`UPDATE users SET discord_id = ?, discord_roles = ?, discord_avatar_hash = ?, discord_guild_avatar_hash = ?, discord_email = ? WHERE id = ?`)
-        .run(discordUser.id, rolesJson, discordAvatarHash, discordGuildAvatarHash, discordEmail, linkPrimaryUserId);
+      db.prepare(`UPDATE users SET discord_id = ?, discord_roles = ?, discord_avatar_hash = ?, discord_guild_avatar_hash = ?, discord_email = ?, discord_email_verified = ? WHERE id = ?`)
+        .run(discordUser.id, rolesJson, discordAvatarHash, discordGuildAvatarHash, discordEmail, discordEmailVerified, linkPrimaryUserId);
       if (req.session.user) req.session.user.discord_roles = roles;
       audit(linkPrimaryUserId, 'link_account', 'user', linkPrimaryUserId, `linked Discord (${discordUser.username})`);
       return req.session.save(() => res.redirect('/profile?linked=discord'));
@@ -235,12 +264,14 @@ async function discordCallbackHandler(req, res) {
       // Never let this login downgrade a role earned via a different linked identity
       // (e.g. admin/dev via a linked TS3/TS6 account) — see maxRole's comment.
       const finalRole = maxRole(existing.role, role);
-      db.prepare(`UPDATE users SET username = ?, display_name = ?, avatar = ?, role = ?, discord_roles = ?, discord_avatar_hash = ?, discord_guild_avatar_hash = ?, discord_email = ?, last_login = datetime('now') WHERE discord_id = ?`)
-        .run(discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, finalRole, rolesJson, discordAvatarHash, discordGuildAvatarHash, discordEmail, discordUser.id);
+      // By id, not discord_id — an e-mail-matched account doesn't have the Discord id yet.
+      db.prepare(`UPDATE users SET discord_id = ?, username = ?, display_name = ?, avatar = ?, role = ?, discord_roles = ?, discord_avatar_hash = ?, discord_guild_avatar_hash = ?, discord_email = ?, discord_email_verified = ?, last_login = datetime('now') WHERE id = ?`)
+        .run(discordUser.id, discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, finalRole, rolesJson, discordAvatarHash, discordGuildAvatarHash, discordEmail, discordEmailVerified, existing.id);
+      if (!existing.discord_id) audit(existing.id, 'link_account', 'user', existing.id, `auto-linked Discord (${discordUser.username}) by verified e-mail`);
       userId = existing.id;
     } else {
-      const result = db.prepare('INSERT INTO users (discord_id, username, display_name, avatar, role, auth_method, discord_roles, discord_avatar_hash, discord_guild_avatar_hash, discord_email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(discordUser.id, discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, role, 'discord', rolesJson, discordAvatarHash, discordGuildAvatarHash, discordEmail);
+      const result = db.prepare('INSERT INTO users (discord_id, username, display_name, avatar, role, auth_method, discord_roles, discord_avatar_hash, discord_guild_avatar_hash, discord_email, discord_email_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(discordUser.id, discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, role, 'discord', rolesJson, discordAvatarHash, discordGuildAvatarHash, discordEmail, discordEmailVerified);
       userId = result.lastInsertRowid;
     }
 
@@ -362,22 +393,47 @@ async function authentikCallbackHandler(req, res) {
     const sub = String(info.sub);
     const akUsername = info.preferred_username || info.nickname || info.email || sub;
     const akDisplayName = info.name || akUsername;
-    const akEmail = info.email || null;
+    const akEmail = info.email ? String(info.email).trim() : null;
+    // Authentik's default "email" scope mapping hardcodes email_verified: false (Authentik doesn't
+    // track verification), so the address only counts as verified — stored in authentik_email and
+    // usable for matching accounts by e-mail — when a custom mapping says so, or when the admin
+    // vouches for every Authentik address with AUTHENTIK_TRUST_EMAIL=true.
+    const akVerifiedEmail = akEmail && (info.email_verified === true || authentikTrustsEmail()) ? akEmail.toLowerCase() : null;
+    // Discord user id, from a custom scope mapping reading the user's Discord source connection in
+    // Authentik (see .env.example) — the strongest link to an existing Discord-origin account.
+    const claimDiscordId = /^\d{1,32}$/.test(String(info.discord_id ?? '')) ? String(info.discord_id) : null;
     const groups = Array.isArray(info.groups) ? info.groups.map(String) : [];
-    console.log('[AUTH] Authentik user:', akUsername, '(' + sub + '), groups:', groups);
+    console.log('[AUTH] Authentik user:', akUsername, '(' + sub + '), groups:', groups, 'discord_id:', claimDiscordId);
 
-    const role = computeAuthentikRole(groups);
+    const linkPrimaryUserId = req.session.linkPrimaryUserId;
+    let existing = db.prepare('SELECT * FROM users WHERE authentik_sub = ?').get(sub);
+    // First Authentik login of someone who already has an account via another method: find it by
+    // Discord id, then by verified e-mail, instead of creating a second account.
+    if (!existing && !linkPrimaryUserId) {
+      if (claimDiscordId) {
+        const byDiscord = db.prepare('SELECT * FROM users WHERE discord_id = ?').get(claimDiscordId);
+        if (byDiscord && !byDiscord.authentik_sub) existing = byDiscord;
+      }
+      if (!existing && akVerifiedEmail) existing = findAccountByVerifiedEmail(akVerifiedEmail, 'authentik_sub');
+      if (existing) console.log(`[AUTH] Authentik ${akUsername} matched existing account #${existing.id} by ${existing.discord_id && existing.discord_id === claimDiscordId ? 'Discord id' : 'verified e-mail'}`);
+    }
+
+    // Role: the better of the Authentik groups and — whenever a Discord identity is known (linked
+    // on the account, or from the discord_id claim) — the live Discord guild roles, computed exactly
+    // as a Discord login would. Logging in needs at least one of the two.
+    const discordIdForRoles = (existing && existing.discord_id) || claimDiscordId;
+    const liveDiscordRoles = discordIdForRoles ? await fetchDiscordGuildRoles(discordIdForRoles) : null;
+    const groupRole = computeAuthentikRole(groups);
+    const discordRole = liveDiscordRoles ? discordRoleFromRoles(liveDiscordRoles) : null;
+    const role = groupRole && discordRole ? maxRole(groupRole, discordRole) : (groupRole || discordRole);
     if (!role) {
-      console.warn('[AUTH] Authentik user is in none of the required groups');
+      console.warn('[AUTH] Authentik user is in none of the required groups (and has no Discord role)');
       logLogin(null, akUsername, 'authentik', clientIp, 0, 'Missing required Authentik group');
       return fail('authentik_no_group');
     }
 
-    const existing = db.prepare('SELECT * FROM users WHERE authentik_sub = ?').get(sub);
-
     // Account-linking mode — same rules as Discord: attach to the logged-in account, or hand
     // back a pending-merge token if this Authentik identity already has its own account.
-    const linkPrimaryUserId = req.session.linkPrimaryUserId;
     if (linkPrimaryUserId) {
       delete req.session.linkPrimaryUserId;
       const label = `${authentikDisplayName()}: ${akUsername}`;
@@ -395,12 +451,17 @@ async function authentikCallbackHandler(req, res) {
         return req.session.save(() => res.redirect('/profile?error=already_linked_authentik'));
       }
       const finalRole = maxRole(primary.role, role);
-      db.prepare('UPDATE users SET authentik_sub = ?, authentik_username = ?, role = ?, email = COALESCE(email, ?) WHERE id = ?')
-        .run(sub, akUsername, finalRole, akEmail, linkPrimaryUserId);
+      db.prepare('UPDATE users SET authentik_sub = ?, authentik_username = ?, authentik_email = ?, role = ?, email = COALESCE(email, ?) WHERE id = ?')
+        .run(sub, akUsername, akVerifiedEmail, finalRole, akEmail, linkPrimaryUserId);
       if (req.session.user) req.session.user.role = finalRole;
       audit(linkPrimaryUserId, 'link_account', 'user', linkPrimaryUserId, `linked Authentik (${akUsername})`);
       return req.session.save(() => res.redirect('/profile?linked=authentik'));
     }
+
+    // The claimed Discord id is attached to the account too (unless another account already holds
+    // it), so a later direct Discord login lands on this same account.
+    const claimDiscordIdFree = !!claimDiscordId && !db.prepare('SELECT 1 FROM users WHERE discord_id = ?').get(claimDiscordId);
+    const liveRolesJson = liveDiscordRoles ? JSON.stringify(liveDiscordRoles) : null;
 
     let userId;
     if (existing) {
@@ -409,16 +470,22 @@ async function authentikCallbackHandler(req, res) {
       // linked account); username only tracks Authentik on Authentik-origin accounts.
       const finalRole = maxRole(existing.role, role);
       const username = existing.auth_method === 'authentik' ? akUsername : existing.username;
-      db.prepare(`UPDATE users SET username = ?, authentik_username = ?, role = ?, last_login = datetime('now') WHERE id = ?`)
-        .run(username, akUsername, finalRole, existing.id);
+      const attachDiscord = !existing.discord_id && claimDiscordIdFree;
+      // Fresh guild roles only belong on a row that has (or now gets) the Discord id they were fetched for.
+      const storeRoles = liveRolesJson && (existing.discord_id || attachDiscord) ? liveRolesJson : null;
+      db.prepare(`UPDATE users SET authentik_sub = ?, username = ?, authentik_username = ?, authentik_email = ?, role = ?,
+          discord_id = COALESCE(discord_id, ?), discord_roles = COALESCE(?, discord_roles), last_login = datetime('now') WHERE id = ?`)
+        .run(sub, username, akUsername, akVerifiedEmail, finalRole, attachDiscord ? claimDiscordId : null, storeRoles, existing.id);
+      if (!existing.authentik_sub) audit(existing.id, 'link_account', 'user', existing.id, `auto-linked Authentik (${akUsername})`);
       userId = existing.id;
     } else {
-      // Avatar only if the provider has a custom mapping emitting `picture` — Authentik's default
-      // scopes don't, so new accounts usually start with the generated fallback avatar.
+      // `picture` comes from Authentik's default "profile" mapping; only absolute https URLs are
+      // usable here (Authentik's own default avatar may be a relative path).
       const picture = typeof info.picture === 'string' && /^https:\/\//.test(info.picture) ? info.picture : null;
-      const result = db.prepare(`INSERT INTO users (username, display_name, avatar, role, auth_method, authentik_sub, authentik_username, email)
-        VALUES (?, ?, ?, ?, 'authentik', ?, ?, ?)`)
-        .run(akUsername, akDisplayName, picture, role, sub, akUsername, akEmail);
+      const result = db.prepare(`INSERT INTO users (username, display_name, avatar, role, auth_method, authentik_sub, authentik_username, authentik_email, email, discord_id, discord_roles)
+        VALUES (?, ?, ?, ?, 'authentik', ?, ?, ?, ?, ?, ?)`)
+        .run(akUsername, akDisplayName, picture, role, sub, akUsername, akVerifiedEmail, akEmail,
+          claimDiscordIdFree ? claimDiscordId : null, claimDiscordIdFree && liveRolesJson ? liveRolesJson : '[]');
       userId = result.lastInsertRowid;
     }
 
@@ -437,8 +504,8 @@ async function authentikCallbackHandler(req, res) {
       avatar: user.avatar,
       role: user.role,
       auth_method: 'authentik',
-      // Last-known Discord roles of a linked account, so category access by Discord role keeps
-      // working when logging in through Authentik instead.
+      // Discord roles of a linked account (refreshed above when the bot could reach Discord), so
+      // category access by Discord role works the same as with a Discord login.
       discord_roles: Array.isArray(discordRoles) ? discordRoles : [],
     }, 'authentik_auth_success');
   } catch (err) {

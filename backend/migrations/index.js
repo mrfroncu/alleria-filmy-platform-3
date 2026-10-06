@@ -16,6 +16,7 @@ const MIGRATIONS = [
   require('./001_baseline'),
   require('./002_indexes'),
   require('./003_authentik'),
+  require('./004_verified_emails'),
 ];
 
 const BACKUP_PREFIX = 'alleria-';

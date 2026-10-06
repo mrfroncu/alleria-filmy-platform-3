@@ -33,6 +33,13 @@ function authentikEndpoints() {
   };
 }
 
+// AUTHENTIK_TRUST_EMAIL=true: treat every e-mail Authentik sends as verified, despite its default
+// mapping's hardcoded email_verified: false — only safe when users can't put arbitrary addresses
+// on their Authentik accounts (e.g. they come from Discord, or only admins create them).
+function authentikTrustsEmail() {
+  return /^(1|true|yes)$/i.test(String(process.env.AUTHENTIK_TRUST_EMAIL || '').trim());
+}
+
 // PKCE pair — the verifier stays in the session, only its SHA-256 goes to Authentik.
 function createPkcePair() {
   const verifier = crypto.randomBytes(32).toString('base64url');
@@ -56,4 +63,4 @@ function computeAuthentikRole(groups) {
   return null;
 }
 
-module.exports = { isAuthentikConfigured, authentikDisplayName, authentikEndpoints, createPkcePair, computeAuthentikRole };
+module.exports = { isAuthentikConfigured, authentikDisplayName, authentikEndpoints, authentikTrustsEmail, createPkcePair, computeAuthentikRole };

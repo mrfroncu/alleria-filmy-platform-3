@@ -336,6 +336,10 @@ W Authentik: **Applications → Providers → OAuth2/OpenID Provider** (Client t
 | `AUTHENTIK_MEMBER_GROUPS` | Nazwy grup (po przecinku) dające dostęp; puste = każdy, kogo Authentik przepuści |
 | `AUTHENTIK_ADMIN_GROUPS` | Nazwy grup dające rolę admin/redaktor |
 | `AUTHENTIK_DEV_GROUPS` | Nazwy grup dające rolę dev |
+| `AUTHENTIK_TRUST_EMAIL` | `true` = traktuj e-maile z Authentik jako zweryfikowane (domyślny mapping Authentik zawsze wysyła `email_verified: false`) |
+| `ACCOUNT_LINK_BY_EMAIL` | `true` = przy pierwszym logowaniu nową metodą (Discord/Authentik) znajdź istniejące konto po **zweryfikowanym** e-mailu dostawcy (nigdy po e-mailu z profilu) |
+
+**To samo konto Discord ↔ SSO:** jeśli użytkownicy logują się do Authentik przez Discord source, dodaj w Authentik *Scope Mapping* o nazwie scope `profile` (zostanie scalony z domyślnym) — wyrażenie jest w `.env.example`. Wysyła claim `discord_id`, dzięki któremu logowanie SSO trafia w konto z tym Discordem i dostaje jego bieżące role z serwera Discord (przez bota), tak jak przy logowaniu Discordem.
 
 ### TeamSpeak 6 (opcjonalnie)
 | Zmienna | Opis |

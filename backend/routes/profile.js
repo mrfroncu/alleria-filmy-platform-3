@@ -237,11 +237,11 @@ router.post('/api/profile/unlink', requireAuth, (req, res) => {
       // and shouldn't be lost just because the Discord identity was unlinked.
       const wasCustom = user.avatar_source === 'custom';
       db.prepare(`UPDATE users SET discord_id = NULL, discord_roles = '[]', discord_avatar_hash = NULL,
-                  discord_guild_avatar_hash = NULL, discord_email = NULL${wasCustom ? '' : `, avatar_source = 'global', avatar = NULL`} WHERE id = ?`).run(user.id);
+                  discord_guild_avatar_hash = NULL, discord_email = NULL, discord_email_verified = 0${wasCustom ? '' : `, avatar_source = 'global', avatar = NULL`} WHERE id = ?`).run(user.id);
       req.session.user.discord_id = null;
       if (!wasCustom) req.session.user.avatar = null;
     } else if (method === 'authentik') {
-      db.prepare('UPDATE users SET authentik_sub = NULL, authentik_username = NULL WHERE id = ?').run(user.id);
+      db.prepare('UPDATE users SET authentik_sub = NULL, authentik_username = NULL, authentik_email = NULL WHERE id = ?').run(user.id);
     } else {
       const uidCol = method === 'teamspeak3' ? 'ts3_uid' : 'ts6_uid';
       const ipCol = method === 'teamspeak3' ? 'ts3_ip' : 'ts6_ip';

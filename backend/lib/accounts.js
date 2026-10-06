@@ -55,6 +55,36 @@ function identityList(u) {
   ].filter(Boolean);
 }
 
+// ============ CROSS-METHOD MATCHING ============
+// A first login through one method (say Authentik) for someone who already has an account via
+// another (Discord) would otherwise create a second, separate account. These find the existing
+// one instead, using only identifiers a provider has vouched for.
+
+// Opt-in (ACCOUNT_LINK_BY_EMAIL=true): it's only as trustworthy as the providers' e-mail
+// verification — e.g. an Authentik enrollment flow that lets anyone sign up with any address
+// would let them land in someone else's account here.
+function emailLinkingEnabled() {
+  return /^(1|true|yes)$/i.test(String(process.env.ACCOUNT_LINK_BY_EMAIL || '').trim());
+}
+
+// The single account whose provider-verified e-mail (Discord with its `verified` flag, or
+// Authentik's) equals `email` and which doesn't have `identityCol` set yet — or null when there's
+// none, or more than one (ambiguous; never guess). users.email is deliberately NOT consulted:
+// anyone can type any address into their profile.
+function findAccountByVerifiedEmail(email, identityCol) {
+  if (!emailLinkingEnabled() || !email) return null;
+  const e = String(email).trim().toLowerCase();
+  if (!e) return null;
+  const rows = db.prepare(`SELECT * FROM users
+    WHERE (discord_email_verified = 1 AND lower(discord_email) = ?) OR lower(authentik_email) = ?`).all(e, e);
+  const candidates = rows.filter(r => !r[identityCol]);
+  if (candidates.length !== 1) {
+    if (candidates.length > 1) console.warn(`[AUTH] E-mail ${e} matches ${candidates.length} accounts — not auto-linking`);
+    return null;
+  }
+  return candidates[0];
+}
+
 // Regulamin (ToS) — content lives in app_settings (tos_content/tos_updated_at), acceptance is
 // per-user (users.tos_accepted_at). Plain ISO-string comparison — both sides are always either
 // SQLite's datetime('now') or JS's toISOString(), which sort correctly as strings.
@@ -143,6 +173,7 @@ function mergeUsers(primaryId, secondaryId, { performedBy } = {}) {
         discord_avatar_hash: secondary.discord_avatar_hash,
         discord_guild_avatar_hash: secondary.discord_guild_avatar_hash,
         discord_email: secondary.discord_email,
+        discord_email_verified: secondary.discord_email_verified,
       });
     }
     if (!primary.ts3_uid && secondary.ts3_uid) {
@@ -152,7 +183,7 @@ function mergeUsers(primaryId, secondaryId, { performedBy } = {}) {
       Object.assign(patch, { ts6_uid: secondary.ts6_uid, ts6_ip: secondary.ts6_ip });
     }
     if (!primary.authentik_sub && secondary.authentik_sub) {
-      Object.assign(patch, { authentik_sub: secondary.authentik_sub, authentik_username: secondary.authentik_username });
+      Object.assign(patch, { authentik_sub: secondary.authentik_sub, authentik_username: secondary.authentik_username, authentik_email: secondary.authentik_email });
     }
     // Contact email is a general field, not tied to one identity type — keep primary's own
     // if it already set one (manually or via Discord), otherwise inherit secondary's along
@@ -177,4 +208,4 @@ function mergeUsers(primaryId, secondaryId, { performedBy } = {}) {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(primaryId);
 }
 
-module.exports = { pendingMerges, PENDING_MERGE_TTL_MS, createPendingMerge, getPendingMerge, consumePendingMerge, getMergeStats, identityList, tosNeedsAcceptance, ROLE_RANK, maxRole, mergeUsers };
+module.exports = { pendingMerges, PENDING_MERGE_TTL_MS, createPendingMerge, getPendingMerge, consumePendingMerge, getMergeStats, identityList, emailLinkingEnabled, findAccountByVerifiedEmail, tosNeedsAcceptance, ROLE_RANK, maxRole, mergeUsers };

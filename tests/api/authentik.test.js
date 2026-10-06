@@ -51,6 +51,9 @@ beforeEach(() => {
   delete process.env.AUTHENTIK_MEMBER_GROUPS;
   delete process.env.AUTHENTIK_ADMIN_GROUPS;
   delete process.env.AUTHENTIK_DEV_GROUPS;
+  delete process.env.AUTHENTIK_TRUST_EMAIL;
+  delete process.env.ACCOUNT_LINK_BY_EMAIL;
+  delete process.env.DISCORD_BOT_TOKEN; // bez bota — żadnych prawdziwych zapytań do Discorda
   fakeUser = { sub: 'ak-sub-1', preferred_username: 'jan', name: 'Jan Kowalski', email: 'jan@example.com', groups: [] };
 });
 
@@ -169,6 +172,91 @@ describe('Authentik — callback', () => {
     const { code, state } = await startFlow(agent);
     const res = await agent.get(`/auth/authentik/callback?code=${code}&state=${state}`);
     expect(res.headers.location).toBe('/login?error=auth_failed');
+  });
+});
+
+// Pierwsze logowanie przez SSO kogoś, kto ma już konto z Discorda
+describe('Authentik — dopasowanie do istniejącego konta', () => {
+  const addUser = (fields) => {
+    const cols = Object.keys(fields);
+    const r = db.prepare(`INSERT INTO users (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...Object.values(fields));
+    return r.lastInsertRowid;
+  };
+  const ssoLogin = async () => {
+    const agent = supertest.agent(app);
+    const { code, state } = await startFlow(agent);
+    const res = await agent.get(`/auth/authentik/callback?code=${code}&state=${state}`);
+    expect(res.headers.location).toBe('/');
+    return (await agent.get('/api/auth/me')).body;
+  };
+
+  it('claim discord_id trafia w konto z tym samym Discordem (i zapamiętuje sub)', async () => {
+    const id = addUser({ username: 'dc-user', display_name: 'Z Discorda', role: 'admin', discord_id: '555000111', auth_method: 'discord' });
+    fakeUser = { sub: 'ak-dc-1', preferred_username: 'dcsso', name: 'Inna Nazwa', groups: [], discord_id: '555000111' };
+    const me = await ssoLogin();
+    expect(me.id).toBe(id);
+    expect(me.role).toBe('admin'); // rola z konta Discord nie spada
+    expect(me.display_name).toBe('Z Discorda');
+    expect(db.prepare('SELECT authentik_sub FROM users WHERE id = ?').get(id).authentik_sub).toBe('ak-dc-1');
+  });
+
+  it('nowe konto SSO z claimem discord_id dostaje też discord_id (późniejszy login Discordem trafi w nie)', async () => {
+    fakeUser = { sub: 'ak-dc-2', preferred_username: 'nowy', groups: [], discord_id: '555000222' };
+    const me = await ssoLogin();
+    expect(db.prepare('SELECT discord_id FROM users WHERE id = ?').get(me.id).discord_id).toBe('555000222');
+  });
+
+  it('dopasowanie po e-mailu jest domyślnie wyłączone', async () => {
+    const id = addUser({ username: 'mail-off', role: 'member', discord_id: '555000333', discord_email: 'off@example.com', discord_email_verified: 1 });
+    fakeUser = { sub: 'ak-mail-off', preferred_username: 'x', email: 'off@example.com', email_verified: true, groups: [] };
+    const me = await ssoLogin();
+    expect(me.id).not.toBe(id);
+  });
+
+  it('z ACCOUNT_LINK_BY_EMAIL trafia w konto o zweryfikowanym e-mailu z Discorda (bez względu na wielkość liter)', async () => {
+    process.env.ACCOUNT_LINK_BY_EMAIL = 'true';
+    const id = addUser({ username: 'mail-on', role: 'member', discord_id: '555000444', discord_email: 'On@Example.com', discord_email_verified: 1 });
+    fakeUser = { sub: 'ak-mail-on', preferred_username: 'y', email: 'on@example.COM', email_verified: true, groups: [] };
+    const me = await ssoLogin();
+    expect(me.id).toBe(id);
+  });
+
+  it('niezweryfikowany e-mail z Discorda się nie liczy', async () => {
+    process.env.ACCOUNT_LINK_BY_EMAIL = 'true';
+    const id = addUser({ username: 'dc-unverified', role: 'member', discord_id: '555000555', discord_email: 'unv@example.com', discord_email_verified: 0 });
+    fakeUser = { sub: 'ak-unv', preferred_username: 'z', email: 'unv@example.com', email_verified: true, groups: [] };
+    const me = await ssoLogin();
+    expect(me.id).not.toBe(id);
+  });
+
+  it('e-mail z Authentika z email_verified=false (domyślny mapping) liczy się tylko z AUTHENTIK_TRUST_EMAIL', async () => {
+    process.env.ACCOUNT_LINK_BY_EMAIL = 'true';
+    const id = addUser({ username: 'trust', role: 'member', discord_id: '555000666', discord_email: 'trust@example.com', discord_email_verified: 1 });
+    fakeUser = { sub: 'ak-trust-1', preferred_username: 't1', email: 'trust@example.com', email_verified: false, groups: [] };
+    expect((await ssoLogin()).id).not.toBe(id);
+
+    process.env.AUTHENTIK_TRUST_EMAIL = 'true';
+    fakeUser = { ...fakeUser, sub: 'ak-trust-2' };
+    expect((await ssoLogin()).id).toBe(id);
+  });
+
+  it('niejednoznaczny e-mail (kilka kont) nie łączy z żadnym', async () => {
+    process.env.ACCOUNT_LINK_BY_EMAIL = 'true';
+    const a = addUser({ username: 'dup-a', role: 'member', discord_id: '555000777', discord_email: 'dup@example.com', discord_email_verified: 1 });
+    const b = addUser({ username: 'dup-b', role: 'member', discord_id: '555000888', discord_email: 'dup@example.com', discord_email_verified: 1 });
+    fakeUser = { sub: 'ak-dup', preferred_username: 'd', email: 'dup@example.com', email_verified: true, groups: [] };
+    const me = await ssoLogin();
+    expect([a, b]).not.toContain(me.id);
+  });
+
+  it('pole e-mail z profilu (edytowalne przez użytkownika) nigdy nie służy do dopasowania', async () => {
+    process.env.ACCOUNT_LINK_BY_EMAIL = 'true';
+    process.env.AUTHENTIK_TRUST_EMAIL = 'true';
+    const id = addUser({ username: 'profile-mail', role: 'dev', discord_id: '555000999', email: 'victim@example.com' });
+    fakeUser = { sub: 'ak-attacker', preferred_username: 'a', email: 'victim@example.com', groups: [] };
+    const me = await ssoLogin();
+    expect(me.id).not.toBe(id);
+    expect(me.role).toBe('member');
   });
 });
 
