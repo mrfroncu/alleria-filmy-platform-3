@@ -320,6 +320,17 @@ function setupWatchPartyWS(db, resolveVideoForUser) {
               return;
             }
             const sources = [];
+            // Main source first (same order as the client's buildSources). A self-hosted
+            // video can have an empty main_source and only a stream_video_id — the client
+            // plays that via the transcoded HLS stream, so it still counts as a source.
+            if ((video.main_source && video.main_source.trim()) || video.stream_video_id) {
+              sources.push({
+                key: 'main',
+                label: video.main_source_title || 'Główne źródło',
+                url: video.main_source || '',
+                type: video.main_source_type || 'youtube',
+              });
+            }
             for (let n = 1; n <= 5; n++) {
               const url = video[`mirror${n}_url`];
               if (!url) continue;
