@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp, FolderOpen, Loader2, BarChart3, Image as ImageIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp, FolderOpen, Loader2, BarChart3, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import VideoModal from '../components/VideoModal';
@@ -39,6 +39,7 @@ export default function AdminPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
   const [bulkValue, setBulkValue] = useState('');
+  const [togglingHiddenId, setTogglingHiddenId] = useState(null);
 
   const [expandedTag, setExpandedTag] = useState(null);
 
@@ -130,11 +131,31 @@ export default function AdminPage() {
     else toast.success(`Zregenerowano miniaturki: ${targets.length}`);
   };
 
+  const handleToggleHidden = async (video) => {
+    const hide = !video.is_hidden;
+    if (hide && !(await confirm(`Ukryć „${video.title}" przed widzami? Nic nie zostanie usunięte, możesz go później opublikować ponownie.`, { confirmLabel: 'Ukryj' }))) return;
+    setTogglingHiddenId(video.id);
+    try {
+      await api.setVideoHidden(video.id, hide);
+      toast.success(hide ? 'Film ukryty.' : 'Film opublikowany.');
+      loadData();
+    } catch (err) {
+      toast.error('Błąd: ' + err.message);
+    } finally {
+      setTogglingHiddenId(null);
+    }
+  };
+
   const handleBulkAction = async () => {
     if (!bulkAction || selectedIds.length === 0) return;
     if (bulkAction === 'regen_thumbnails') return handleBulkRegenerate();
-    const label = bulkAction === 'delete' ? `USUNĄĆ ${selectedIds.length} filmów` : `zmienić ${selectedIds.length} filmów`;
-    if (!(await confirm(`Czy na pewno chcesz ${label}?`, { danger: bulkAction === 'delete', confirmLabel: bulkAction === 'delete' ? 'Usuń' : 'Zmień' }))) return;
+    const labels = {
+      delete: [`USUNĄĆ ${selectedIds.length} filmów`, 'Usuń'],
+      hide: [`ukryć ${selectedIds.length} filmów przed widzami`, 'Ukryj'],
+      show: [`opublikować ${selectedIds.length} filmów`, 'Opublikuj'],
+    };
+    const [label, confirmLabel] = labels[bulkAction] || [`zmienić ${selectedIds.length} filmów`, 'Zmień'];
+    if (!(await confirm(`Czy na pewno chcesz ${label}?`, { danger: bulkAction === 'delete', confirmLabel }))) return;
     try {
       await api.bulkVideos({ action: bulkAction, video_ids: selectedIds, value: bulkValue || null });
       setSelectedIds([]); setBulkAction(''); setBulkValue('');
@@ -252,6 +273,8 @@ export default function AdminPage() {
                 <option value="change_category">Zmień kategorię</option>
                 <option value="change_author">Zmień autora</option>
                 <option value="change_access">Zmień uprawnienia</option>
+                <option value="hide">Ukryj zaznaczone</option>
+                <option value="show">Opublikuj zaznaczone</option>
                 <option value="regen_thumbnails">Regeneruj miniaturki</option>
                 <option value="delete">Usuń zaznaczone</option>
               </select>
@@ -333,6 +356,11 @@ export default function AdminPage() {
                               {video.stream_video_id && video.stream_status === 'ready' && (
                                 <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1"><span className="w-1 h-1 bg-emerald-500 rounded-full" /> Gotowy{video.drm_enhanced ? ' • DRM' : ''}</span>
                               )}
+                              {video.is_hidden ? (
+                                <span className="text-[10px] font-bold text-amber-600 flex items-center gap-1"><EyeOff className="w-3 h-3" /> Ukryty</span>
+                              ) : video.publish_date && new Date(video.publish_date) > new Date() ? (
+                                <span className="text-[10px] font-bold text-violet-500 flex items-center gap-1"><span className="w-1 h-1 bg-violet-500 rounded-full" /> Zaplanowany</span>
+                              ) : null}
                             </div>
                           </div>
                         </td>
@@ -360,6 +388,14 @@ export default function AdminPage() {
                                 {regeneratingThumb === video.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImageIcon className="w-3.5 h-3.5" />}
                               </button>
                             )}
+                            <button
+                              onClick={() => handleToggleHidden(video)}
+                              disabled={togglingHiddenId === video.id}
+                              className="btn-icon-zinc disabled:opacity-50"
+                              title={video.is_hidden ? 'Opublikuj' : 'Ukryj przed widzami'}
+                            >
+                              {togglingHiddenId === video.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : video.is_hidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                            </button>
                             <Link to={`/video/${video.id}/analytics?from=admin`} className="btn-icon-zinc" title="Analityka">
                               <BarChart3 className="w-3.5 h-3.5" />
                             </Link>

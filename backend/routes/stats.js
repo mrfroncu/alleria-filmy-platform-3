@@ -33,6 +33,7 @@ router.get('/api/stats', requireAuth, (req, res) => {
     const mostWatched = db.prepare(`
       SELECT v.id, v.title, v.thumbnail, COUNT(wl.id) AS views, u.display_name AS author_display_name
       FROM watch_logs wl JOIN videos v ON wl.video_id = v.id LEFT JOIN users u ON v.author_id = u.id
+      WHERE v.is_hidden = 0
       GROUP BY v.id ORDER BY views DESC LIMIT 10
     `).all();
 

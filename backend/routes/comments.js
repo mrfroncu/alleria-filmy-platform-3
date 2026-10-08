@@ -74,7 +74,7 @@ function notifyMentions({ ids, video, comment, author, skip = new Set() }) {
 router.get('/api/videos/:id/mentionable', requireAuth, (req, res) => {
   try {
     const user = req.session.user;
-    const video = db.prepare('SELECT id, category_id, access_mode, publish_date FROM videos WHERE id = ?').get(req.params.id);
+    const video = db.prepare('SELECT id, category_id, access_mode, publish_date, is_hidden FROM videos WHERE id = ?').get(req.params.id);
     if (!video) return res.status(404).json({ error: 'Video not found' });
     if (!userCanViewVideo(video, user).ok) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     const q = String(req.query.q || '').trim().slice(0, 32).replace(/[\\%_]/g, '\\$&');
@@ -98,7 +98,7 @@ router.get('/api/videos/:id/mentionable', requireAuth, (req, res) => {
 router.get('/api/videos/:id/comments', requireAuth, (req, res) => {
   try {
     const user = req.session.user;
-    const video = db.prepare('SELECT id, category_id, access_mode, publish_date FROM videos WHERE id = ?').get(req.params.id);
+    const video = db.prepare('SELECT id, category_id, access_mode, publish_date, is_hidden FROM videos WHERE id = ?').get(req.params.id);
     if (!video) return res.status(404).json({ error: 'Video not found' });
     if (!userCanViewVideo(video, user).ok) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     const comments = db.prepare(`
@@ -131,7 +131,7 @@ router.post('/api/comments/:id/react', requireAuth, (req, res) => {
 router.post('/api/videos/:id/comments', requireAuth, (req, res) => {
   try {
     const user = req.session.user;
-    const video = db.prepare('SELECT id, title, category_id, access_mode, publish_date FROM videos WHERE id = ?').get(req.params.id);
+    const video = db.prepare('SELECT id, title, category_id, access_mode, publish_date, is_hidden FROM videos WHERE id = ?').get(req.params.id);
     if (!video) return res.status(404).json({ error: 'Video not found' });
     if (!userCanViewVideo(video, user).ok) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     const { content, parent_id } = req.body;
@@ -191,7 +191,7 @@ router.put('/api/comments/:id', requireAuth, (req, res) => {
       const before = mentionedUserIds(oldText);
       const added = new Set([...mentionedUserIds(newContent)].filter(uid => !before.has(uid)));
       if (added.size > 0) {
-        const video = db.prepare('SELECT id, title, category_id, access_mode, publish_date FROM videos WHERE id = ?').get(comment.video_id);
+        const video = db.prepare('SELECT id, title, category_id, access_mode, publish_date, is_hidden FROM videos WHERE id = ?').get(comment.video_id);
         if (video) notifyMentions({ ids: added, video, comment: updated, author: { id: updated.user_id, username: updated.username, display_name: updated.display_name } });
       }
     }

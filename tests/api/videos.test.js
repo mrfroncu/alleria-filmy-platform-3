@@ -1,5 +1,6 @@
 // Cykl życia filmu: tworzenie (redaktor), widoczność (member), edycja, usuwanie,
-// filmy zaplanowane (przyszła data publikacji) i historia oglądania.
+// filmy zaplanowane (przyszła data publikacji), filmy ukryte (szkice / zdjęte z widoczności)
+// i historia oglądania.
 import { describe, it, before as beforeAll } from 'node:test';
 import { expect } from 'expect';
 import { seedUsers, loginAs, createVideo, USERS } from '../helpers/testApp.js';
@@ -73,6 +74,76 @@ describe('Filmy zaplanowane (przyszła data publikacji)', () => {
 
     const devList = await dev.get('/api/videos');
     expect(devList.body.find(v => v.id === videoId)).toBeDefined();
+  });
+});
+
+describe('Filmy ukryte (szkic / zdjęty z widoczności)', () => {
+  it('szkic: member go nie widzi (lista + szczegóły z reason=hidden), redaktor widzi', async () => {
+    const videoId = await createVideo(redaktor, { title: 'Szkic filmu', is_hidden: 'true' });
+
+    const memberList = await member.get('/api/videos');
+    expect(memberList.body.find(v => v.id === videoId)).toBeUndefined();
+    const details = await member.get(`/api/videos/${videoId}`);
+    expect(details.status).toBe(403);
+    expect(details.body.reason).toBe('hidden');
+    await member.post(`/api/favorites/${videoId}`).expect(403);
+
+    const redaktorList = await redaktor.get('/api/videos');
+    expect(redaktorList.body.find(v => v.id === videoId)?.is_hidden).toBe(1);
+  });
+
+  it('publikacja szkicu przenosi datę na teraz i odsłania film memberowi', async () => {
+    const videoId = await createVideo(redaktor, { title: 'Szkic do publikacji', is_hidden: 'true', publish_date: '2020-01-01T12:00:00.000Z' });
+    const res = await redaktor.put(`/api/videos/${videoId}/visibility`).send({ hidden: false });
+    expect(res.status).toBe(200);
+    expect(res.body.is_hidden).toBe(0);
+    expect(Date.now() - new Date(res.body.publish_date).getTime()).toBeLessThan(60_000);
+
+    await member.get(`/api/videos/${videoId}`).expect(200);
+  });
+
+  it('ukrycie opublikowanego filmu i przywrócenie zachowuje oryginalną datę', async () => {
+    const videoId = await createVideo(redaktor, { title: 'Zdejmowany film', publish_date: '2020-03-01T12:00:00.000Z' });
+    await member.get(`/api/videos/${videoId}`).expect(200);
+
+    await redaktor.put(`/api/videos/${videoId}/visibility`).send({ hidden: true }).expect(200);
+    expect((await member.get(`/api/videos/${videoId}`)).status).toBe(403);
+    expect((await member.get('/api/videos')).body.find(v => v.id === videoId)).toBeUndefined();
+
+    const res = await redaktor.put(`/api/videos/${videoId}/visibility`).send({ hidden: false });
+    expect(res.body.publish_date).toBe('2020-03-01T12:00:00.000Z');
+    await member.get(`/api/videos/${videoId}`).expect(200);
+  });
+
+  it('member nie może zmieniać widoczności', async () => {
+    const videoId = await createVideo(redaktor, { title: 'Nie dla membera' });
+    await member.put(`/api/videos/${videoId}/visibility`).send({ hidden: true }).expect(403);
+  });
+
+  it('akcje masowe hide/show', async () => {
+    const a = await createVideo(redaktor, { title: 'Masowy A' });
+    const b = await createVideo(redaktor, { title: 'Masowy B' });
+    const hide = await redaktor.post('/api/videos/bulk').send({ action: 'hide', video_ids: [a, b] });
+    expect(hide.body.changes).toBe(2);
+    const listHidden = (await member.get('/api/videos')).body;
+    expect(listHidden.find(v => v.id === a || v.id === b)).toBeUndefined();
+
+    const show = await redaktor.post('/api/videos/bulk').send({ action: 'show', video_ids: [a, b] });
+    expect(show.body.changes).toBe(2);
+    const listShown = (await member.get('/api/videos')).body;
+    expect(listShown.filter(v => v.id === a || v.id === b).length).toBe(2);
+  });
+
+  it('edycja bez pola is_hidden nie zmienia widoczności', async () => {
+    const videoId = await createVideo(redaktor, { title: 'Ukryty przy edycji', is_hidden: 'true' });
+    await redaktor.put(`/api/videos/${videoId}`).send({
+      title: 'Ukryty po edycji',
+      author_id: USERS.redaktor.id,
+      main_source: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      main_source_type: 'youtube',
+      publish_date: '2020-06-01 12:00:00',
+    }).expect(200);
+    expect((await member.get(`/api/videos/${videoId}`)).body.reason).toBe('hidden');
   });
 });
 

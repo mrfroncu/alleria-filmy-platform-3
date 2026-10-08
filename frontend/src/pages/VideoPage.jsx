@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw, SmilePlus, Flag, BarChart3, Lock, Clock, Link2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw, SmilePlus, Flag, BarChart3, Lock, Clock, Link2, Eye, EyeOff } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import SecurePlayer from '../components/SecurePlayer';
 import VideoModal from '../components/VideoModal';
 import CommentText from '../components/CommentText';
@@ -714,6 +715,7 @@ export default function VideoPage() {
   const { user } = useAuth();
   const { config } = useSettings();
   const toast = useToast();
+  const confirm = useConfirm();
 
   const [video, setVideo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -721,8 +723,10 @@ export default function VideoPage() {
   const [error, setError] = useState(null);
   // Set instead of `error` when GET /api/videos/:id 403s specifically because the video is
   // scheduled (future publish_date) — distinct from a real access-denied, so it gets its own
-  // friendlier "locked" panel rather than the generic error page.
-  const [notPublished, setNotPublished] = useState(null); // { publish_date } | null
+  // friendlier "locked" panel rather than the generic error page. Also used for a manually
+  // hidden video (draft / taken down), which has no date to show.
+  const [notPublished, setNotPublished] = useState(null); // { publish_date } | { hidden: true } | null
+  const [togglingHidden, setTogglingHidden] = useState(false);
   const [isFav, setIsFav] = useState(false);
   const [favCount, setFavCount] = useState(0);
   const [favLoading, setFavLoading] = useState(false);
@@ -829,6 +833,7 @@ export default function VideoPage() {
       }).catch(() => {});
     }).catch(err => {
       if (err.reason === 'not_published') setNotPublished({ publish_date: err.publish_date });
+      else if (err.reason === 'hidden') setNotPublished({ hidden: true });
       else setError(err.message);
     }).finally(() => setLoading(false));
   }, [id]);
@@ -884,6 +889,27 @@ export default function VideoPage() {
     setFavLoading(true);
     try { if (isFav) { await api.removeFavorite(id); setIsFav(false); setFavCount(c => Math.max(0, c - 1)); } else { await api.addFavorite(id); setIsFav(true); setFavCount(c => c + 1); } } catch (e) {}
     setFavLoading(false);
+  };
+
+  // Admin/dev only (same as editing) — hide = draft / take down without deleting, publish = make
+  // visible again. The backend decides the date (see PUT /api/videos/:id/visibility).
+  const toggleHidden = async () => {
+    const hide = !video.is_hidden;
+    const ok = await confirm(hide
+      ? `Ukryć „${video.title}"? Widzowie przestaną go widzieć (nic nie zostanie usunięte), możesz go później opublikować ponownie.`
+      : `Opublikować „${video.title}"? Film stanie się widoczny dla widzów.`,
+      { confirmLabel: hide ? 'Ukryj' : 'Opublikuj', danger: hide });
+    if (!ok) return;
+    setTogglingHidden(true);
+    try {
+      const res = await api.setVideoHidden(video.id, hide);
+      setVideo(v => ({ ...v, is_hidden: res.is_hidden, publish_date: res.publish_date }));
+      toast.success(hide ? 'Film ukryty.' : 'Film opublikowany.');
+    } catch (err) {
+      toast.error('Błąd: ' + err.message);
+    } finally {
+      setTogglingHidden(false);
+    }
   };
 
   const openEditModal = async () => { try { setEditUsers(await api.getAllUsers()); } catch (e) { setEditUsers([]); } setShowEditModal(true); };
@@ -1074,9 +1100,13 @@ export default function VideoPage() {
         <div className="w-20 h-20 bg-violet-50 dark:bg-violet-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
           <Lock className="w-10 h-10 text-violet-400" />
         </div>
-        <h3 className="text-xl font-bold text-zinc-900 dark:text-white mb-2 font-display">Film jeszcze nie jest dostępny</h3>
+        <h3 className="text-xl font-bold text-zinc-900 dark:text-white mb-2 font-display">
+          {notPublished.hidden ? 'Film jest niedostępny' : 'Film jeszcze nie jest dostępny'}
+        </h3>
         <p className="text-zinc-500 text-sm">
-          {notPublished.publish_date
+          {notPublished.hidden
+            ? 'Ten film został ukryty i obecnie nie można go obejrzeć.'
+            : notPublished.publish_date
             ? `Zostanie opublikowany ${formatDate(notPublished.publish_date)}.`
             : 'Ten film nie został jeszcze opublikowany.'}
         </p>
@@ -1099,6 +1129,7 @@ export default function VideoPage() {
   const otherSources = sources.filter(s => s.key !== activeSource);
   const mediaSessionInfo = { artist: video.author_display_name || video.author_name || '', artwork: video.thumbnail || '' };
   const isDev = user?.role === 'dev';
+  const isAdminOrDev = user?.role === 'admin' || isDev;
   const activeCount = comments.filter(c => !c.deleted).length;
   // Animation class based on phase
   const enterAnim = pendingSlide === 'right' ? 'anim-enter-right' : pendingSlide === 'left' ? 'anim-enter-left' : 'anim-enter-up';
@@ -1111,11 +1142,24 @@ export default function VideoPage() {
           <ArrowLeft className="w-4 h-4" /> {fromCategory ? 'Wróć do kategorii' : 'Wróć do bazy'}
         </button>
 
+        {!!video.is_hidden && (
+          <div className="flex items-center gap-3 mb-6 px-4 py-3 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-800 dark:text-amber-300 text-sm">
+            <EyeOff className="w-4 h-4 shrink-0" />
+            <span className="flex-1">Ten film jest ukryty — widzowie go nie widzą.</span>
+            {isAdminOrDev && (
+              <button onClick={toggleHidden} disabled={togglingHidden} className="btn-ghost-primary">
+                {togglingHidden ? 'Publikowanie...' : 'Opublikuj'}
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-start gap-4 mb-6 anim-stagger-1">
           <div className="flex-1">
             <div className="flex items-start gap-3 mb-3">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display flex-1">{video.title}</h1>
               {canEdit && <Link to={`/video/${id}/analytics`} className="shrink-0 p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-violet-500 dark:hover:text-violet-400 transition-all hover:scale-110 active:scale-95" title="Analityka"><BarChart3 className="w-5 h-5" /></Link>}
+              {isAdminOrDev && <button onClick={toggleHidden} disabled={togglingHidden} title={video.is_hidden ? 'Opublikuj' : 'Ukryj przed widzami'} className="shrink-0 p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-amber-500 dark:hover:text-amber-400 transition-all hover:scale-110 active:scale-95 disabled:opacity-50">{video.is_hidden ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}</button>}
               {canEdit && <button onClick={openEditModal} className="shrink-0 p-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-500/20 transition-all hover:scale-110 active:scale-95"><Pencil className="w-5 h-5" /></button>}
               <button onClick={toggleFav} disabled={favLoading} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl transition-all duration-300 hover:scale-105 active:scale-95 ${isFav ? 'bg-pink-50 dark:bg-pink-500/10 text-pink-500 shadow-lg shadow-pink-500/10' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-pink-500'}`}>
                 <Heart className={`w-5 h-5 transition-all ${isFav ? 'fill-current scale-110' : ''}`} />

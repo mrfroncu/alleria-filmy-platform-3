@@ -5,6 +5,8 @@ import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
 import { useSettings } from '../contexts/SettingsContext';
 import { useConfirm } from '../contexts/ConfirmContext';
+import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import HoverScrubThumbnail from '../components/HoverScrubThumbnail';
 
 export default function VideosPage() {
@@ -12,6 +14,10 @@ export default function VideosPage() {
   const navigate = useNavigate();
   const { config: siteConfig } = useSettings();
   const confirm = useConfirm();
+  const { user } = useAuth();
+  const toast = useToast();
+  const isAdminOrDev = user?.role === 'admin' || user?.role === 'dev';
+  const [publishingId, setPublishingId] = useState(null);
   const [searchParams] = useSearchParams();
   const [videos, setVideos] = useState([]);
   const [tags, setTags] = useState([]);
@@ -86,15 +92,34 @@ export default function VideosPage() {
   // any such video here is, by construction, already one this viewer is allowed to see early.
   // Split them into their own "Zaplanowane" section instead of mixing them into the normal
   // grid/pagination, which is reserved for content everyone with access can already watch.
-  const { publishedVideos, scheduledVideos } = useMemo(() => {
+  // Manually hidden videos (drafts / taken down — is_hidden) follow the same API rule and get
+  // their own "Ukryte" section; hidden wins over a future date (it won't auto-publish).
+  const { publishedVideos, scheduledVideos, hiddenVideos } = useMemo(() => {
     const nowMs = Date.now();
     const scheduled = [];
     const published = [];
+    const hidden = [];
     for (const v of videos) {
-      (v.publish_date && new Date(v.publish_date).getTime() > nowMs ? scheduled : published).push(v);
+      if (v.is_hidden) hidden.push(v);
+      else (v.publish_date && new Date(v.publish_date).getTime() > nowMs ? scheduled : published).push(v);
     }
-    return { publishedVideos: published, scheduledVideos: scheduled };
+    return { publishedVideos: published, scheduledVideos: scheduled, hiddenVideos: hidden };
   }, [videos]);
+
+  const handlePublishHidden = async (e, video) => {
+    e.preventDefault(); e.stopPropagation();
+    if (!(await confirm(`Opublikować „${video.title}"? Film stanie się widoczny dla widzów.`, { confirmLabel: 'Opublikuj' }))) return;
+    setPublishingId(video.id);
+    try {
+      const res = await api.setVideoHidden(video.id, false);
+      setVideos(prev => prev.map(v => v.id === video.id ? { ...v, is_hidden: 0, publish_date: res.publish_date } : v));
+      toast.success('Film opublikowany.');
+    } catch (err) {
+      toast.error('Błąd: ' + err.message);
+    } finally {
+      setPublishingId(null);
+    }
+  };
 
   // Infinite scroll — reveals more of the already-fetched `publishedVideos` array as the
   // sentinel at the bottom of the grid comes into view, instead of the numbered page buttons.
@@ -188,90 +213,102 @@ export default function VideosPage() {
   // Shared by the normal grid and the "Zaplanowane" section below — a scheduled video is only
   // ever in `videos` at all because the viewer is allowed to see it early (see the memo above),
   // so the only visual difference here is the dimmed wrapper + a badge instead of the real date.
-  const renderVideoCard = (video, idx, { scheduled = false } = {}) => (
-    <Link
-      key={video.id}
-      to={currentCategory?.is_shorts_category
-        ? `/shorts/${categorySlug}?start=${video.id}`
-        : `/video/${video.id}${categorySlug ? `?from=${categorySlug}` : ''}`}
-      className={`video-card card overflow-hidden group ${scheduled ? 'opacity-60 hover:opacity-100 transition-opacity' : ''}`}
-      style={{ animationDelay: `${(idx % 12) * 50}ms` }}
-      onMouseEnter={() => setHoveredVideoId(video.id)}
-      onMouseLeave={() => setHoveredVideoId(id => (id === video.id ? null : id))}
-    >
-      <div className={`relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden ${loadedThumbIds.has(video.id) ? '' : 'skeleton'}`}>
-        <HoverScrubThumbnail video={video} hovered={hoveredVideoId === video.id} onLoad={() => markThumbLoaded(video.id)} />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        {scheduled ? (
-          <span className="absolute top-2 right-2 z-10 px-2 py-0.5 rounded-full backdrop-blur-sm bg-black/60 text-white text-[9px] font-bold uppercase tracking-wide">
-            Zaplanowane
-          </span>
-        ) : (
-          <button
-            onClick={(e) => toggleWatched(e, video)}
-            title={video.is_watched ? 'Oznacz jako nieobejrzany' : 'Oznacz jako obejrzany'}
-            className={`absolute top-2 right-2 z-10 p-1 rounded-full backdrop-blur-sm transition-all ${
-              video.is_watched
-                ? 'bg-emerald-500 text-white opacity-100 hover:bg-emerald-600'
-                : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/70'
-            }`}
-          >
-            <CheckCircle2 className="w-4 h-4" />
-          </button>
-        )}
-        {!scheduled && progressMap[video.id] && (() => {
-          const p = progressMap[video.id];
-          const pct = p.duration > 0 ? Math.min(100, (p.position / p.duration) * 100) : 0;
-          return (
-            <>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
-                <div className="h-full bg-violet-500" style={{ width: `${pct}%` }} />
-              </div>
-              <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded backdrop-blur-sm">
-                Kontynuuj oglądanie
-              </div>
-            </>
-          );
-        })()}
-      </div>
-      <div className={scheduled ? 'p-3' : 'p-6'}>
-        <h3 className={`font-bold text-zinc-900 dark:text-white line-clamp-2 group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors ${scheduled ? 'text-sm mb-1' : 'mb-2'}`}>
-          {video.title}
-        </h3>
-        <div className={`flex items-center justify-between ${scheduled ? 'mb-1.5' : 'mb-3'}`}>
-          <Link
-            to={`/author/${video.author_id}`}
-            onClick={e => e.stopPropagation()}
-            className={`font-medium hover:text-violet-500 transition-colors no-underline text-zinc-500 ${scheduled ? 'text-xs' : 'text-sm'}`}
-          >
-            {video.author_display_name || video.author_name}
-          </Link>
-          <span className={`text-xs font-mono ${scheduled ? 'text-violet-500 dark:text-violet-400 font-bold' : 'text-zinc-400'}`}>
-            {formatDateShort(video.publish_date)}
-          </span>
+  const renderVideoCard = (video, idx, { scheduled = false, hidden = false } = {}) => {
+    const compact = scheduled || hidden;
+    return (
+      <Link
+        key={video.id}
+        to={currentCategory?.is_shorts_category
+          ? `/shorts/${categorySlug}?start=${video.id}`
+          : `/video/${video.id}${categorySlug ? `?from=${categorySlug}` : ''}`}
+        className={`video-card card overflow-hidden group ${compact ? 'opacity-60 hover:opacity-100 transition-opacity' : ''}`}
+        style={{ animationDelay: `${(idx % 12) * 50}ms` }}
+        onMouseEnter={() => setHoveredVideoId(video.id)}
+        onMouseLeave={() => setHoveredVideoId(id => (id === video.id ? null : id))}
+      >
+        <div className={`relative aspect-video bg-zinc-100 dark:bg-zinc-800 overflow-hidden ${loadedThumbIds.has(video.id) ? '' : 'skeleton'}`}>
+          <HoverScrubThumbnail video={video} hovered={hoveredVideoId === video.id} onLoad={() => markThumbLoaded(video.id)} />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          {compact ? (
+            <span className={`absolute top-2 right-2 z-10 px-2 py-0.5 rounded-full backdrop-blur-sm text-white text-[9px] font-bold uppercase tracking-wide ${hidden ? 'bg-amber-600/80' : 'bg-black/60'}`}>
+              {hidden ? 'Ukryte' : 'Zaplanowane'}
+            </span>
+          ) : (
+            <button
+              onClick={(e) => toggleWatched(e, video)}
+              title={video.is_watched ? 'Oznacz jako nieobejrzany' : 'Oznacz jako obejrzany'}
+              className={`absolute top-2 right-2 z-10 p-1 rounded-full backdrop-blur-sm transition-all ${
+                video.is_watched
+                  ? 'bg-emerald-500 text-white opacity-100 hover:bg-emerald-600'
+                  : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/70'
+              }`}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+            </button>
+          )}
+          {!compact && progressMap[video.id] && (() => {
+            const p = progressMap[video.id];
+            const pct = p.duration > 0 ? Math.min(100, (p.position / p.duration) * 100) : 0;
+            return (
+              <>
+                <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
+                  <div className="h-full bg-violet-500" style={{ width: `${pct}%` }} />
+                </div>
+                <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-bold rounded backdrop-blur-sm">
+                  Kontynuuj oglądanie
+                </div>
+              </>
+            );
+          })()}
         </div>
-        {video.category_name && (
-          <div className={scheduled ? 'mb-1.5' : 'mb-2'}>
-            <span className="inline-flex px-2 py-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 rounded-lg text-[10px] font-bold">
-              {video.category_name}
+        <div className={compact ? 'p-3' : 'p-6'}>
+          <h3 className={`font-bold text-zinc-900 dark:text-white line-clamp-2 group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors ${compact ? 'text-sm mb-1' : 'mb-2'}`}>
+            {video.title}
+          </h3>
+          <div className={`flex items-center justify-between ${compact ? 'mb-1.5' : 'mb-3'}`}>
+            <Link
+              to={`/author/${video.author_id}`}
+              onClick={e => e.stopPropagation()}
+              className={`font-medium hover:text-violet-500 transition-colors no-underline text-zinc-500 ${compact ? 'text-xs' : 'text-sm'}`}
+            >
+              {video.author_display_name || video.author_name}
+            </Link>
+            <span className={`text-xs font-mono ${compact ? 'text-violet-500 dark:text-violet-400 font-bold' : 'text-zinc-400'}`}>
+              {formatDateShort(video.publish_date)}
             </span>
           </div>
-        )}
-        {!scheduled && video.tags && video.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {video.tags.slice(0, 4).map(tag => (
-              <span key={tag.id} className="inline-flex px-2 py-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-500 dark:text-violet-300 rounded-lg text-[10px] font-bold">
-                {tag.name}
+          {hidden && isAdminOrDev && (
+            <button
+              onClick={(e) => handlePublishHidden(e, video)}
+              disabled={publishingId === video.id}
+              className="btn-ghost-primary w-full mb-1.5"
+            >
+              {publishingId === video.id ? 'Publikowanie...' : 'Opublikuj'}
+            </button>
+          )}
+          {video.category_name && (
+            <div className={compact ? 'mb-1.5' : 'mb-2'}>
+              <span className="inline-flex px-2 py-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300 rounded-lg text-[10px] font-bold">
+                {video.category_name}
               </span>
-            ))}
-            {video.tags.length > 4 && (
-              <span className="text-[10px] text-zinc-400 font-bold self-center">+{video.tags.length - 4}</span>
-            )}
-          </div>
-        )}
-      </div>
-    </Link>
-  );
+            </div>
+          )}
+          {!compact && video.tags && video.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {video.tags.slice(0, 4).map(tag => (
+                <span key={tag.id} className="inline-flex px-2 py-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-500 dark:text-violet-300 rounded-lg text-[10px] font-bold">
+                  {tag.name}
+                </span>
+              ))}
+              {video.tags.length > 4 && (
+                <span className="text-[10px] text-zinc-400 font-bold self-center">+{video.tags.length - 4}</span>
+              )}
+            </div>
+          )}
+        </div>
+      </Link>
+    );
+  };
 
   return (
     <div className="p-6 sm:p-10 mx-auto page-enter" style={{ maxWidth: `${pageMaxWidth}px` }}>
@@ -447,6 +484,19 @@ export default function VideosPage() {
               would make these cards just as prominent as published content. */}
           <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {scheduledVideos.map((video, idx) => renderVideoCard(video, idx, { scheduled: true }))}
+          </div>
+          <hr className="mt-10 border-zinc-200 dark:border-zinc-800" />
+        </div>
+      )}
+
+      {/* Hidden videos (drafts / taken down) — same visibility rule as scheduled above. */}
+      {!categoryAccessDenied && !loading && hiddenVideos.length > 0 && (
+        <div className="mb-10">
+          <h2 className="text-sm font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-4">
+            Ukryte ({hiddenVideos.length})
+          </h2>
+          <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {hiddenVideos.map((video, idx) => renderVideoCard(video, idx, { hidden: true }))}
           </div>
           <hr className="mt-10 border-zinc-200 dark:border-zinc-800" />
         </div>

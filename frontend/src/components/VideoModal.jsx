@@ -77,6 +77,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
   const [mirror5IsAlt, setMirror5IsAlt] = useState(false);
   const [description, setDescription] = useState('');
   const [publishDate, setPublishDate] = useState(new Date().toISOString());
+  const [isHidden, setIsHidden] = useState(false);
   const [selectedTags, setSelectedTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
   const [tagSuggestions, setTagSuggestions] = useState([]);
@@ -143,6 +144,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
         setMirror5IsAlt(!!video.mirror5_is_alt);
         setDescription(video.description || '');
         setPublishDate(video.publish_date || new Date().toISOString());
+        setIsHidden(!!video.is_hidden);
         setSelectedTags(video.tags || []);
         setShowMirror1(!!video.mirror1_url);
         setShowMirror2(!!video.mirror2_url);
@@ -182,6 +184,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     mirror4: { name: video?.mirror4_name || '', url: video?.mirror4_url || '', type: video?.mirror4_type || 'link', isAlt: !!video?.mirror4_is_alt },
     mirror5: { name: video?.mirror5_name || '', url: video?.mirror5_url || '', type: video?.mirror5_type || 'link', isAlt: !!video?.mirror5_is_alt },
     description: video?.description || '',
+    isHidden: !!video?.is_hidden,
     tags: (video?.tags || []).map(t => t.id ?? t.name).slice().sort(),
     isSelfHosted: !!video?.stream_video_id,
     drmEnhanced: !!video?.drm_enhanced,
@@ -198,7 +201,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     mirror3: { name: mirror3Name, url: mirror3Url, type: mirror3Type, isAlt: mirror3IsAlt },
     mirror4: { name: mirror4Name, url: mirror4Url, type: mirror4Type, isAlt: mirror4IsAlt },
     mirror5: { name: mirror5Name, url: mirror5Url, type: mirror5Type, isAlt: mirror5IsAlt },
-    description,
+    description, isHidden,
     tags: selectedTags.map(t => t.id ?? t.name).slice().sort(),
     isSelfHosted, drmEnhanced, accessMode,
     hasThumbnailFile: !!thumbnailFile,
@@ -219,6 +222,17 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     return () => window.removeEventListener('keydown', handler);
   }, [isOpen, onClose]);
 
+  // A video that was never announced (new, or a draft whose webhook never fired) gets its date
+  // moved to now when switched back to published, so it doesn't land with a stale past date
+  // (e.g. the day the draft was uploaded). Future dates are kept — that's a scheduled publish.
+  const setVisibilityHidden = (hidden) => {
+    if (hidden === isHidden) return;
+    setIsHidden(hidden);
+    if (!hidden && (!video || !video.webhook_sent) && new Date(publishDate).getTime() < Date.now()) {
+      setPublishDate(new Date().toISOString());
+    }
+  };
+
   const ytId = (!thumbnail && !thumbnailFile) ? extractYoutubeId(mainSource) : null;
   const showMainSourceTitle = showMirror1 || showMirror2 || showMirror3 || showMirror4 || showMirror5;
 
@@ -230,7 +244,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
     setMirror3Name(''); setMirror3Url(''); setMirror3Type('link'); setMirror3VideoFile(null); setMirror3StreamVideoId(''); setMirror3IsAlt(false);
     setMirror4Name(''); setMirror4Url(''); setMirror4Type('link'); setMirror4VideoFile(null); setMirror4StreamVideoId(''); setMirror4IsAlt(false);
     setMirror5Name(''); setMirror5Url(''); setMirror5Type('link'); setMirror5VideoFile(null); setMirror5StreamVideoId(''); setMirror5IsAlt(false);
-    setDescription(''); setPublishDate(new Date().toISOString());
+    setDescription(''); setPublishDate(new Date().toISOString()); setIsHidden(false);
     setSelectedTags([]); setTagInput(''); setShowMirror1(false); setShowMirror2(false); setShowMirror3(false); setShowMirror4(false); setShowMirror5(false);
     setIsSelfHosted(false); setVideoFile(null); setDrmEnhanced(false); setUploadProgress(''); setUploadPercent(0); setChunkPercent(0); setUploadSpeed(0); setUploadEta(0); setStreamVideoId(''); setCategoryId(defaultCategoryId ? String(defaultCategoryId) : ''); setAccessMode('category'); setAllowedUsers([]);
   };
@@ -428,6 +442,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
       formData.append('main_source_title', mainSourceTitle.trim());
       formData.append('description', description);
       formData.append('publish_date', publishDate);
+      formData.append('is_hidden', isHidden ? 'true' : 'false');
       formData.append('tags', JSON.stringify(selectedTags));
       formData.append('stream_video_id', finalStreamId || '');
       formData.append('drm_enhanced', drmEnhanced ? 'true' : 'false');
@@ -585,8 +600,26 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
               )}
             </div>
 
-            {/* Date picker */}
-            <DateTimePicker label="Data publikacji" value={publishDate} onChange={setPublishDate} />
+            {/* Visibility — "Ukryty" covers both an unpublished draft and a published video taken
+                down for a while; it overrides the date until it's published again by hand. */}
+            <div>
+              <label className="label-field">Widoczność</label>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <button type="button" onClick={() => setVisibilityHidden(false)}
+                  className={`p-3 rounded-2xl border-2 font-bold text-sm transition-all ${!isHidden ? 'bg-violet-50 dark:bg-violet-500/10 border-violet-500 text-violet-600 dark:text-violet-300' : 'bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700'}`}>
+                  Opublikowany
+                </button>
+                <button type="button" onClick={() => setVisibilityHidden(true)}
+                  className={`p-3 rounded-2xl border-2 font-bold text-sm transition-all ${isHidden ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-500 text-amber-700 dark:text-amber-300' : 'bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700'}`}>
+                  Ukryty
+                </button>
+              </div>
+              {isHidden ? (
+                <p className="text-[11px] text-zinc-500">Widzowie nie zobaczą tego filmu, dopóki nie opublikujesz go ręcznie — tutaj albo przyciskiem „Opublikuj" na karcie filmu. Powiadomienia zostaną wysłane dopiero przy publikacji.</p>
+              ) : (
+                <DateTimePicker label="Data publikacji" value={publishDate} onChange={setPublishDate} />
+              )}
+            </div>
 
             <div>
               <label className="label-field">Tagi</label>

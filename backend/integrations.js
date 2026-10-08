@@ -14,7 +14,7 @@
  *   Header: X-Integration-Key: <INTEGRATION_API_KEY>
  *   → { generated_at, categories: [{ id, name, slug, icon, restricted, videos: [...] }] }
  *
- * Only published (publish_date <= now), ready (stream_status) videos with
+ * Only published (publish_date <= now, not hidden), ready (stream_status) videos with
  * category-level access are returned; custom-access videos are never listed.
  * Categories whose viewer mode is not "public" are marked restricted and
  * skipped unless include_restricted=1.
@@ -42,6 +42,7 @@ module.exports = function registerIntegrations(app, db) {
       WHERE v.category_id = ?
         AND (v.stream_status IS NULL OR v.stream_status = 'ready')
         AND datetime(v.publish_date) <= datetime('now')
+        AND v.is_hidden = 0
         AND (v.access_mode IS NULL OR v.access_mode = 'category')
       ORDER BY datetime(v.publish_date) DESC
       LIMIT ?

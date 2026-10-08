@@ -12,7 +12,7 @@ router.put('/api/progress/:videoId', requireAuth, (req, res) => {
   const { position, duration } = req.body;
   if (isNaN(videoId) || position === undefined) return res.status(400).json({ error: 'Missing params' });
   try {
-    const video = db.prepare('SELECT id, category_id, access_mode, publish_date FROM videos WHERE id = ?').get(videoId);
+    const video = db.prepare('SELECT id, category_id, access_mode, publish_date, is_hidden FROM videos WHERE id = ?').get(videoId);
     if (!video) return res.status(404).json({ error: 'Video not found' });
     if (!userCanViewVideo(video, user).ok) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     db.prepare(`
@@ -33,7 +33,7 @@ router.get('/api/progress', requireAuth, (req, res) => {
     const rows = db.prepare(`
       SELECT wp.video_id, wp.position, wp.duration, wp.updated_at,
              v.title, v.thumbnail, v.main_source_type, v.stream_video_id, v.stream_status,
-             v.category_id, v.access_mode, v.publish_date, c.name AS category_name, c.slug AS category_slug
+             v.category_id, v.access_mode, v.publish_date, v.is_hidden, c.name AS category_name, c.slug AS category_slug
       FROM watch_progress wp
       JOIN videos v ON wp.video_id = v.id
       LEFT JOIN categories c ON v.category_id = c.id
@@ -46,8 +46,8 @@ router.get('/api/progress', requireAuth, (req, res) => {
     // A progress row can outlive the user's access to its video (rank revoked, category
     // access changed) — never trust wp.* alone to expose video metadata like stream_video_id.
     const visible = rows
-      .filter(r => userCanViewVideo({ id: r.video_id, category_id: r.category_id, access_mode: r.access_mode, publish_date: r.publish_date }, user).ok)
-      .map(({ category_id, access_mode, publish_date, ...rest }) => rest);
+      .filter(r => userCanViewVideo({ id: r.video_id, category_id: r.category_id, access_mode: r.access_mode, publish_date: r.publish_date, is_hidden: r.is_hidden }, user).ok)
+      .map(({ category_id, access_mode, publish_date, is_hidden, ...rest }) => rest);
     res.json(visible);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

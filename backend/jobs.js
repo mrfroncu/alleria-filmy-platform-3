@@ -56,7 +56,8 @@ function startBackgroundJobs() {
   }, 30000);
 
   // Scheduled publishing + webhook check — every 60 seconds
-  // Finds videos that are: published (date in past), ready (not transcoding), webhook not yet sent
+  // Finds videos that are: published (date in past), not hidden (drafts wait until published by
+  // hand), ready (not transcoding), webhook not yet sent
   setInterval(async () => {
     try {
       const needsWebhook = db.prepare(`
@@ -67,6 +68,7 @@ function startBackgroundJobs() {
         LEFT JOIN categories c ON v.category_id = c.id
         LEFT JOIN users u ON v.author_id = u.id
         WHERE datetime(v.publish_date) <= datetime('now')
+        AND v.is_hidden = 0
         AND (v.webhook_sent IS NULL OR v.webhook_sent = 0)
         AND (v.stream_status IS NULL OR v.stream_status = 'ready')
       `).all();

@@ -81,12 +81,14 @@ router.get('/api/videos', requireAuth, (req, res) => {
   // string comparison: at the date/time boundary "T" (0x54) sorts after " " (0x20), so ANY video
   // published earlier *today* still compares as "greater than" now and gets hidden all day.
   // Wrapping both sides in datetime(...) normalizes them to the same format before comparing.
+  // Manually hidden videos (is_hidden — drafts / taken down) follow the exact same bypass rule.
   if (!isAdminOrDev) {
+    const visibleCond = "(v.is_hidden = 0 AND datetime(v.publish_date) <= datetime('now'))";
     if (editableCatIds.length > 0) {
-      conditions.push(`(datetime(v.publish_date) <= datetime('now') OR v.category_id IN (${editableCatIds.map(() => '?').join(',')}))`);
+      conditions.push(`(${visibleCond} OR v.category_id IN (${editableCatIds.map(() => '?').join(',')}))`);
       params.push(...editableCatIds);
     } else {
-      conditions.push("datetime(v.publish_date) <= datetime('now')");
+      conditions.push(visibleCond);
     }
   }
 
@@ -180,6 +182,10 @@ router.get('/api/videos/:id', requireAuth, (req, res) => {
         // published yet" panel instead of a blanket "brak dostępu" error page.
         return res.status(403).json({ error: 'Ten film nie został jeszcze opublikowany.', reason: 'not_published', publish_date: video.publish_date });
       }
+      if (access.reason === 'hidden') {
+        // No date to show — a hidden video has no known return time (draft or taken down).
+        return res.status(403).json({ error: 'Ten film jest obecnie niedostępny.', reason: 'hidden' });
+      }
       return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     }
 
@@ -203,7 +209,7 @@ router.get('/api/videos/:id', requireAuth, (req, res) => {
 // row per participant per video, logged when it becomes the party's current video.
 router.post('/api/videos/:id/log-view', requireAuth, (req, res) => {
   try {
-    const video = db.prepare('SELECT id, category_id, access_mode, publish_date FROM videos WHERE id = ?').get(req.params.id);
+    const video = db.prepare('SELECT id, category_id, access_mode, publish_date, is_hidden FROM videos WHERE id = ?').get(req.params.id);
     if (!video) return res.status(404).json({ error: 'Video not found' });
     const user = req.session.user;
     if (!userCanViewVideo(video, user).ok) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
@@ -221,7 +227,8 @@ router.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, 
       mirror4_name, mirror4_url, mirror4_type, mirror4_is_alt,
       mirror5_name, mirror5_url, mirror5_type, mirror5_is_alt,
       description, publish_date, tags,
-      stream_video_id, drm_enhanced, category_id } = req.body;
+      stream_video_id, drm_enhanced, category_id, is_hidden } = req.body;
+    const hidden = is_hidden === 'true' || is_hidden === '1' ? 1 : 0;
 
     if (!stream_video_id && !(main_source && main_source.trim())) {
       return res.status(400).json({ error: 'Musisz podać główne źródło (link lub przesłany plik).' });
@@ -255,8 +262,8 @@ router.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, 
         mirror3_name, mirror3_url, mirror3_type, mirror3_is_alt,
         mirror4_name, mirror4_url, mirror4_type, mirror4_is_alt,
         mirror5_name, mirror5_url, mirror5_type, mirror5_is_alt,
-        description, publish_date, stream_video_id, drm_enhanced, category_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        description, publish_date, stream_video_id, drm_enhanced, category_id, is_hidden)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(title, parseInt(author_id), main_source || '', main_source_type || 'youtube', main_source_title || '',
       thumbUrl, customThumb,
       mirror1_name || null, mirror1_url || null, m1t === 'embed' ? 1 : 0, m1t, mirror1_is_alt === 'true' || mirror1_is_alt === '1' ? 1 : 0,
@@ -266,7 +273,7 @@ router.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, 
       mirror5_name || null, mirror5_url || null, m5t, mirror5_is_alt === 'true' || mirror5_is_alt === '1' ? 1 : 0,
       description || '', publish_date,
       stream_video_id || null, drm_enhanced === 'true' || drm_enhanced === '1' ? 1 : 0,
-      category_id ? parseInt(category_id) : null);
+      category_id ? parseInt(category_id) : null, hidden);
 
     const videoId = result.lastInsertRowid;
 
@@ -280,7 +287,10 @@ router.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, 
     // - Self-hosted (transcoding) → webhook_sent stays NULL → background interval sends after transcode
     // - YouTube with future date → webhook_sent stays NULL → background interval sends when date arrives
     // - YouTube with current/past date → send webhook immediately
-    if (!stream_video_id) {
+    // - Hidden (draft) → webhook_sent stays NULL → background interval sends once it's published
+    if (hidden) {
+      console.log(`[WEBHOOK] Draft "${title}" — webhook after it's published`);
+    } else if (!stream_video_id) {
       const pubDate = new Date(publish_date);
       if (pubDate.getTime() <= Date.now()) {
         const videoFull = db.prepare(`
@@ -350,7 +360,7 @@ router.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (re
       mirror4_name, mirror4_url, mirror4_type, mirror4_is_alt,
       mirror5_name, mirror5_url, mirror5_type, mirror5_is_alt,
       description, publish_date, tags,
-      category_id, stream_video_id, drm_enhanced, access_mode, allowed_users } = req.body;
+      category_id, stream_video_id, drm_enhanced, access_mode, allowed_users, is_hidden } = req.body;
 
     const existing = db.prepare('SELECT * FROM videos WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Video not found' });
@@ -371,6 +381,9 @@ router.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (re
       if (!thumbnail) thumbUrl = extractYoutubeThumbnail(main_source || existing.main_source);
     }
 
+    // Older clients that don't send is_hidden keep the video's current visibility.
+    const hidden = is_hidden === undefined ? (existing.is_hidden ? 1 : 0) : (is_hidden === 'true' || is_hidden === '1' ? 1 : 0);
+
     const m1type = mirror1_type || (mirror1_is_embed === 'true' || mirror1_is_embed === '1' ? 'embed' : 'link');
     const m2type = mirror2_type || (mirror2_is_embed === 'true' || mirror2_is_embed === '1' ? 'embed' : 'link');
     const m3type = mirror3_type || 'link';
@@ -384,7 +397,7 @@ router.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (re
         mirror3_name=?, mirror3_url=?, mirror3_type=?, mirror3_is_alt=?,
         mirror4_name=?, mirror4_url=?, mirror4_type=?, mirror4_is_alt=?,
         mirror5_name=?, mirror5_url=?, mirror5_type=?, mirror5_is_alt=?,
-        description=?, publish_date=?, category_id=?, stream_video_id=?, drm_enhanced=?, access_mode=?,
+        description=?, publish_date=?, category_id=?, stream_video_id=?, drm_enhanced=?, access_mode=?, is_hidden=?,
         updated_at=datetime('now') WHERE id=?
     `).run(title, parseInt(author_id), main_source, main_source_type || 'youtube', main_source_title || '',
       thumbUrl, customThumb,
@@ -398,6 +411,7 @@ router.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (re
       stream_video_id || existing.stream_video_id || null,
       drm_enhanced === 'true' || drm_enhanced === '1' ? 1 : 0,
       access_mode || existing.access_mode || 'category',
+      hidden,
       req.params.id);
 
     // Update per-video access if custom mode
@@ -451,6 +465,7 @@ router.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (re
     if ((mirror5_name||'') !== (existing.mirror5_name||'')) changes.push(`mirror5 nazwa: "${existing.mirror5_name||''}" → "${mirror5_name||''}"`);
     if (category_id && parseInt(category_id) !== existing.category_id) { const oldC = existing.category_id ? db.prepare('SELECT name FROM categories WHERE id=?').get(existing.category_id)?.name : 'brak'; const newC = db.prepare('SELECT name FROM categories WHERE id=?').get(parseInt(category_id))?.name || '?'; changes.push(`kategoria: "${oldC}" → "${newC}"`); }
     if (thumbUrl !== existing.thumbnail) changes.push(`miniatura zmieniona`);
+    if (hidden !== (existing.is_hidden ? 1 : 0)) changes.push(hidden ? 'ukryto film' : 'opublikowano film');
     audit(req.session.user.id, "edit", "video", parseInt(req.params.id), changes.length ? changes.join('; ') : `edycja filmu "${title}"`);
     res.json({ success: true });
   } catch (err) {
@@ -521,6 +536,43 @@ router.put('/api/videos/:id/promote-source', requireAdmin, (req, res) => {
   }
 });
 
+// Hide (draft / take down) or publish a video without touching anything else. Publishing a video
+// that was never announced (a draft — webhook_sent still NULL) with a date already in the past
+// moves its publish_date to now, so it lands as the newest video and the background job in
+// jobs.js announces it (webhook/e-mail/push) within a minute, exactly like a scheduled video
+// reaching its date. A draft with a future date simply becomes scheduled. Restoring a video that
+// was already announced before being taken down keeps its original date and sends nothing again.
+function setVideoHidden(video, hidden) {
+  if (hidden) {
+    db.prepare(`UPDATE videos SET is_hidden = 1, updated_at = datetime('now') WHERE id = ?`).run(video.id);
+    return;
+  }
+  const neverAnnounced = !video.webhook_sent;
+  const datePassed = !video.publish_date || new Date(video.publish_date).getTime() <= Date.now();
+  if (neverAnnounced && datePassed) {
+    db.prepare(`UPDATE videos SET is_hidden = 0, publish_date = ?, updated_at = datetime('now') WHERE id = ?`).run(new Date().toISOString(), video.id);
+  } else {
+    db.prepare(`UPDATE videos SET is_hidden = 0, updated_at = datetime('now') WHERE id = ?`).run(video.id);
+  }
+}
+
+router.put('/api/videos/:id/visibility', requireAdmin, (req, res) => {
+  try {
+    const hidden = !!req.body?.hidden;
+    const video = db.prepare('SELECT id, title, publish_date, webhook_sent, is_hidden FROM videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).json({ error: 'Nie znaleziono filmu.' });
+    if (!!video.is_hidden !== hidden) {
+      setVideoHidden(video, hidden);
+      audit(req.session.user.id, 'edit', 'video', video.id, hidden ? `ukryto film "${video.title}"` : `opublikowano film "${video.title}"`);
+    }
+    const updated = db.prepare('SELECT is_hidden, publish_date FROM videos WHERE id = ?').get(video.id);
+    res.json({ success: true, is_hidden: updated.is_hidden, publish_date: updated.publish_date });
+  } catch (err) {
+    console.error('Error changing video visibility:', err);
+    res.status(500).json({ error: 'Failed to change visibility' });
+  }
+});
+
 router.delete('/api/videos/:id', requireAdmin, (req, res) => {
   try {
     const vid = db.prepare('SELECT title FROM videos WHERE id = ?').get(req.params.id);
@@ -581,6 +633,20 @@ router.post('/api/videos/bulk', requireAdmin, (req, res) => {
       case 'change_access':
         changes = db.prepare(`UPDATE videos SET access_mode = ? WHERE id IN (${placeholders})`).run(value || 'category', ...safeIds).changes;
         break;
+      case 'hide':
+      case 'show': {
+        const hidden = action === 'hide';
+        const rows = db.prepare(`SELECT id, title, publish_date, webhook_sent, is_hidden FROM videos WHERE id IN (${placeholders})`).all(...safeIds);
+        db.transaction(() => {
+          for (const v of rows) {
+            if (!!v.is_hidden === hidden) continue;
+            setVideoHidden(v, hidden);
+            audit(req.session.user.id, 'edit', 'video', v.id, hidden ? `ukryto film "${v.title}"` : `opublikowano film "${v.title}"`);
+            changes++;
+          }
+        })();
+        break;
+      }
       case 'delete':
         changes = db.prepare(`DELETE FROM videos WHERE id IN (${placeholders})`).run(...safeIds).changes;
         break;

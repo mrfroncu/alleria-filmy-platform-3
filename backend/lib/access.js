@@ -72,11 +72,13 @@ function userCanViewVideo(video, user) {
       canEdit = access.canEdit;
     }
   }
-  // Scheduled (future publish_date) videos are hidden from everyone except admin/dev and an
-  // editor of the video's own category — same bypass rule as GET /api/videos' list filter,
-  // but enforced here as the actual access gate rather than just a list-hiding condition.
-  if (video.publish_date && user.role !== 'admin' && !canEdit && new Date(video.publish_date) > new Date()) {
-    return { ok: false, reason: 'not_published' };
+  // Scheduled (future publish_date) and manually hidden (is_hidden) videos are hidden from
+  // everyone except admin/dev and an editor of the video's own category — same bypass rule as
+  // GET /api/videos' list filter, but enforced here as the actual access gate rather than just a
+  // list-hiding condition. Callers must SELECT is_hidden alongside publish_date for this to apply.
+  if (user.role !== 'admin' && !canEdit) {
+    if (video.is_hidden) return { ok: false, reason: 'hidden' };
+    if (video.publish_date && new Date(video.publish_date) > new Date()) return { ok: false, reason: 'not_published' };
   }
   return { ok: true };
 }
@@ -89,7 +91,7 @@ function userCanViewVideo(video, user) {
 function resolveStreamVideoForUser(streamVideoId, user) {
   const mirrorRef = `self-hosted:${streamVideoId}`;
   const video = db.prepare(`
-    SELECT id, category_id, access_mode, publish_date FROM videos
+    SELECT id, category_id, access_mode, publish_date, is_hidden FROM videos
     WHERE stream_video_id = ?
       OR mirror1_url = ? OR mirror2_url = ? OR mirror3_url = ? OR mirror4_url = ? OR mirror5_url = ?
   `).get(streamVideoId, mirrorRef, mirrorRef, mirrorRef, mirrorRef, mirrorRef);

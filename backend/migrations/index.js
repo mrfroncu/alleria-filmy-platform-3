@@ -18,6 +18,7 @@ const MIGRATIONS = [
   require('./003_authentik'),
   require('./004_verified_emails'),
   require('./005_backfill_discord_email_verified'),
+  require('./006_video_hidden'),
 ];
 
 const BACKUP_PREFIX = 'alleria-';

@@ -33,7 +33,7 @@ router.get('/api/favorites', requireAuth, (req, res) => {
 router.post('/api/favorites/:videoId', requireAuth, (req, res) => {
   try {
     const user = req.session.user;
-    const video = db.prepare('SELECT id, category_id, access_mode, publish_date FROM videos WHERE id = ?').get(req.params.videoId);
+    const video = db.prepare('SELECT id, category_id, access_mode, publish_date, is_hidden FROM videos WHERE id = ?').get(req.params.videoId);
     if (!video) return res.status(404).json({ error: 'Video not found' });
     if (!userCanViewVideo(video, user).ok) return res.status(403).json({ error: 'Brak dostępu do tego filmu.' });
     db.prepare('INSERT OR IGNORE INTO favorites (user_id, video_id) VALUES (?, ?)').run(user.id, req.params.videoId);

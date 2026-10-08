@@ -85,6 +85,9 @@ export const api = {
   promoteMirrorSource: (id, slot) => request(`/videos/${id}/promote-source`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slot }),
   }),
+  setVideoHidden: (id, hidden) => request(`/videos/${id}/visibility`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hidden }),
+  }),
 
   // Tags
   getTags: (search) => request(`/tags${search ? `?search=${encodeURIComponent(search)}` : ''}`),
