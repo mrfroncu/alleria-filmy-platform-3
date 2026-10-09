@@ -615,7 +615,7 @@ export default function VideoModal({ isOpen, onClose, video, users = [], onSaved
                 </button>
               </div>
               {isHidden ? (
-                <p className="text-[11px] text-zinc-500">Widzowie nie zobaczą tego filmu, dopóki nie opublikujesz go ręcznie — tutaj albo przyciskiem „Opublikuj" na karcie filmu. Powiadomienia zostaną wysłane dopiero przy publikacji.</p>
+                <p className="text-[11px] text-zinc-500">Widzowie nie zobaczą tego filmu, dopóki nie opublikujesz go ręcznie: tutaj albo przyciskiem „Opublikuj" na karcie filmu. Powiadomienia zostaną wysłane dopiero przy publikacji.</p>
               ) : (
                 <DateTimePicker label="Data publikacji" value={publishDate} onChange={setPublishDate} />
               )}

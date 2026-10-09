@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Download, Upload, Trash2, AlertTriangle, UserPlus, ChevronDown, Terminal, Play, BarChart3, Loader2, Users, RefreshCw, HardDrive, CheckSquare, Square, ShieldCheck, Wrench, Bug, Lock, LogIn } from 'lucide-react';
 import { api } from '../utils/api';
+import { formatDate } from '../utils/helpers';
 import { importDatabaseFile, describeImport, reloadAfterImport } from '../utils/dbImport';
 import ExportInfoModal from '../components/ExportInfoModal';
 import { useSettings } from '../contexts/SettingsContext';
@@ -193,6 +194,7 @@ export default function DebugPage() {
   const [accessSelectedId, setAccessSelectedId] = useState('');
   const [accessResult, setAccessResult] = useState(null);
   const [accessLoading, setAccessLoading] = useState(false);
+  const [accessExpandedUser, setAccessExpandedUser] = useState(null);
 
   useEffect(() => {
     api.getCategories().then(setAccessCategories).catch(() => {});
@@ -204,6 +206,7 @@ export default function DebugPage() {
     if (!id) return;
     setAccessLoading(true);
     setAccessResult(null);
+    setAccessExpandedUser(null);
     try {
       const data = await api.debugAccess(accessMode, id);
       setAccessResult(data);
@@ -213,20 +216,68 @@ export default function DebugPage() {
     setAccessLoading(false);
   };
 
-  const reasonLabel = (reason, viewerRoles, editorRoles) => {
-    if (reason === 'admin') return { text: 'Administrator', color: 'text-violet-600 dark:text-violet-400' };
-    if (reason === 'dev') return { text: 'Developer', color: 'text-violet-600 dark:text-violet-400' };
-    if (reason === 'public' || reason === 'public_category') return { text: 'Kategoria publiczna', color: 'text-emerald-600 dark:text-emerald-400' };
-    if (reason === 'no_category') return { text: 'Film bez kategorii (publiczny)', color: 'text-emerald-600 dark:text-emerald-400' };
-    if (reason === 'custom_access') return { text: 'Dostęp niestandardowy', color: 'text-blue-600 dark:text-blue-400' };
-    if (reason === 'not_in_custom_list') return { text: 'Brak na liście niestandardowej', color: 'text-red-500' };
-    if (reason === 'no_matching_role') {
-      const allRoles = [...(viewerRoles || []), ...(editorRoles || [])];
-      return { text: `Brak wymaganej roli${allRoles.length ? ` (wymaga: ${allRoles.slice(0, 2).join(', ')}${allRoles.length > 2 ? '…' : ''})` : ''}`, color: 'text-red-500' };
+  // Labels for the access checker. Category results carry view/edit "via" info from
+  // checkCatAccess; video results carry the real gate's step trace (explainVideoAccess on the
+  // backend) — `reason` there is "<step>:<code>" pointing at the step that decided it.
+  const GREEN = 'text-emerald-600 dark:text-emerald-400';
+  const VIOLET = 'text-violet-600 dark:text-violet-400';
+  const AMBER = 'text-amber-600 dark:text-amber-400';
+  const RED = 'text-red-500';
+  const ZINC = 'text-zinc-400';
+  const names = (ids, map) => ids.map(x => map?.[x] || x).join(', ');
+  const viaText = (via, match, result) => {
+    if (via === 'public') return 'kategoria publiczna';
+    if (via === 'role') return `rola Discord: ${names(match?.roles || [], result?.role_names)}`;
+    if (via === 'rank') return `ranga: ${names(match?.ranks || [], result?.rank_names)}`;
+    if (via === 'custom') return 'dodany ręcznie do kategorii';
+    return '—';
+  };
+  const viewerModeText = (vm) => vm === 'public' ? 'publiczna' : vm === 'roles' ? 'wymaga roli lub rangi' : vm === 'custom' ? 'tylko wybrani użytkownicy' : vm;
+  const publicationText = (data) => data?.state === 'hidden' ? 'ukrycie filmu'
+    : data?.state === 'scheduled' ? `harmonogram (publikacja ${formatDate(data.publish_date)})` : '';
+
+  const STEP_NAMES = { role: 'Rola', custom_list: 'Lista dostępu filmu', category: 'Kategoria', visibility: 'Publikacja' };
+  const stepLabel = (st, result) => {
+    const d = st.data || {};
+    if (st.code === 'not_reached') return { text: 'Nie sprawdzano, zablokował wcześniejszy krok', color: ZINC };
+    switch (st.step) {
+      case 'role':
+        return st.status === 'bypass'
+          ? { text: 'Developer - omija wszystkie sprawdzenia', color: VIOLET }
+          : { text: `Rola: ${d.role}`, color: ZINC };
+      case 'custom_list':
+        if (st.code === 'not_custom') return { text: 'Nie dotyczy, film dziedziczy dostęp z kategorii', color: ZINC };
+        return st.status === 'pass'
+          ? { text: 'Jest na liście dostępu tego filmu', color: GREEN }
+          : { text: 'Brak na liście dostępu tego filmu (dostęp niestandardowy)', color: RED };
+      case 'category':
+        if (st.code === 'no_category') return { text: 'Film bez kategorii - brak ograniczeń', color: GREEN };
+        if (st.code === 'category_missing') return { text: `Kategoria #${d.category_id} nie istnieje, pominięto`, color: AMBER };
+        if (st.status === 'fail') return { text: `Brak dostępu do kategorii „${d.category_name}" (${viewerModeText(d.viewer_mode)})`, color: RED };
+        return d.can_edit
+          ? { text: `Edytor kategorii „${d.category_name}" - ${viaText(d.edit_via, d.edit_match, result)}`, color: GREEN }
+          : { text: `Widz kategorii „${d.category_name}" - ${viaText(d.view_via, d.view_match, result)}`, color: GREEN };
+      case 'visibility':
+        if (st.status === 'pass') return { text: 'Film opublikowany', color: GREEN };
+        if (st.status === 'bypass') return { text: `${st.code === 'admin' ? 'Admin' : 'Edytor kategorii'} omija ${publicationText(d)}`, color: VIOLET };
+        return d.state === 'hidden'
+          ? { text: 'Film ukryty - widzowie go nie widzą', color: AMBER }
+          : { text: `Zaplanowany, publikacja ${formatDate(d.publish_date)}`, color: AMBER };
+      default:
+        return { text: st.code, color: ZINC };
     }
-    if (reason?.startsWith('viewer:')) return { text: `Rola widza: ${reason.slice(7)}`, color: 'text-emerald-600 dark:text-emerald-400' };
-    if (reason?.startsWith('editor:')) return { text: `Rola edytora: ${reason.slice(7)}`, color: 'text-emerald-600 dark:text-emerald-400' };
-    return { text: reason || '—', color: 'text-zinc-400' };
+  };
+
+  const reasonLabel = (u, result) => {
+    if (u.steps) {
+      const decisive = u.steps.find(st => `${st.step}:${st.code}` === u.reason);
+      return decisive ? stepLabel(decisive, result) : { text: u.reason || '—', color: ZINC };
+    }
+    if (u.reason === 'dev') return { text: 'Developer', color: VIOLET };
+    if (u.reason === 'editor') return { text: `Edytor - ${viaText(u.edit_via, u.edit_match, result)}`, color: GREEN };
+    if (u.reason?.startsWith('viewer_')) return { text: `Widz - ${viaText(u.view_via, u.view_match, result)}`, color: GREEN };
+    if (u.reason === 'no_access') return { text: `Brak dostępu (${viewerModeText(result.viewer_mode)})`, color: RED };
+    return { text: u.reason || '—', color: ZINC };
   };
 
   const [creatingUser, setCreatingUser] = useState(false);
@@ -958,7 +1009,7 @@ export default function DebugPage() {
           </div>
           <div>
             <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display">Sprawdź uprawnienia</h3>
-            <p className="text-xs text-zinc-500">Lista użytkowników z dostępem do wybranej kategorii lub filmu i powód dostępu</p>
+            <p className="text-xs text-zinc-500">Lista użytkowników z dostępem do wybranej kategorii lub filmu i powód dostępu. Dla filmu sprawdzanie idzie tą samą ścieżką co prawdziwe żądanie użytkownika. Kliknij wiersz, aby zobaczyć każdy krok.</p>
           </div>
         </div>
 
@@ -980,7 +1031,11 @@ export default function DebugPage() {
             <option value="">Wybierz {accessMode === 'category' ? 'kategorię' : 'film'}...</option>
             {accessMode === 'category'
               ? accessCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
-              : accessVideos.map(v => <option key={v.id} value={v.id}>{v.title}</option>)
+              : accessVideos.map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.title}{v.is_hidden ? ' [ukryty]' : v.publish_date && new Date(v.publish_date) > new Date() ? ' [zaplanowany]' : ''}
+                </option>
+              ))
             }
           </select>
           <button
@@ -1033,16 +1088,30 @@ export default function DebugPage() {
                 {accessResult.access_mode === 'custom' && (
                   <span className="px-3 py-1.5 bg-blue-50 dark:bg-blue-500/10 rounded-xl font-bold text-blue-600 dark:text-blue-400">Dostęp niestandardowy</span>
                 )}
-                {accessResult.is_public && (
+                {accessResult.viewer_mode === 'public' && (accessResult.type === 'category' || accessResult.category_id) && (
                   <span className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl font-bold text-emerald-600 dark:text-emerald-400">Publiczna</span>
                 )}
-                {!accessResult.is_public && accessResult.viewer_roles?.length > 0 && (
+                {accessResult.viewer_mode !== 'public' && accessResult.viewer_roles?.length > 0 && (
                   <span className="px-3 py-1.5 bg-amber-50 dark:bg-amber-500/10 rounded-xl font-semibold text-amber-700 dark:text-amber-400">
                     {accessResult.viewer_roles.length} rola/e widza · {accessResult.editor_roles?.length || 0} edytora
                   </span>
                 )}
                 {accessResult.category_name && (
                   <span className="px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-zinc-500">Kat: {accessResult.category_name}</span>
+                )}
+                {accessResult.type === 'video' && !accessResult.category_id && (
+                  <span className="px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-zinc-500">Bez kategorii</span>
+                )}
+                {accessResult.publication === 'hidden' && (
+                  <span className="px-3 py-1.5 bg-amber-50 dark:bg-amber-500/10 rounded-xl font-bold text-amber-700 dark:text-amber-400">Ukryty</span>
+                )}
+                {accessResult.publication === 'scheduled' && (
+                  <span className="px-3 py-1.5 bg-amber-50 dark:bg-amber-500/10 rounded-xl font-bold text-amber-700 dark:text-amber-400">Zaplanowany: {formatDate(accessResult.publish_date)}</span>
+                )}
+                {accessResult.stream_status && accessResult.stream_status !== 'ready' && (
+                  <span className="px-3 py-1.5 bg-amber-50 dark:bg-amber-500/10 rounded-xl font-bold text-amber-700 dark:text-amber-400" title="Film w trakcie transkodowania nie pojawia się na listach (poza admin/dev) i nie da się go jeszcze odtworzyć, niezależnie od uprawnień poniżej.">
+                    Stream: {accessResult.stream_status}
+                  </span>
                 )}
                 <span className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl font-bold text-emerald-600 dark:text-emerald-400">{withAccess.length} ma dostęp</span>
                 <span className="px-3 py-1.5 bg-red-50 dark:bg-red-500/10 rounded-xl font-bold text-red-500">{withoutAccess.length} bez dostępu</span>
@@ -1052,9 +1121,14 @@ export default function DebugPage() {
               <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
                 <div className="max-h-[500px] overflow-y-auto">
                   {[...withAccess, ...withoutAccess].map(u => {
-                    const { text, color } = reasonLabel(u.reason, accessResult.viewer_roles, accessResult.editor_roles);
+                    const { text, color } = reasonLabel(u, accessResult);
+                    const expanded = accessExpandedUser === u.id;
                     return (
-                      <div key={u.id} className={`flex items-center gap-3 px-4 py-2.5 border-b border-zinc-100 dark:border-zinc-800/60 last:border-0 ${u.has_access ? '' : 'opacity-50'}`}>
+                      <div key={u.id} className="border-b border-zinc-100 dark:border-zinc-800/60 last:border-0">
+                      <div
+                        onClick={u.steps ? () => setAccessExpandedUser(expanded ? null : u.id) : undefined}
+                        className={`flex items-center gap-3 px-4 py-2.5 ${u.has_access ? '' : 'opacity-50'} ${u.steps ? 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-white/[0.02]' : ''}`}
+                      >
                         {u.avatar
                           ? <img src={u.avatar} alt="" className="w-7 h-7 rounded-full shrink-0 object-cover" />
                           : <div className="w-7 h-7 rounded-full bg-zinc-200 dark:bg-zinc-700 shrink-0 flex items-center justify-center text-[10px] font-bold text-zinc-500">{(u.display_name || u.username || '?')[0].toUpperCase()}</div>
@@ -1067,7 +1141,28 @@ export default function DebugPage() {
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span className={`w-2 h-2 rounded-full shrink-0 ${u.has_access ? 'bg-emerald-500' : 'bg-red-400'}`} />
                           <span className={`text-xs font-medium ${color}`}>{text}</span>
+                          {u.steps && <ChevronDown className={`w-3.5 h-3.5 text-zinc-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />}
                         </div>
+                      </div>
+                      {expanded && (
+                        <div className="px-4 pb-3 pl-14 space-y-1.5">
+                          {u.steps.map(st => {
+                            const l = stepLabel(st, accessResult);
+                            const mark = { pass: '✓', fail: '✕', bypass: '↷', skip: '–' }[st.status];
+                            const markColor = { pass: 'text-emerald-500', fail: 'text-red-500', bypass: 'text-violet-500', skip: 'text-zinc-400' }[st.status];
+                            return (
+                              <div key={st.step} className="flex items-start gap-2 text-xs">
+                                <span className={`w-4 shrink-0 font-bold text-center ${markColor}`}>{mark}</span>
+                                <span className="w-32 shrink-0 text-zinc-500 font-semibold">{STEP_NAMES[st.step] || st.step}</span>
+                                <span className={l.color}>{l.text}</span>
+                              </div>
+                            );
+                          })}
+                          <p className="text-[10px] text-zinc-400 pt-1">
+                            Role Discord: {u.discord_roles.length ? names(u.discord_roles, accessResult.role_names) : 'brak'} · Rangi: {u.app_rank_ids.length ? names(u.app_rank_ids, accessResult.rank_names) : 'brak'} (stan z ostatniego logowania)
+                          </p>
+                        </div>
+                      )}
                       </div>
                     );
                   })}

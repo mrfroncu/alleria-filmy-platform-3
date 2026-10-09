@@ -1145,7 +1145,7 @@ export default function VideoPage() {
         {!!video.is_hidden && (
           <div className="flex items-center gap-3 mb-6 px-4 py-3 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-800 dark:text-amber-300 text-sm">
             <EyeOff className="w-4 h-4 shrink-0" />
-            <span className="flex-1">Ten film jest ukryty — widzowie go nie widzą.</span>
+            <span className="flex-1">Ten film jest ukryty - widzowie go nie widzą.</span>
             {isAdminOrDev && (
               <button onClick={toggleHidden} disabled={togglingHidden} className="btn-ghost-primary">
                 {togglingHidden ? 'Publikowanie...' : 'Opublikuj'}

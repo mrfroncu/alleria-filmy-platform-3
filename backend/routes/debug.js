@@ -9,37 +9,50 @@ const { uploadsDir, gdprDir } = require('../lib/config');
 const { DB_PATH } = require('../database');
 const { getMigrationStatus, backupDatabase, pad, LATEST_VERSION } = require('../migrations');
 const { audit } = require('../lib/helpers');
-const { checkCatAccess, getUserRankIds, parseCatModes } = require('../lib/access');
+const { checkCatAccess, explainVideoAccess, getUserRankIds, parseCatModes } = require('../lib/access');
 const { requireDev } = require('../lib/auth');
 const { sessionStore } = require('../lib/sessions');
 const { VERSION } = require('../versions');
 
 const router = express.Router();
 
-router.get('/api/debug/access/:type/:id', requireDev, (req, res) => {
+// Discord role IDs are just raw snowflakes in our DB (no name cached anywhere) — resolve
+// names live from the guild, best-effort. Returns {} if Discord is unreachable/unconfigured,
+// callers fall back to the bare ID.
+async function fetchGuildRoleNames() {
+  if (!process.env.DISCORD_GUILD_ID || !process.env.DISCORD_BOT_TOKEN) return {};
+  try {
+    const rolesRes = await fetch(`https://discord.com/api/guilds/${process.env.DISCORD_GUILD_ID}/roles`, {
+      headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` },
+    });
+    if (!rolesRes.ok) return {};
+    const roles = await rolesRes.json();
+    return Object.fromEntries(roles.map(r => [r.id, r.name]));
+  } catch (e) { return {}; }
+}
+
+// The one step that best answers "why" for the summary column: the failing step on denial; on
+// success a bypass (dev / admin / category editor past a hidden or scheduled video) if any, else
+// what actually granted it (category rule, custom list, or "no category").
+function decisiveStep({ ok, steps }) {
+  if (!ok) return steps.find(st => st.status === 'fail');
+  const by = (step, status) => steps.find(st => st.step === step && st.status === status);
+  return steps.find(st => st.status === 'bypass') || by('category', 'pass') || by('custom_list', 'pass') || by('category', 'skip');
+}
+
+// Who can see a category / a video, and exactly why. For a video this runs the real access gate
+// (explainVideoAccess — the same function behind GET /api/videos/:id, streaming, favorites, etc.)
+// once per user, with a session-shaped user built from the DB row (role + Discord roles stored at
+// their last login), so the answer and its step-by-step trace match what that user would get.
+async function accessReport(req, res) {
   const { type, id } = req.params;
   const dbUsers = db.prepare('SELECT id, username, display_name, avatar, role, discord_roles FROM users ORDER BY role DESC, display_name ASC').all();
-
-  const computeUsers = (catId, accessMode, videoCustomIds = null) =>
-    dbUsers.map(u => {
-      const dr = JSON.parse(u.discord_roles || '[]');
-      const ur = getUserRankIds(u.id);
-      if (u.role === 'dev') {
-        return { id: u.id, username: u.username, display_name: u.display_name, avatar: u.avatar, role: u.role, discord_roles: dr, app_rank_ids: ur, has_access: true, can_edit: true, reason: 'dev' };
-      }
-      if (videoCustomIds !== null) {
-        const has = videoCustomIds.has(u.id);
-        return { id: u.id, username: u.username, display_name: u.display_name, avatar: u.avatar, role: u.role, discord_roles: dr, app_rank_ids: ur, has_access: has, can_edit: false, reason: has ? 'custom_video_access' : 'not_in_custom_list' };
-      }
-      const { canView, canEdit } = checkCatAccess(catId, accessMode, u.id, dr, ur);
-      let reason = 'no_access';
-      if (canEdit) reason = 'editor';
-      else if (canView) {
-        const { vm } = parseCatModes(accessMode);
-        reason = vm === 'public' ? 'public' : vm === 'custom' ? 'custom_viewer' : 'viewer_role_or_rank';
-      }
-      return { id: u.id, username: u.username, display_name: u.display_name, avatar: u.avatar, role: u.role, discord_roles: dr, app_rank_ids: ur, has_access: canView, can_edit: canEdit, reason };
-    });
+  const baseUser = (u) => {
+    const discordRoles = JSON.parse(u.discord_roles || '[]');
+    return { id: u.id, username: u.username, display_name: u.display_name, avatar: u.avatar, role: u.role, discord_roles: discordRoles, app_rank_ids: getUserRankIds(u.id) };
+  };
+  const roleNames = await fetchGuildRoleNames();
+  const rankNames = Object.fromEntries(db.prepare('SELECT id, name FROM app_ranks').all().map(r => [r.id, r.name]));
 
   if (type === 'category') {
     const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
@@ -47,6 +60,16 @@ router.get('/api/debug/access/:type/:id', requireDev, (req, res) => {
     const { vm, em } = parseCatModes(cat.access_mode);
     const rules = db.prepare('SELECT * FROM category_access WHERE category_id = ?').all(id);
     const rankRules = db.prepare('SELECT cra.*, r.name AS rank_name FROM category_rank_access cra JOIN app_ranks r ON cra.rank_id = r.id WHERE cra.category_id = ?').all(id);
+    const users = dbUsers.map(row => {
+      const u = baseUser(row);
+      if (u.role === 'dev') return { ...u, has_access: true, can_edit: true, reason: 'dev' };
+      const a = checkCatAccess(cat.id, cat.access_mode, u.id, u.discord_roles, u.app_rank_ids);
+      return {
+        ...u, has_access: a.canView, can_edit: a.canEdit,
+        reason: a.canEdit ? 'editor' : a.canView ? `viewer_${a.viewVia}` : 'no_access',
+        view_via: a.viewVia, edit_via: a.editVia, view_match: a.viewMatch, edit_match: a.editMatch,
+      };
+    });
     return res.json({
       type: 'category', name: cat.name, access_mode: cat.access_mode,
       viewer_mode: vm, editor_mode: em,
@@ -54,29 +77,41 @@ router.get('/api/debug/access/:type/:id', requireDev, (req, res) => {
       editor_roles: rules.filter(r => r.access_type === 'editor').map(r => r.discord_role_id),
       viewer_ranks: rankRules.filter(r => r.access_type === 'viewer'),
       editor_ranks: rankRules.filter(r => r.access_type === 'editor'),
-      users: computeUsers(parseInt(id), cat.access_mode),
+      role_names: roleNames, rank_names: rankNames,
+      users,
     });
   }
 
   if (type === 'video') {
     const video = db.prepare('SELECT v.*, c.name AS category_name, c.access_mode AS cat_access_mode FROM videos v LEFT JOIN categories c ON v.category_id = c.id WHERE v.id = ?').get(id);
     if (!video) return res.status(404).json({ error: 'Video not found' });
-    if (video.access_mode === 'custom') {
-      const rows = db.prepare('SELECT user_id FROM video_access WHERE video_id = ?').all(video.id);
-      return res.json({ type: 'video', title: video.title, access_mode: 'custom', users: computeUsers(null, null, new Set(rows.map(r => r.user_id))) });
-    }
-    const catId = video.category_id;
-    const catMode = catId ? (video.cat_access_mode || 'public:none') : 'public:none';
+    const catMode = video.category_id ? (video.cat_access_mode || 'public:none') : 'public:none';
     const { vm, em } = parseCatModes(catMode);
+    const users = dbUsers.map(row => {
+      const u = baseUser(row);
+      const r = explainVideoAccess(video, u);
+      const decisive = decisiveStep(r);
+      return { ...u, has_access: r.ok, can_edit: r.canEdit, reason: decisive ? `${decisive.step}:${decisive.code}` : null, steps: r.steps };
+    });
+    const isScheduled = !!video.publish_date && new Date(video.publish_date) > new Date();
     return res.json({
-      type: 'video', title: video.title, access_mode: video.access_mode,
-      category_id: catId, category_name: video.category_name,
+      type: 'video', title: video.title, access_mode: video.access_mode || 'category',
+      category_id: video.category_id, category_name: video.category_name,
       viewer_mode: vm, editor_mode: em,
-      users: catId ? computeUsers(catId, catMode) : computeUsers(null, 'public:none'),
+      publication: video.is_hidden ? 'hidden' : isScheduled ? 'scheduled' : 'published',
+      publish_date: video.publish_date,
+      stream_status: video.stream_status || null,
+      role_names: roleNames, rank_names: rankNames,
+      users,
     });
   }
 
   res.status(400).json({ error: 'Invalid type' });
+}
+
+// Express 4 doesn't catch rejected async handlers on its own.
+router.get('/api/debug/access/:type/:id', requireDev, (req, res) => {
+  accessReport(req, res).catch(err => res.status(500).json({ error: err.message }));
 });
 
 // schema_migrations describes the schema of THIS install, not data — importing another install's
@@ -460,20 +495,7 @@ router.get('/api/debug/category-role-overview', requireDev, async (req, res) => 
       JOIN users u ON u.id = cua.user_id
     `).all();
 
-    // Discord role IDs are just raw snowflakes in our DB (no name cached anywhere) — resolve
-    // names live from the guild, best-effort. Falls back to the bare ID if Discord is unreachable.
-    let roleNames = {};
-    if (roleRows.length > 0 && process.env.DISCORD_GUILD_ID && process.env.DISCORD_BOT_TOKEN) {
-      try {
-        const rolesRes = await fetch(`https://discord.com/api/guilds/${process.env.DISCORD_GUILD_ID}/roles`, {
-          headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` },
-        });
-        if (rolesRes.ok) {
-          const roles = await rolesRes.json();
-          roleNames = Object.fromEntries(roles.map(r => [r.id, r.name]));
-        }
-      } catch (e) { /* Discord unreachable — fall back to raw IDs below */ }
-    }
+    const roleNames = roleRows.length > 0 ? await fetchGuildRoleNames() : {};
 
     const result = cats.map(c => ({
       id: c.id,

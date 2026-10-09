@@ -96,3 +96,59 @@ describe('Audit log', () => {
     expect((await redaktor.get('/api/audit-logs')).status).toBe(403);
   });
 });
+
+describe('Sprawdzanie uprawnień do filmu (debug) — ta sama bramka co prawdziwe żądanie', () => {
+  // Dla każdego scenariusza raport debug dla membera musi się zgadzać z tym, co member
+  // faktycznie dostaje z GET /api/videos/:id.
+  const debugFor = async (videoId, userId) => {
+    const res = await dev.get(`/api/debug/access/video/${videoId}`);
+    expect(res.status).toBe(200);
+    return res.body.users.find(u => u.id === userId);
+  };
+
+  it('opublikowany film: member ma dostęp, ślad zawiera wszystkie kroki', async () => {
+    const videoId = await createVideo(redaktor, { title: 'Debug opublikowany' });
+    const u = await debugFor(videoId, 101);
+    expect(u.has_access).toBe(true);
+    expect(u.steps.map(s => s.step)).toEqual(['role', 'custom_list', 'category', 'visibility']);
+    expect((await member.get(`/api/videos/${videoId}`)).status).toBe(200);
+  });
+
+  it('ukryty film: member bez dostępu (visibility:hidden), redaktor przez bypass admina', async () => {
+    const videoId = await createVideo(redaktor, { title: 'Debug ukryty', is_hidden: 'true' });
+    const m = await debugFor(videoId, 101);
+    expect(m.has_access).toBe(false);
+    expect(m.reason).toBe('visibility:hidden');
+    expect((await member.get(`/api/videos/${videoId}`)).status).toBe(403);
+
+    const r = await debugFor(videoId, 102);
+    expect(r.has_access).toBe(true);
+    expect(r.reason).toBe('visibility:admin');
+
+    const res = await dev.get(`/api/debug/access/video/${videoId}`);
+    expect(res.body.publication).toBe('hidden');
+  });
+
+  it('zaplanowany film: member bez dostępu (visibility:scheduled)', async () => {
+    const videoId = await createVideo(redaktor, { title: 'Debug zaplanowany', publish_date: '2099-01-01T12:00:00.000Z' });
+    const m = await debugFor(videoId, 101);
+    expect(m.has_access).toBe(false);
+    expect(m.reason).toBe('visibility:scheduled');
+    expect((await member.get(`/api/videos/${videoId}`)).status).toBe(403);
+  });
+
+  it('film z dostępem niestandardowym: member spoza listy zablokowany, dalsze kroki pominięte', async () => {
+    const videoId = await createVideo(redaktor, { title: 'Debug custom' });
+    await redaktor.post(`/api/videos/${videoId}/access`).send({ access_mode: 'custom', user_ids: [] }).expect(200);
+    const m = await debugFor(videoId, 101);
+    expect(m.has_access).toBe(false);
+    expect(m.reason).toBe('custom_list:not_in_custom_list');
+    expect(m.steps.filter(s => s.status === 'skip').map(s => s.step)).toEqual(['category', 'visibility']);
+    expect((await member.get(`/api/videos/${videoId}`)).status).toBe(403);
+  });
+
+  it('member nie ma dostępu do narzędzia', async () => {
+    const videoId = await createVideo(redaktor, { title: 'Debug 403' });
+    await member.get(`/api/debug/access/video/${videoId}`).expect(403);
+  });
+});
