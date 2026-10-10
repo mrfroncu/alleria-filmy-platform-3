@@ -2,9 +2,10 @@ const express = require('express');
 const db = require('../db');
 const { audit, extractYoutubeThumbnail } = require('../lib/helpers');
 const { checkCatAccess, getUserRankIds, userCanViewVideo } = require('../lib/access');
-const { notifyCategoryOfNewVideo, sendCategoryEmailNotifications, sendCategoryPushNotifications, sendDiscordWebhook } = require('../lib/notify');
+const { announceVideo, NOTIFICATION_CHANNELS } = require('../lib/notify');
 const { requireAdmin, requireAuth } = require('../lib/auth');
 const { upload } = require('../lib/uploads');
+const { getSetting } = require('../lib/settings');
 
 const router = express.Router();
 
@@ -293,34 +294,13 @@ router.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, 
     } else if (!stream_video_id) {
       const pubDate = new Date(publish_date);
       if (pubDate.getTime() <= Date.now()) {
-        const videoFull = db.prepare(`
-          SELECT v.*, c.name AS category_name, c.webhook_url, c.webhook_template,
-          c.webhook_enabled, c.email_enabled, c.push_enabled,
-          u.display_name AS author_name FROM videos v
-          LEFT JOIN categories c ON v.category_id = c.id
-          LEFT JOIN users u ON v.author_id = u.id WHERE v.id = ?
-        `).get(videoId);
-        if (videoFull) {
-          db.prepare("UPDATE videos SET webhook_sent = 1 WHERE id = ?").run(videoId);
-          if (videoFull.webhook_enabled && videoFull.webhook_url) {
-            console.log(`[WEBHOOK] Immediate send for "${title}" (cat: ${videoFull.category_name})`);
-            sendDiscordWebhook(videoFull).catch(e => console.error('[WEBHOOK] Error:', e.message));
-          } else {
-            console.log(`[WEBHOOK] Disabled/no URL for "${title}" — skipped`);
-          }
-          if (videoFull.email_enabled) {
-            sendCategoryEmailNotifications(videoFull).catch(e => console.error('[EMAIL] Error:', e.message));
-          }
-          if (videoFull.push_enabled) {
-            sendCategoryPushNotifications(videoFull).catch(e => console.error('[PUSH] Error:', e.message));
-          }
-          notifyCategoryOfNewVideo(videoFull);
-        }
+        db.prepare("UPDATE videos SET webhook_sent = 1 WHERE id = ?").run(videoId);
+        announceVideo(videoId, { trigger: 'auto' }).catch(e => console.error('[NOTIFY] Error:', e.message));
       } else {
-        console.log(`[WEBHOOK] Scheduled "${title}" for ${publish_date} — webhook will fire later`);
+        console.log(`[WEBHOOK] Scheduled "${title}" for ${publish_date} - webhook will fire later`);
       }
     } else {
-      console.log(`[WEBHOOK] Self-hosted "${title}" — webhook after transcoding completes`);
+      console.log(`[WEBHOOK] Self-hosted "${title}" - webhook after transcoding completes`);
     }
     // Self-hosted/scheduled: webhook_sent stays NULL → picked up by background interval
 
@@ -570,6 +550,100 @@ router.put('/api/videos/:id/visibility', requireAdmin, (req, res) => {
   } catch (err) {
     console.error('Error changing video visibility:', err);
     res.status(500).json({ error: 'Failed to change visibility' });
+  }
+});
+
+// ============ PUBLICATION PANEL ============
+// Where a video is in its publication lifecycle and what happened to its "new video"
+// announcements: per-channel category config, every logged delivery attempt
+// (video_notification_log) and the video's audit trail.
+function publicationState(v) {
+  const state = v.is_hidden ? 'hidden'
+    : (v.publish_date && new Date(v.publish_date) > new Date()) ? 'scheduled' : 'published';
+  const streamReady = !v.stream_status || v.stream_status === 'ready';
+  // Why the automatic announcement hasn't happened yet (null once it has).
+  let pending = null;
+  if (!v.webhook_sent) {
+    pending = state !== 'published' ? state
+      : v.stream_status === 'error' ? 'stream_error'
+      : !streamReady ? 'transcoding' : 'due';
+  }
+  // A manual resend only makes sense for something viewers can actually open right now.
+  let resendBlocked = null;
+  if (state !== 'published') resendBlocked = state;
+  else if (!streamReady) resendBlocked = v.stream_status === 'error' ? 'stream_error' : 'transcoding';
+  else if (!v.webhook_sent) resendBlocked = 'not_announced';
+  return { state, pending, resendBlocked };
+}
+
+const PUBLICATION_SELECT = `
+  SELECT v.id, v.title, v.is_hidden, v.publish_date, v.stream_status, v.webhook_sent, v.created_at, v.category_id,
+  c.name AS category_name, c.webhook_enabled, c.webhook_url, c.email_enabled, c.push_enabled
+  FROM videos v LEFT JOIN categories c ON v.category_id = c.id WHERE v.id = ?`;
+
+router.get('/api/videos/:id/publication', requireAdmin, (req, res) => {
+  try {
+    const v = db.prepare(PUBLICATION_SELECT).get(req.params.id);
+    if (!v) return res.status(404).json({ error: 'Nie znaleziono filmu.' });
+    const { state, pending, resendBlocked } = publicationState(v);
+    let webhookHost = null;
+    try { webhookHost = v.webhook_url ? new URL(v.webhook_url).hostname : null; } catch (e) { webhookHost = 'nieprawidłowy adres'; }
+    const log = db.prepare(`
+      SELECT l.id, l.channel, l.status, l.trigger, l.detail, l.recipients, l.delivered, l.created_at,
+      u.display_name AS user_display_name, u.username AS user_name
+      FROM video_notification_log l LEFT JOIN users u ON l.user_id = u.id
+      WHERE l.video_id = ? ORDER BY l.id DESC LIMIT 200
+    `).all(v.id);
+    const audit = db.prepare(`
+      SELECT a.id, a.action, a.details, a.created_at, u.display_name AS user_display_name, u.username AS user_name
+      FROM audit_logs a LEFT JOIN users u ON a.user_id = u.id
+      WHERE a.entity_type = 'video' AND a.entity_id = ? ORDER BY a.id DESC LIMIT 50
+    `).all(v.id);
+    res.json({
+      video: {
+        id: v.id, title: v.title, is_hidden: v.is_hidden, publish_date: v.publish_date, stream_status: v.stream_status,
+        created_at: v.created_at, category_id: v.category_id, category_name: v.category_name,
+        announced: !!v.webhook_sent,
+      },
+      state, pending, resend_blocked: resendBlocked,
+      channels: {
+        webhook: { enabled: !!v.webhook_enabled, configured: !!v.webhook_url, host: webhookHost },
+        email: { enabled: !!v.email_enabled, smtp_configured: !!getSetting('smtp_host', '') },
+        push: { enabled: !!v.push_enabled },
+        bell: { enabled: true },
+      },
+      log, audit,
+    });
+  } catch (err) {
+    console.error('Error loading publication info:', err);
+    res.status(500).json({ error: 'Failed to load publication info' });
+  }
+});
+
+router.post('/api/videos/:id/notifications/resend', requireAdmin, async (req, res) => {
+  try {
+    const channels = Array.isArray(req.body?.channels) ? req.body.channels.filter(c => NOTIFICATION_CHANNELS.includes(c)) : [];
+    if (channels.length === 0) return res.status(400).json({ error: 'Wybierz przynajmniej jeden kanał.' });
+    const v = db.prepare(PUBLICATION_SELECT).get(req.params.id);
+    if (!v) return res.status(404).json({ error: 'Nie znaleziono filmu.' });
+    const { resendBlocked } = publicationState(v);
+    if (resendBlocked) {
+      const msg = {
+        hidden: 'Film jest ukryty - najpierw go opublikuj.',
+        scheduled: 'Film jest zaplanowany - powiadomienia wyślą się automatycznie w momencie publikacji.',
+        transcoding: 'Film jest jeszcze transkodowany - powiadomienia wyślą się automatycznie po zakończeniu.',
+        stream_error: 'Transkodowanie filmu zakończyło się błędem - widzowie nie mogą go obejrzeć.',
+        not_announced: 'Film nie został jeszcze ogłoszony - powiadomienia wyślą się automatycznie w ciągu minuty.',
+      }[resendBlocked];
+      return res.status(409).json({ error: msg, reason: resendBlocked });
+    }
+    const results = await announceVideo(v.id, { trigger: 'manual', userId: req.session.user.id, channels });
+    audit(req.session.user.id, 'edit', 'video', v.id,
+      `ręczna wysyłka powiadomień: ${results.map(r => `${r.channel}=${r.status}`).join(', ')}`);
+    res.json({ success: true, results });
+  } catch (err) {
+    console.error('Error resending notifications:', err);
+    res.status(500).json({ error: 'Failed to resend notifications' });
   }
 });
 

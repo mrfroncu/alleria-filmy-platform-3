@@ -88,6 +88,10 @@ export const api = {
   setVideoHidden: (id, hidden) => request(`/videos/${id}/visibility`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hidden }),
   }),
+  getVideoPublication: (id) => request(`/videos/${id}/publication`),
+  resendVideoNotifications: (id, channels) => request(`/videos/${id}/notifications/resend`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channels }),
+  }),
 
   // Tags
   getTags: (search) => request(`/tags${search ? `?search=${encodeURIComponent(search)}` : ''}`),

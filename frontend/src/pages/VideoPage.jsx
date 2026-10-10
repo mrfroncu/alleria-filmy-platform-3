@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw, SmilePlus, Flag, BarChart3, Lock, Clock, Link2, Eye, EyeOff } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, Heart, Pencil, MessageCircle, Send, Trash2, Reply, Check, X, AlertTriangle, Play, Pause, Volume1, Volume2, VolumeX, Maximize, RotateCcw, RotateCw, SmilePlus, Flag, BarChart3, Lock, Clock, Link2, Eye, EyeOff, Megaphone } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate, youtubeToEmbed, extractYoutubeId } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,6 +10,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import SecurePlayer from '../components/SecurePlayer';
 import VideoModal from '../components/VideoModal';
+import PublicationPanel from '../components/PublicationPanel';
 import CommentText from '../components/CommentText';
 import MentionTextarea from '../components/MentionTextarea';
 import { buildSources, resolveSourceRef } from '../utils/videoSources';
@@ -727,6 +728,7 @@ export default function VideoPage() {
   // hidden video (draft / taken down), which has no date to show.
   const [notPublished, setNotPublished] = useState(null); // { publish_date } | { hidden: true } | null
   const [togglingHidden, setTogglingHidden] = useState(false);
+  const [showPublication, setShowPublication] = useState(false);
   const [isFav, setIsFav] = useState(false);
   const [favCount, setFavCount] = useState(0);
   const [favLoading, setFavLoading] = useState(false);
@@ -1159,6 +1161,7 @@ export default function VideoPage() {
             <div className="flex items-start gap-3 mb-3">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-display flex-1">{video.title}</h1>
               {canEdit && <Link to={`/video/${id}/analytics`} className="shrink-0 p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-violet-500 dark:hover:text-violet-400 transition-all hover:scale-110 active:scale-95" title="Analityka"><BarChart3 className="w-5 h-5" /></Link>}
+              {isAdminOrDev && <button onClick={() => setShowPublication(true)} title="Publikacja i powiadomienia" className="shrink-0 p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-violet-500 dark:hover:text-violet-400 transition-all hover:scale-110 active:scale-95"><Megaphone className="w-5 h-5" /></button>}
               {isAdminOrDev && <button onClick={toggleHidden} disabled={togglingHidden} title={video.is_hidden ? 'Opublikuj' : 'Ukryj przed widzami'} className="shrink-0 p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-amber-500 dark:hover:text-amber-400 transition-all hover:scale-110 active:scale-95 disabled:opacity-50">{video.is_hidden ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}</button>}
               {canEdit && <button onClick={openEditModal} className="shrink-0 p-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-500/20 transition-all hover:scale-110 active:scale-95"><Pencil className="w-5 h-5" /></button>}
               <button onClick={toggleFav} disabled={favLoading} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl transition-all duration-300 hover:scale-105 active:scale-95 ${isFav ? 'bg-pink-50 dark:bg-pink-500/10 text-pink-500 shadow-lg shadow-pink-500/10' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-pink-500'}`}>
@@ -1308,6 +1311,7 @@ export default function VideoPage() {
       {/* All modals via Portal — always centered in viewport */}
       {deleteConfirm && <Portal><div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}><div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',backdropFilter:'blur(8px)'}} onClick={()=>setDeleteConfirm(null)}/><div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center" style={{position:'relative',zIndex:1,animation:'modalIn 0.35s cubic-bezier(0.16,1,0.3,1)'}}><Trash2 className="w-12 h-12 text-red-500 mx-auto mb-4"/><h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć komentarz?</h3><p className="text-sm text-zinc-500 mb-6">Treść zostanie ukryta, wątek zachowany.</p><div className="flex gap-3 justify-center"><button onClick={()=>setDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button><button onClick={softDel} className="btn-danger text-sm">Usuń</button></div></div></div></Portal>}
       {hardDeleteConfirm && <Portal><div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}><div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',backdropFilter:'blur(8px)'}} onClick={()=>setHardDeleteConfirm(null)}/><div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[32px] shadow-2xl max-w-sm w-full p-8 text-center" style={{position:'relative',zIndex:1,animation:'modalIn 0.35s cubic-bezier(0.16,1,0.3,1)'}}><AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4"/><h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Usunąć permanentnie?</h3><p className="text-sm text-zinc-500 mb-6">Komentarz i odpowiedzi usunięte na zawsze.</p><div className="flex gap-3 justify-center"><button onClick={()=>setHardDeleteConfirm(null)} className="btn-secondary text-sm">Anuluj</button><button onClick={hardDel} className="btn-danger text-sm">Usuń</button></div></div></div></Portal>}
+      {showPublication && <Portal><PublicationPanel videoId={video.id} isOpen={showPublication} onClose={() => setShowPublication(false)} /></Portal>}
       {showEditModal && <Portal><VideoModal isOpen={showEditModal} onClose={()=>setShowEditModal(false)} video={video} users={editUsers} onSaved={()=>{setShowEditModal(false);api.getVideo(id).then(v=>setVideo(v)).catch(()=>{})}}/></Portal>}
       {reportingComment && (
         <Portal>

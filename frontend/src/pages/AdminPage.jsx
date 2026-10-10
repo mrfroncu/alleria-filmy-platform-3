@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp, FolderOpen, Loader2, BarChart3, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
+import { Plus, Pencil, Trash2, Tag, Film, Search, X, CheckSquare, Square, Lock, ChevronDown, ChevronUp, FolderOpen, Loader2, BarChart3, Image as ImageIcon, Eye, EyeOff, Megaphone } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import VideoModal from '../components/VideoModal';
+import PublicationPanel from '../components/PublicationPanel';
 import { useSettings } from '../contexts/SettingsContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useToast } from '../contexts/ToastContext';
@@ -40,6 +41,7 @@ export default function AdminPage() {
   const [bulkAction, setBulkAction] = useState('');
   const [bulkValue, setBulkValue] = useState('');
   const [togglingHiddenId, setTogglingHiddenId] = useState(null);
+  const [publicationVideoId, setPublicationVideoId] = useState(null);
 
   const [expandedTag, setExpandedTag] = useState(null);
 
@@ -396,6 +398,9 @@ export default function AdminPage() {
                             >
                               {togglingHiddenId === video.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : video.is_hidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                             </button>
+                            <button onClick={() => setPublicationVideoId(video.id)} className="btn-icon-zinc" title="Publikacja i powiadomienia">
+                              <Megaphone className="w-3.5 h-3.5" />
+                            </button>
                             <Link to={`/video/${video.id}/analytics?from=admin`} className="btn-icon-zinc" title="Analityka">
                               <BarChart3 className="w-3.5 h-3.5" />
                             </Link>
@@ -484,6 +489,12 @@ export default function AdminPage() {
         users={allUsers}
         onSaved={loadData}
         defaultCategoryId={filterCategory}
+      />
+
+      <PublicationPanel
+        videoId={publicationVideoId}
+        isOpen={!!publicationVideoId}
+        onClose={() => setPublicationVideoId(null)}
       />
 
       {/* Delete Confirmation Modal */}

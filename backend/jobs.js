@@ -4,7 +4,7 @@ const fetch = require('node-fetch');
 const db = require('./db');
 const { STREAM_SECRET } = require('./lib/config');
 const { STREAM_URL, pullThumbnailLocally } = require('./lib/stream');
-const { notifyCategoryOfNewVideo, sendCategoryEmailNotifications, sendCategoryPushNotifications, sendDiscordWebhook } = require('./lib/notify');
+const { announceVideo } = require('./lib/notify');
 
 // One-time migration flag for the backfill batch in the poll loop below — flips true the first
 // time a sweep finds nothing left to migrate, so that loop stops querying for it on every future
@@ -56,63 +56,26 @@ function startBackgroundJobs() {
   }, 30000);
 
   // Scheduled publishing + webhook check — every 60 seconds
-  // Finds videos that are: published (date in past), not hidden (drafts wait until published by
-  // hand), ready (not transcoding), webhook not yet sent
-  setInterval(async () => {
-    try {
-      const needsWebhook = db.prepare(`
-        SELECT v.*, c.name AS category_name, c.webhook_url, c.webhook_template,
-        c.webhook_enabled, c.email_enabled, c.push_enabled,
-        u.display_name AS author_name
-        FROM videos v
-        LEFT JOIN categories c ON v.category_id = c.id
-        LEFT JOIN users u ON v.author_id = u.id
-        WHERE datetime(v.publish_date) <= datetime('now')
-        AND v.is_hidden = 0
-        AND (v.webhook_sent IS NULL OR v.webhook_sent = 0)
-        AND (v.stream_status IS NULL OR v.stream_status = 'ready')
-      `).all();
-
-      for (const video of needsWebhook) {
-        // Mark as sent first to prevent duplicates
-        db.prepare("UPDATE videos SET webhook_sent = 1 WHERE id = ?").run(video.id);
-
-        // Send Discord webhook if category has one configured and enabled
-        if (video.webhook_enabled && video.webhook_url) {
-          try {
-            await sendDiscordWebhook(video);
-            console.log(`[WEBHOOK] ✅ Sent for "${video.title}" (ID: ${video.id})`);
-          } catch (e) {
-            console.error(`[WEBHOOK] ❌ Failed for "${video.title}": ${e.message}`);
-          }
-        } else {
-          console.log(`[WEBHOOK] Skipped "${video.title}" — disabled or no webhook URL on category`);
-        }
-
-        // Email notification is independent of the webhook
-        if (video.email_enabled) {
-          try {
-            await sendCategoryEmailNotifications(video);
-            console.log(`[EMAIL] ✅ Sent for "${video.title}" (ID: ${video.id})`);
-          } catch (e) {
-            console.error(`[EMAIL] ❌ Failed for "${video.title}": ${e.message}`);
-          }
-        }
-
-        // Browser push notification is independent of the webhook/email
-        if (video.push_enabled) {
-          try {
-            await sendCategoryPushNotifications(video);
-            console.log(`[PUSH] ✅ Sent for "${video.title}" (ID: ${video.id})`);
-          } catch (e) {
-            console.error(`[PUSH] ❌ Failed for "${video.title}": ${e.message}`);
-          }
-        }
-
-        notifyCategoryOfNewVideo(video);
-      }
-    } catch (e) { console.error('[WEBHOOK] Interval error:', e.message); }
-  }, 60000);
+  setInterval(() => { runPublicationAnnouncements().catch(e => console.error('[WEBHOOK] Interval error:', e.message)); }, 60000);
 }
 
-module.exports = { startBackgroundJobs };
+// Announces every video that just became public: date passed, not hidden (drafts wait until
+// published by hand), ready (not transcoding), not announced yet (webhook_sent). Exported so the
+// test suite can run one tick without waiting on the interval.
+async function runPublicationAnnouncements() {
+  const due = db.prepare(`
+    SELECT id FROM videos
+    WHERE datetime(publish_date) <= datetime('now')
+    AND is_hidden = 0
+    AND (webhook_sent IS NULL OR webhook_sent = 0)
+    AND (stream_status IS NULL OR stream_status = 'ready')
+  `).all();
+  for (const { id } of due) {
+    // Mark as announced first so an overlapping tick can't send twice — the per-channel
+    // outcome (including failures, for a manual resend) lands in video_notification_log.
+    db.prepare('UPDATE videos SET webhook_sent = 1 WHERE id = ?').run(id);
+    await announceVideo(id, { trigger: 'auto' });
+  }
+}
+
+module.exports = { startBackgroundJobs, runPublicationAnnouncements };

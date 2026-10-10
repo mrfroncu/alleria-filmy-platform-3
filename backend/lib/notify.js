@@ -3,7 +3,7 @@ const webpush = require('web-push');
 const db = require('../db');
 const { notifyUser } = require('../notifications');
 const { EMAIL_TEMPLATE_DEFAULTS, renderTemplateParagraphs, sendEmail, wrapEmailHtml } = require('./email');
-const { checkCatAccess, getUserRankIds } = require('./access');
+const { userCanViewVideo } = require('./access');
 const { getSetting, setSetting } = require('./settings');
 
 // Webhook SSRF guard — when domain restriction is enabled, only these hosts (and
@@ -36,81 +36,89 @@ function getVapidKeys() {
   return { publicKey, privateKey };
 }
 
-// Users allowed to view a video — same rules as GET /api/debug/access/video/:id — used to
-// scope push delivery to people who actually have access instead of every subscriber.
+// Users allowed to view a video, decided by the real access gate (userCanViewVideo — same as
+// GET /api/videos/:id and the Dev Tools checker) — used to scope push/e-mail/bell delivery to
+// people who can actually open it instead of every subscriber.
 function getVideoViewerUserIds(video) {
-  const dbUsers = db.prepare('SELECT id, role, discord_roles FROM users').all();
-  if (video.access_mode === 'custom') {
-    const allowed = new Set(db.prepare('SELECT user_id FROM video_access WHERE video_id = ?').all(video.id).map(r => r.user_id));
-    return dbUsers.filter(u => u.role === 'dev' || allowed.has(u.id)).map(u => u.id);
-  }
-  if (!video.category_id) return dbUsers.map(u => u.id);
-  const cat = db.prepare('SELECT access_mode FROM categories WHERE id = ?').get(video.category_id);
-  if (!cat) return [];
-  return dbUsers.filter(u => {
-    if (u.role === 'dev') return true;
-    const dr = JSON.parse(u.discord_roles || '[]');
-    const ur = getUserRankIds(u.id);
-    return checkCatAccess(video.category_id, cat.access_mode, u.id, dr, ur).canView;
-  }).map(u => u.id);
+  return db.prepare('SELECT id, role, discord_roles FROM users').all()
+    .filter(u => userCanViewVideo(video, { id: u.id, role: u.role, discord_roles: JSON.parse(u.discord_roles || '[]') }).ok)
+    .map(u => u.id);
 }
+
+const baseUrl = () => process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
 
 // In-app bell notification for a newly published video — unlike email/push, this isn't gated
 // by a per-category opt-in checkbox; a low-friction badge is on for everyone who can see it.
+// Every channel below never throws and returns { status: 'sent'|'partial'|'failed'|'skipped',
+// detail, recipients?, delivered? } so announceVideo can log the real outcome.
 function notifyCategoryOfNewVideo(video) {
   try {
-    const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
     const body = video.category_name ? `${video.title} • ${video.category_name}` : video.title;
-    for (const uid of getVideoViewerUserIds(video)) {
-      if (uid === video.author_id) continue; // don't notify authors about their own upload
-      notifyUser(uid, { type: 'new_video', title: 'Nowy film', body, url: `${baseUrl}/video/${video.id}` });
+    const recipients = getVideoViewerUserIds(video).filter(uid => uid !== video.author_id); // not the author about their own upload
+    let delivered = 0;
+    for (const uid of recipients) {
+      if (notifyUser(uid, { type: 'new_video', title: 'Nowy film', body, url: `${baseUrl()}/video/${video.id}` })) delivered++;
     }
-  } catch (e) { console.error('[NOTIFY] Error:', e.message); }
+    if (recipients.length === 0) return { status: 'skipped', detail: 'Brak odbiorców z dostępem do filmu', recipients: 0, delivered: 0 };
+    return { status: countStatus(delivered, recipients.length), detail: `${delivered}/${recipients.length} użytkowników`, recipients: recipients.length, delivered };
+  } catch (e) {
+    console.error('[NOTIFY] Error:', e.message);
+    return { status: 'failed', detail: e.message };
+  }
 }
 
-// Never throws — same fire-and-forget philosophy as sendDiscordWebhook/sendCategoryEmailNotifications.
+function countStatus(delivered, total) {
+  return delivered === total ? 'sent' : delivered === 0 ? 'failed' : 'partial';
+}
+
 async function sendCategoryPushNotifications(video) {
-  if (!video.push_enabled) return;
   try {
     getVapidKeys();
     const viewerIds = new Set(getVideoViewerUserIds(video));
-    if (viewerIds.size === 0) return;
     const subs = db.prepare('SELECT * FROM push_subscriptions').all().filter(s => viewerIds.has(s.user_id));
-    if (subs.length === 0) return;
+    if (subs.length === 0) return { status: 'skipped', detail: 'Brak subskrypcji push wśród osób z dostępem', recipients: 0, delivered: 0 };
 
-    const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
     const payload = JSON.stringify({
       title: 'Nowy film',
       body: video.category_name ? `${video.title} • ${video.category_name}` : video.title,
-      url: `${baseUrl}/video/${video.id}`,
+      url: `${baseUrl()}/video/${video.id}`,
     });
 
+    let delivered = 0, expired = 0;
+    const errors = [];
     for (const sub of subs) {
       try {
         await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload);
+        delivered++;
       } catch (e) {
         // Gone/Not Found — the subscription no longer exists on the browser's end, clean it up.
         if (e.statusCode === 404 || e.statusCode === 410) {
           db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(sub.id);
+          expired++;
         } else {
           console.error(`[PUSH] Send failed (sub ${sub.id}): ${e.message}`);
+          errors.push(e.statusCode ? `HTTP ${e.statusCode}` : e.message);
         }
       }
     }
+    const detail = [`${delivered}/${subs.length} urządzeń`, expired ? `${expired} wygasłych usunięto` : '', errors.length ? `błędy: ${[...new Set(errors)].join(', ')}` : '']
+      .filter(Boolean).join(', ');
+    return { status: countStatus(delivered, subs.length - expired || subs.length), detail, recipients: subs.length, delivered };
   } catch (e) {
     console.error('[PUSH] Error:', e.message);
+    return { status: 'failed', detail: e.message };
   }
 }
 
 // ============ DISCORD WEBHOOK ============
 async function sendDiscordWebhook(video) {
-  if (!video.webhook_url) return;
+  if (!video.webhook_url) return { status: 'skipped', detail: 'Kategoria nie ma ustawionego adresu webhooka' };
 
   // SSRF guard — block non-Discord targets when domain restriction is enabled (default: on)
   const restrictDomains = getSetting('webhook_domain_restriction', '1') === '1';
   if (restrictDomains && !isWebhookUrlAllowed(video.webhook_url)) {
     console.warn(`[WEBHOOK] Blocked — URL not on Discord allow-list (domain restriction ON): ${video.webhook_url}`);
-    return;
+    return { status: 'failed', detail: 'Adres webhooka spoza dozwolonych domen (discord.com) - zablokowano' };
   }
 
   // Default template if none set
@@ -125,7 +133,7 @@ async function sendDiscordWebhook(video) {
   // {date} - publish date
   // {id} - video ID
   // {url} - full video URL
-  const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
+  const base = baseUrl();
   const replacements = {
     '{title}': video.title || '',
     '{author}': video.author_name || video.author_display_name || '',
@@ -133,7 +141,7 @@ async function sendDiscordWebhook(video) {
     '{description}': (video.description || '').slice(0, 200),
     '{date}': video.publish_date || '',
     '{id}': String(video.id),
-    '{url}': `${baseUrl}/video/${video.id}`,
+    '{url}': `${base}/video/${video.id}`,
     '{thumbnail}': video.thumbnail || '',
   };
 
@@ -146,10 +154,10 @@ async function sendDiscordWebhook(video) {
 
   // If thumbnail is a full URL, add as embed
   if (video.thumbnail && (video.thumbnail.startsWith('http') || video.thumbnail.startsWith('/'))) {
-    const thumbUrl = video.thumbnail.startsWith('http') ? video.thumbnail : `${baseUrl}${video.thumbnail}`;
+    const thumbUrl = video.thumbnail.startsWith('http') ? video.thumbnail : `${base}${video.thumbnail}`;
     body.embeds = [{
       title: video.title,
-      url: `${baseUrl}/video/${video.id}`,
+      url: `${base}/video/${video.id}`,
       color: 6366450, // indigo
       image: { url: thumbUrl },
       footer: { text: `${video.author_name || ''} • ${video.category_name || ''}` },
@@ -157,21 +165,32 @@ async function sendDiscordWebhook(video) {
     body.content = content.replace(/\{thumbnail\}/g, '');
   }
 
-  await fetch(video.webhook_url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  // Discord answers 204 on success; anything else (bad template → 400, deleted webhook → 404,
+  // rate limit → 429) used to be silently treated as sent — now it's reported with its body.
+  try {
+    const res = await fetch(video.webhook_url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      timeout: 15000,
+    });
+    if (res.ok) return { status: 'sent', detail: `Discord: HTTP ${res.status}` };
+    const text = (await res.text().catch(() => '')).slice(0, 300);
+    return { status: 'failed', detail: `Discord: HTTP ${res.status}${text ? ` - ${text}` : ''}` };
+  } catch (e) {
+    return { status: 'failed', detail: `Błąd połączenia: ${e.message}` };
+  }
 }
 
+// Recipients: users who opted into e-mails AND can actually open the video (it used to go to
+// every opted-in user, leaking titles of restricted-category videos to people without access).
 async function sendCategoryEmailNotifications(video) {
-  if (!video.email_enabled) return;
+  if (!getSetting('smtp_host', '')) return { status: 'skipped', detail: 'Serwer SMTP nie jest skonfigurowany' };
 
   // Sitewide template — categories only get a per-category on/off checkbox now (Ustawienia >
   // Ustawienia serwera E-mail > Szablony e-mail owns the actual content, for every category).
   const template = getSetting('email_template_new_video', EMAIL_TEMPLATE_DEFAULTS.new_video);
 
-  const baseUrl = process.env.ALLOWED_ORIGIN || process.env.DISCORD_REDIRECT_URI?.replace(/\/auth.*/, '') || 'https://videos.alleria.pl';
   const replacements = {
     '{title}': video.title || '',
     '{author}': video.author_name || video.author_display_name || '',
@@ -179,18 +198,66 @@ async function sendCategoryEmailNotifications(video) {
     '{description}': (video.description || '').slice(0, 200),
     '{date}': video.publish_date || '',
     '{id}': String(video.id),
-    '{url}': `${baseUrl}/video/${video.id}`,
+    '{url}': `${baseUrl()}/video/${video.id}`,
     '{thumbnail}': video.thumbnail || '',
   };
   const bodyHtml = renderTemplateParagraphs(template, replacements);
   const html = wrapEmailHtml({ bodyHtml, ctaUrl: replacements['{url}'], ctaLabel: 'Obejrzyj film' });
 
-  const recipients = db.prepare(`SELECT email, discord_email FROM users WHERE email_notifications = 1`).all();
+  const viewerIds = new Set(getVideoViewerUserIds(video));
+  const recipients = db.prepare(`SELECT id, email, discord_email FROM users WHERE email_notifications = 1`).all()
+    .filter(r => viewerIds.has(r.id) && (r.email || r.discord_email));
+  if (recipients.length === 0) return { status: 'skipped', detail: 'Brak odbiorców (włączone e-maile + dostęp do filmu)', recipients: 0, delivered: 0 };
+  let delivered = 0;
   for (const r of recipients) {
-    const to = r.email || r.discord_email;
-    if (!to) continue;
-    await sendEmail({ to, subject: `Nowy film: ${video.title}`, html });
+    if (await sendEmail({ to: r.email || r.discord_email, subject: `Nowy film: ${video.title}`, html })) delivered++;
   }
+  return { status: countStatus(delivered, recipients.length), detail: `${delivered}/${recipients.length} adresów`, recipients: recipients.length, delivered };
 }
 
-module.exports = { WEBHOOK_ALLOWED_HOSTS, isWebhookUrlAllowed, getVapidKeys, getVideoViewerUserIds, notifyCategoryOfNewVideo, sendCategoryPushNotifications, sendDiscordWebhook, sendCategoryEmailNotifications };
+// ============ ANNOUNCEMENT ============
+const CHANNELS = ['webhook', 'email', 'push', 'bell'];
+const CATEGORY_TOGGLE = { webhook: 'webhook_enabled', email: 'email_enabled', push: 'push_enabled' };
+
+function loadVideoForAnnouncement(videoId) {
+  return db.prepare(`
+    SELECT v.*, c.name AS category_name, c.webhook_url, c.webhook_template,
+    c.webhook_enabled, c.email_enabled, c.push_enabled,
+    u.display_name AS author_name
+    FROM videos v
+    LEFT JOIN categories c ON v.category_id = c.id
+    LEFT JOIN users u ON v.author_id = u.id
+    WHERE v.id = ?
+  `).get(videoId);
+}
+
+// Sends the "new video" announcement on the given channels and records every outcome in
+// video_notification_log. trigger = 'auto' (publication: jobs.js / immediate publish in
+// POST /api/videos) or 'manual' (resend from the publication panel, userId = who clicked).
+// Channels switched off in the video's category are logged as skipped, not sent.
+// Never throws; returns [{ channel, status, detail, recipients, delivered }].
+async function announceVideo(videoId, { trigger = 'auto', userId = null, channels = CHANNELS } = {}) {
+  const video = loadVideoForAnnouncement(videoId);
+  if (!video) return [];
+  const log = db.prepare(`INSERT INTO video_notification_log (video_id, channel, status, trigger, detail, recipients, delivered, user_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+  const results = [];
+  for (const channel of CHANNELS.filter(c => channels.includes(c))) {
+    let r;
+    const toggle = CATEGORY_TOGGLE[channel];
+    if (toggle && !video[toggle]) {
+      r = { status: 'skipped', detail: video.category_id ? 'Wyłączone w ustawieniach kategorii' : 'Film bez kategorii' };
+    } else if (channel === 'webhook') r = await sendDiscordWebhook(video);
+    else if (channel === 'email') r = await sendCategoryEmailNotifications(video);
+    else if (channel === 'push') r = await sendCategoryPushNotifications(video);
+    else r = notifyCategoryOfNewVideo(video);
+    console.log(`[NOTIFY] ${channel} for "${video.title}" (ID: ${video.id}, ${trigger}): ${r.status}${r.detail ? ` - ${r.detail}` : ''}`);
+    try {
+      log.run(video.id, channel, r.status, trigger, r.detail || '', r.recipients ?? null, r.delivered ?? null, userId);
+    } catch (e) { console.error('[NOTIFY] Log write failed:', e.message); }
+    results.push({ channel, ...r });
+  }
+  return results;
+}
+
+module.exports = { WEBHOOK_ALLOWED_HOSTS, NOTIFICATION_CHANNELS: CHANNELS, isWebhookUrlAllowed, getVapidKeys, getVideoViewerUserIds, notifyCategoryOfNewVideo, sendCategoryPushNotifications, sendDiscordWebhook, sendCategoryEmailNotifications, announceVideo };
