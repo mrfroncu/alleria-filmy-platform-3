@@ -14,7 +14,7 @@ services:
   alleria-filmy:
     build: .
     container_name: alleria-filmy
-    # Zadnego portu na hoscie - Traefik siega tej uslugi po sieci 'edge',
+    # Zadnego portu na hoscie - Nginx Proxy Manager siega tej uslugi po sieci 'edge',
     # a PORT z .env steruje wylacznie tym, na czym aplikacja slucha w srodku.
     # (Wczesniej PORT trafial jednoczesnie do publikacji i do nasluchu, co
     # konczylo sie bledem 502.)
@@ -26,20 +26,13 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-    # Traefik siega tej uslugi po sieci 'edge', a nie przez port na hoscie -
-    # dlatego PORT w .env jest przypiety do 127.0.0.1. Reguly musza byc tutaj,
-    # w repozytorium: synchronizacja GitOps usuwa z katalogu projektu wszystko,
-    # czego nie ma w gicie (sprawdzone), wiec lokalna nakladka nie przezyje.
+    # Nginx Proxy Manager siega tej uslugi po sieci 'edge' (host alleria-filmy,
+    # port 3000), a nie przez port na hoscie - dlatego PORT w .env jest przypiety
+    # do 127.0.0.1. Trasa videos.alleria.pl mieszka w NPM, nie w etykietach.
     networks: [default, edge]
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.videos.rule=Host(`videos.alleria.pl`)
-      - traefik.http.routers.videos.entryPoints=websecure
-      - traefik.http.routers.videos.tls.certResolver=le
-      - traefik.http.services.videos.loadbalancer.server.port=3000
 
 networks:
-  # Siec, w ktorej Traefik odnajduje te usluge. Na hoscie tworzona raz:
+  # Siec, w ktorej Nginx Proxy Manager odnajduje te usluge. Na hoscie tworzona raz:
   #   docker network create edge
   edge:
     external: true
