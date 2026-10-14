@@ -101,6 +101,7 @@ tests/
 └── api/
     ├── access.test.js      # macierz uprawnień: każdy endpoint × każda rola
     ├── auth.test.js        # sesja, /api/auth/me, logout, ochrona CSRF
+    ├── turnstile.test.js   # captcha Cloudflare Turnstile przed logowaniem TS3/TS6
     ├── videos.test.js      # CRUD filmów, tagi, filmy zaplanowane, wyszukiwanie, historia
     ├── categories.test.js  # kategorie + tryby dostępu (public/roles/custom)
     ├── comments.test.js    # komentarze: dodawanie, limity, edycja, soft/hard delete

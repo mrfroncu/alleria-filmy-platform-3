@@ -39,6 +39,7 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 - **TeamSpeak 3** — logowanie przez ServerQuery po TCP, ta sama logika dopasowania po IP i grupach co TS6
 - **Authentik SSO (OpenID Connect, opcjonalnie)** — przycisk „Zaloguj przez …” pojawia się, gdy w `.env` są ustawione `AUTHENTIK_*`; flow authorization code + PKCE, role nadawane po nazwach grup Authentik (`AUTHENTIK_MEMBER_GROUPS` / `AUTHENTIK_ADMIN_GROUPS` / `AUTHENTIK_DEV_GROUPS`)
 - **Bot do uwierzytelniania ServerQuery** — kod logowania wysyłany na TS3/TS6 przychodzi od `TS_BOT_NICKNAME`
+- **Captcha Cloudflare Turnstile przy logowaniu TeamSpeak (opcjonalnie)** — `TURNSTILE_ENABLED=true` + klucze w `.env`; przyciski TS3/TS6 odblokowują się po weryfikacji, a serwer sprawdza token w Cloudflare, zanim bot zacznie szukać klienta i wysyłać kod. Discord, SSO i łączenie TS z profilu działają bez captchy
 - **Redirect po logowaniu** — niezalogowany użytkownik wchodzący na `/video/24` zostaje przekierowany na login, a po zalogowaniu wraca na `/video/24`
 - **Konfiguracja logowania w panelu albo w `.env`** — dane połączenia TS3/TS6 oraz role Discord member/admin można trzymać wyłącznie w `.env` (domyślnie) albo w pełni edytować z Zarządzanie → Ustawienia → Logowanie bez restartu kontenera (`TS_CONFIG_SOURCE` / `DISCORD_ROLES_CONFIG_SOURCE`); rola `dev` zawsze zostaje tylko w `.env`
 
@@ -369,6 +370,16 @@ W Authentik: **Applications → Providers → OAuth2/OpenID Provider** (Client t
 
 > [!TIP]
 > `TS_CONFIG_SOURCE` i `DISCORD_ROLES_CONFIG_SOURCE` (`env` domyślnie / `panel`) pozwalają przenieść powyższe dane TS3/TS6 oraz `DISCORD_MEMBER_ROLE_ID`/`DISCORD_ADMIN_ROLE_ID` do edycji z Zarządzanie → Ustawienia → Logowanie, bez restartu kontenera przy każdej zmianie. Dopóki flaga stoi na `env`, wartości zapisane w bazie są ignorowane — to świadomy „wyłącznik awaryjny": jeśli coś ustawione z panelu zepsuje logowanie, wystarczy wrócić do `.env` i zrestartować kontener, bez grzebania w bazie.
+
+### Cloudflare Turnstile — captcha przy logowaniu TeamSpeak (opcjonalnie)
+W Cloudflare: **Turnstile → Add widget**, dodaj domenę aplikacji, tryb *Managed*, skopiuj Site Key i Secret Key. Tylko w `.env` (bez edycji z panelu); po zmianie odtwórz kontener (`docker compose up -d`).
+
+| Zmienna | Opis |
+|---------|------|
+| `TURNSTILE_ENABLED` | `true` = captcha przed logowaniem TS3/TS6 (domyślnie `false`). Włączona flaga bez któregoś klucza = captcha wyłączona + ostrzeżenie w logach przy starcie |
+| `TURNSTILE_SITE_KEY` | Site Key widżetu (publiczny, trafia do przeglądarki przez `/api/health`) |
+| `TURNSTILE_SECRET_KEY` | Secret Key widżetu (tylko serwer, do weryfikacji tokenu w Cloudflare) |
+| `TURNSTILE_VERIFY_URL` | Adres weryfikacji tokenu, domyślnie `https://challenges.cloudflare.com/turnstile/v0/siteverify` — zmieniać tylko do testów |
 
 ### App Settings
 | Zmienna | Opis |

@@ -11,6 +11,7 @@ const { createPendingMerge, getMergeStats, identityList, maxRole } = require('..
 const { getSetting } = require('../lib/settings');
 const { getTsBotNickname, getTsSetting } = require('../lib/tsConfig');
 const { stampSessionMeta } = require('../lib/sessions');
+const { requireTurnstile } = require('../lib/turnstile');
 
 const router = express.Router();
 
@@ -254,7 +255,7 @@ router.post('/api/auth/teamspeak3/verify', authLimiter, handleTsVerify('teamspea
 // Uses TS ServerQuery HTTP API (port 10080)
 // Auth: Basic Auth (username:password) + optional x-api-key
 // Endpoints: /{serverId}/clientlist, /{serverId}/clientinfo, /{serverId}/servergroupsbyclientid
-router.post('/api/auth/teamspeak', authLimiter, async (req, res) => {
+router.post('/api/auth/teamspeak', authLimiter, requireTurnstile('teamspeak'), async (req, res) => {
   const clientIp = req.ip || req.socket.remoteAddress;
   const cleanIp = clientIp.replace('::ffff:', '');
 
@@ -492,7 +493,7 @@ function connectTS3(host, port, connectTimeoutMs = 10000, cmdTimeoutMs = 8000) {
   });
 }
 
-router.post('/api/auth/teamspeak3', authLimiter, async (req, res) => {
+router.post('/api/auth/teamspeak3', authLimiter, requireTurnstile('teamspeak3'), async (req, res) => {
   const clientIp = req.ip || req.socket.remoteAddress;
   const cleanIp = clientIp.replace('::ffff:', '');
 

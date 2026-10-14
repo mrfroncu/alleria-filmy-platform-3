@@ -6,6 +6,7 @@ const { STREAM_URL } = require('../lib/stream');
 const { requireAuth, requireDev } = require('../lib/auth');
 const { settingsPayload } = require('../lib/appSettings');
 const { isAuthentikConfigured, authentikDisplayName } = require('../lib/authentik');
+const { turnstileSiteKey } = require('../lib/turnstile');
 
 const router = express.Router();
 
@@ -23,6 +24,9 @@ router.get('/api/health', (req, res) => {
     // The login page shows the SSO button only when this is true, labelled with authentik_name.
     authentik_configured: isAuthentikConfigured(),
     authentik_name: authentikDisplayName(),
+    // Cloudflare Turnstile site key (public by design) — the login page renders the captcha
+    // in front of the TeamSpeak buttons only when this is set (TURNSTILE_ENABLED=true + keys).
+    turnstile_site_key: turnstileSiteKey(),
   });
 });
 

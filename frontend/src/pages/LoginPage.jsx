@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AlertTriangle, AlertCircle, Info, X, ChevronDown, ExternalLink, Film, Users, ShieldCheck, KeyRound } from 'lucide-react';
 import { api } from '../utils/api';
 import { getCurrentYear, parseTsError } from '../utils/helpers';
 import { renderMarkdown } from '../utils/markdown';
 import TsChallengeModal from '../components/TsChallengeModal';
+import TurnstileWidget from '../components/TurnstileWidget';
 
 // A "//host" prefix isn't the only way to smuggle a cross-origin destination through a
 // path-looking string: browsers resolve "/\evil.com" identically to "//evil.com" for
@@ -24,6 +25,13 @@ export default function LoginPage() {
   const [discordError, setDiscordError] = useState(null);
   const [ts3Error, setTs3Error] = useState(null);
   const [ts6Error, setTs6Error] = useState(null);
+
+  // Cloudflare Turnstile in front of TS login — on only when the server sends a site key
+  // (TURNSTILE_ENABLED=true + keys in .env). A token is spent by one TS login attempt.
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState(null);
+  const [turnstileToken, setTurnstileToken] = useState(null);
+  const turnstileRef = useRef(null);
+  const captchaPending = !!turnstileSiteKey && !turnstileToken;
 
   // TS login challenge (code sent to the user on TeamSpeak)
   const [challenge, setChallenge] = useState(null); // { challengeId, method, nickname, version }
@@ -63,6 +71,7 @@ export default function LoginPage() {
       .then(data => {
         if (!data.discord_configured) setConfigOk(false);
         if (data.authentik_configured) setAuthentik({ name: data.authentik_name || 'Authentik' });
+        if (data.turnstile_site_key) setTurnstileSiteKey(data.turnstile_site_key);
       })
       .catch(() => setConfigOk(false));
   }, []);
@@ -108,26 +117,31 @@ export default function LoginPage() {
     setChallengeError(null);
   };
 
+  // Captcha errors (err.captcha) already carry a user-facing message — the TS error parser
+  // would only mangle them.
+  const tsErrorText = (err, version) => (err.captcha ? err.message : parseTsError(err.message, version));
+  const tsLoginOpts = () => (turnstileSiteKey ? { turnstileToken } : undefined);
+
   const handleTeamspeakLogin = async () => {
     setTsLoading(true); setTs6Error(null);
     try {
-      const res = await api.loginTeamspeak();
+      const res = await api.loginTeamspeak(tsLoginOpts());
       if (res?.challenge) startChallenge(res, 'teamspeak', 'TeamSpeak 6');
       else window.location.href = isSafeReturnTo(returnTo) ? returnTo : '/';
     }
-    catch (err) { setTs6Error(parseTsError(err.message, 'TeamSpeak 6')); }
-    finally { setTsLoading(false); }
+    catch (err) { setTs6Error(tsErrorText(err, 'TeamSpeak 6')); }
+    finally { setTsLoading(false); turnstileRef.current?.reset(); }
   };
 
   const handleTeamspeak3Login = async () => {
     setTs3Loading(true); setTs3Error(null);
     try {
-      const res = await api.loginTeamspeak3();
+      const res = await api.loginTeamspeak3(tsLoginOpts());
       if (res?.challenge) startChallenge(res, 'teamspeak3', 'TeamSpeak 3');
       else window.location.href = isSafeReturnTo(returnTo) ? returnTo : '/';
     }
-    catch (err) { setTs3Error(parseTsError(err.message, 'TeamSpeak 3')); }
-    finally { setTs3Loading(false); }
+    catch (err) { setTs3Error(tsErrorText(err, 'TeamSpeak 3')); }
+    finally { setTs3Loading(false); turnstileRef.current?.reset(); }
   };
 
   const handleChallengeSubmit = async () => {
@@ -317,13 +331,24 @@ export default function LoginPage() {
           {/* ── TeamSpeak section ── */}
           <div className="space-y-2 anim-stagger-4">
 
+            {/* Cloudflare Turnstile — only when enabled in .env; TS buttons wait for its token */}
+            {turnstileSiteKey && (
+              <TurnstileWidget
+                ref={turnstileRef}
+                siteKey={turnstileSiteKey}
+                action="ts-login"
+                onToken={setTurnstileToken}
+              />
+            )}
+
             {/* TS3 — left, TS6 — right */}
             <div className="grid grid-cols-2 gap-2.5">
               {/* TS3 */}
               <div className="flex flex-col gap-1.5">
                 <button
                   onClick={handleTeamspeak3Login}
-                  disabled={ts3Loading || tsLoading}
+                  disabled={ts3Loading || tsLoading || captchaPending}
+                  title={captchaPending ? 'Najpierw potwierdź captchę powyżej' : undefined}
                   className="w-full py-3 px-3 bg-zinc-900 dark:bg-zinc-800 hover:bg-zinc-800 dark:hover:bg-zinc-700 active:scale-[0.98] text-white rounded-xl font-bold text-xs transition-all flex flex-col items-center gap-1.5 disabled:opacity-50 shadow-md shadow-zinc-900/20 dark:shadow-black/30 border border-zinc-800 dark:border-zinc-700"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-zinc-400">
@@ -345,7 +370,8 @@ export default function LoginPage() {
               <div className="flex flex-col gap-1.5">
                 <button
                   onClick={handleTeamspeakLogin}
-                  disabled={ts3Loading || tsLoading}
+                  disabled={ts3Loading || tsLoading || captchaPending}
+                  title={captchaPending ? 'Najpierw potwierdź captchę powyżej' : undefined}
                   className="w-full py-3 px-3 bg-zinc-900 dark:bg-zinc-800 hover:bg-zinc-800 dark:hover:bg-zinc-700 active:scale-[0.98] text-white rounded-xl font-bold text-xs transition-all flex flex-col items-center gap-1.5 disabled:opacity-50 shadow-md shadow-zinc-900/20 dark:shadow-black/30 border border-zinc-800 dark:border-zinc-700"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-zinc-400">
@@ -401,6 +427,9 @@ export default function LoginPage() {
                 <p>• Musisz być <span className="font-semibold text-zinc-700 dark:text-zinc-300">aktywnie połączony</span> z serwerem TS w momencie logowania.</p>
                 <p>• Weryfikacja działa przez <span className="font-semibold text-zinc-700 dark:text-zinc-300">dopasowanie IP</span> - nie używaj VPN.</p>
                 <p>• Wymagana jest <span className="font-semibold text-zinc-700 dark:text-zinc-300">odpowiednia grupa serwerowa</span> na TS.</p>
+                {turnstileSiteKey && (
+                  <p>• Przed logowaniem potwierdź <span className="font-semibold text-zinc-700 dark:text-zinc-300">captchę Cloudflare</span> nad przyciskami - przyciski TS odblokują się po weryfikacji.</p>
+                )}
                 <p>• Po dopasowaniu bot wyśle Ci na TeamSpeaku <span className="font-semibold text-zinc-700 dark:text-zinc-300">6-znakowy kod</span> - wpisz go, aby się zalogować.</p>
               </div>
             )}
