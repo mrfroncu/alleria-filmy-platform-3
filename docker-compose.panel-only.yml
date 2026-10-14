@@ -29,12 +29,17 @@ services:
     # Nginx Proxy Manager siega tej uslugi po sieci 'edge' (host alleria-filmy,
     # port 3000), a nie przez port na hoscie - dlatego PORT w .env jest przypiety
     # do 127.0.0.1. Trasa videos.alleria.pl mieszka w NPM, nie w etykietach.
-    networks: [default, edge]
+    networks: [default, edge, teamspeak-query]
 
 networks:
   # Siec, w ktorej Nginx Proxy Manager odnajduje te usluge. Na hoscie tworzona raz:
   #   docker network create edge
   edge:
+    external: true
+  # Siec z serwerami TeamSpeak - ServerQuery po nazwie kontenera (TS3_HOST/TS_SERVER_HOST),
+  # bez publikowania portow zapytan na hoscie. Na hoscie tworzona raz:
+  #   docker network create teamspeak-query
+  teamspeak-query:
     external: true
 
 volumes:
