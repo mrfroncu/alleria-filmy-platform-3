@@ -12,7 +12,11 @@
 
 services:
   alleria-filmy:
-    build: .
+    build:
+      context: .
+      # Arcane buduje obraz przy kazdym wdrozeniu; pull sprawia, ze najpierw
+      # pobiera aktualny node:24-alpine zamiast starej kopii lezacej na VPS.
+      pull: true
     container_name: alleria-filmy
     # Zadnego portu na hoscie - Nginx Proxy Manager siega tej uslugi po sieci 'edge',
     # a PORT z .env steruje wylacznie tym, na czym aplikacja slucha w srodku.
