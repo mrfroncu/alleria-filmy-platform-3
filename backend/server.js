@@ -20,6 +20,8 @@ const { apiLimiter } = require('./lib/rateLimits');
 const { sessionStore } = require('./lib/sessions');
 const { getSetting } = require('./lib/settings');
 const { resolveWatchPartyVideo } = require('./lib/access');
+const { setUploadHeaders } = require('./lib/uploads');
+const { refreshSessionUser } = require('./lib/sessionUser');
 const { startBackgroundJobs } = require('./jobs');
 const { isAuthentikConfigured } = require('./lib/authentik');
 
@@ -47,6 +49,8 @@ app.use((req, res, next) => {
   res.set('Permissions-Policy', 'display-capture=(), screen-wake-lock=()');
   // X-Frame-Options does not support allowlists; rely on CSP frame-ancestors for modern browsers
   res.set('X-Frame-Options', 'SAMEORIGIN');
+  // Browsers must trust our Content-Type, never guess one from the bytes (e.g. render as HTML)
+  res.set('X-Content-Type-Options', 'nosniff');
   // Read fresh each request (DB-backed settings, toggleable from Dev Tools without a restart)
   const iframeEnabled = getSetting('iframe_embed_enabled', '0') === '1';
   const iframeAllowedOrigins = getSetting('iframe_allowed_origins', '')
@@ -78,6 +82,10 @@ app.use(session({
   }
 }));
 
+// Re-validates the logged-in user against the DB on every request (deleted / anonymized /
+// role changed / lost Discord role) — see lib/sessionUser.js.
+app.use(refreshSessionUser);
+
 app.use(cors({
   origin: process.env.ALLOWED_ORIGIN || false,
   credentials: true,
@@ -101,8 +109,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve uploaded thumbnails
-app.use('/api/uploads', express.static(uploadsDir));
+// Serve uploaded thumbnails/avatars — sandboxed, see setUploadHeaders
+app.use('/api/uploads', express.static(uploadsDir, { setHeaders: setUploadHeaders }));
 
 // ============ API ROUTES ============
 // Each file in routes/ is an express.Router holding the full /api/... paths it serves. They're
@@ -159,6 +167,15 @@ httpServer.on('upgrade', (req, socket, head) => {
 // Export for the API test suite (tests/) — supertest drives `app` directly.
 // The server only starts listening when this file is run directly (node server.js).
 module.exports = { app, db, httpServer };
+
+// Last-resort net, same as the streaming service: a stray error thrown from an event listener (a
+// WebSocket message, a socket error) must not take the whole panel down for every user. Log it
+// loudly so the cause is in `docker logs`. Only when run directly — the test suite keeps the
+// default crash-on-error behaviour so such bugs fail loudly there.
+if (require.main === module) {
+  process.on('uncaughtException', (err) => console.error('[SERVER] uncaughtException:', err));
+  process.on('unhandledRejection', (err) => console.error('[SERVER] unhandledRejection:', err));
+}
 
 if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
   const rUri = process.env.DISCORD_REDIRECT_URI || '';

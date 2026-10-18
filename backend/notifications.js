@@ -62,6 +62,9 @@ function setupNotificationsWS(db) {
     ws.on('message', (raw) => {
       let msg;
       try { msg = JSON.parse(raw); } catch { return; }
+      // `null`, a number or an array is valid JSON too — anything but a plain object is ignored
+      // (reading msg.type on null used to throw here and take the whole process down).
+      if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return;
 
       // The only message this channel ever expects from the client is the initial auth —
       // everything else flows server → client (new notifications pushed as they're created).

@@ -6,7 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { CAST_TOKEN_TTL_MS, requireAdmin, requireAuth, requireAuthOrCastToken, requireDev, signCastToken } = require('../lib/auth');
 const { STREAM_SECRET } = require('../lib/config');
-const { STREAM_URL, isStreamUnreachable, logStreamError, pullThumbnailLocally, streamErrorLog } = require('../lib/stream');
+const { STREAM_URL, isStreamUnreachable, logStreamError, pullThumbnailLocally, requireSafeStreamPath, streamErrorLog } = require('../lib/stream');
 const { audit } = require('../lib/helpers');
 const { resolveStreamVideoForUser } = require('../lib/access');
 const { createThrottle } = require('../lib/uploadThrottle');
@@ -182,14 +182,15 @@ router.get('/api/stream/cast-token/:videoId', requireAuth, (req, res) => {
 // cast token minted by /api/stream/cast-token above (already access-checked at mint time,
 // and scoped to one videoId+uid+short expiry) — so we only need to re-check category/
 // custom access here for the session-cookie path; a valid cast token is proof enough.
-router.get('/stream/keys/*', requireAuthOrCastToken, async (req, res) => {
+router.get('/stream/keys/*', requireSafeStreamPath, requireAuthOrCastToken, async (req, res) => {
   try {
     const streamVideoId = (req.params[0] || '').split('/')[0];
     if (req.session.user) {
       const check = resolveStreamVideoForUser(streamVideoId, req.session.user);
       if (!check.ok) return res.status(check.status).send(check.error);
     }
-    const url = `${STREAM_URL}/keys/${req.params[0]}?t=${req.query.t || ''}&uid=${req.query.uid || ''}`;
+    const qs = new URLSearchParams({ t: String(req.query.t || ''), uid: String(req.query.uid || '') });
+    const url = `${STREAM_URL}/keys/${req.params[0]}?${qs}`;
     const r = await fetch(url);
     // Explicit no-store on the miss path — Cloudflare caches by file extension when no
     // Cache-Control is present at all, including error responses, so a key requested one
@@ -204,7 +205,7 @@ router.get('/stream/keys/*', requireAuthOrCastToken, async (req, res) => {
   }
 });
 
-router.get('/stream/media/*', requireAuthOrCastToken, async (req, res) => {
+router.get('/stream/media/*', requireSafeStreamPath, requireAuthOrCastToken, async (req, res) => {
   try {
     const streamVideoId = (req.params[0] || '').split('/')[0];
     if (req.session.user) {

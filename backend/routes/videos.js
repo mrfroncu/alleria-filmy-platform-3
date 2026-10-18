@@ -4,7 +4,7 @@ const { audit, extractYoutubeThumbnail } = require('../lib/helpers');
 const { checkCatAccess, getUserRankIds, userCanViewVideo } = require('../lib/access');
 const { announceVideo, NOTIFICATION_CHANNELS } = require('../lib/notify');
 const { requireAdmin, requireAuth } = require('../lib/auth');
-const { upload } = require('../lib/uploads');
+const { imageUpload } = require('../lib/uploads');
 const { getSetting } = require('../lib/settings');
 
 const router = express.Router();
@@ -219,7 +219,7 @@ router.post('/api/videos/:id/log-view', requireAuth, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, res) => {
+router.post('/api/videos', requireAdmin, imageUpload('thumbnail_file'), (req, res) => {
   try {
     const { title, author_id, main_source, main_source_type, main_source_title,
       thumbnail, mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type, mirror1_is_alt,
@@ -331,7 +331,7 @@ router.post('/api/videos', requireAdmin, upload.single('thumbnail_file'), (req, 
   }
 });
 
-router.put('/api/videos/:id', requireAdmin, upload.single('thumbnail_file'), (req, res) => {
+router.put('/api/videos/:id', requireAdmin, imageUpload('thumbnail_file'), (req, res) => {
   try {
     const { title, author_id, main_source, main_source_type, main_source_title,
       thumbnail, mirror1_name, mirror1_url, mirror1_is_embed, mirror1_type, mirror1_is_alt,

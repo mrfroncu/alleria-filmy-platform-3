@@ -102,11 +102,23 @@ function tosNeedsAcceptance(tosAcceptedAt) {
 // up to what the current login computes, never down. TS3/TS6 can only ever compute
 // 'member'/'admin' (no dev group concept exists there), so 'dev' — once granted by an
 // actual live Discord role check (or an AUTHENTIK_DEV_GROUPS group) — is naturally preserved
-// and can never be granted by a TS login; a later Discord login without the dev role also won't strip it here (role
-// demotion is an explicit admin action elsewhere, not a side effect of logging in).
+// and can never be granted by a TS login. On a linked account a later login without the role also
+// won't strip it (another identity may be the one that earned it) — see loginRole for the
+// single-identity case, where the role does follow its source down.
 const ROLE_RANK = { member: 0, admin: 1, dev: 2 };
 function maxRole(a, b) {
   return (ROLE_RANK[a] ?? 0) >= (ROLE_RANK[b] ?? 0) ? a : b;
+}
+
+// The role to store when `method` ('discord' | 'teamspeak3' | 'teamspeak' | 'authentik', as in
+// identityList) logs into `existing` with `computedRole` from that method's own source. When that
+// method is the account's ONLY identity, its source is the whole truth: the role follows it down as
+// well as up — otherwise taking someone's admin role away on Discord never demoted them here.
+// Linked accounts keep maxRole (a TS login must not strip an admin role that came from Discord).
+function loginRole(existing, method, computedRole) {
+  const ids = identityList(existing);
+  const soleIdentity = ids.length === 0 || (ids.length === 1 && ids[0] === method);
+  return soleIdentity ? computedRole : maxRole(existing.role, computedRole);
 }
 
 // Moves all of secondaryId's data onto primaryId and deletes the secondary account row.
@@ -208,4 +220,4 @@ function mergeUsers(primaryId, secondaryId, { performedBy } = {}) {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(primaryId);
 }
 
-module.exports = { pendingMerges, PENDING_MERGE_TTL_MS, createPendingMerge, getPendingMerge, consumePendingMerge, getMergeStats, identityList, emailLinkingEnabled, findAccountByVerifiedEmail, tosNeedsAcceptance, ROLE_RANK, maxRole, mergeUsers };
+module.exports = { pendingMerges, PENDING_MERGE_TTL_MS, createPendingMerge, getPendingMerge, consumePendingMerge, getMergeStats, identityList, emailLinkingEnabled, findAccountByVerifiedEmail, tosNeedsAcceptance, ROLE_RANK, maxRole, loginRole, mergeUsers };

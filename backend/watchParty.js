@@ -73,6 +73,13 @@ function sendMsg(ws, message) {
   if (ws.readyState === 1) ws.send(JSON.stringify(message));
 }
 
+// Playback position from a client message: a finite, non-negative number of seconds, or null.
+// Anything else (a string, null, an object) used to be stored as-is and crash the next
+// party.position.toFixed() call — and with it the whole process.
+function parsePosition(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 // One-time WS auth tokens: token → { user, expires }
 const wsTokens = new Map();
 
@@ -198,9 +205,17 @@ function setupWatchPartyWS(db, resolveVideoForUser) {
     let partyCode = null;
     let userName = null;
 
+    // An exception thrown from a 'message' listener escapes to the socket's event loop and kills
+    // the whole server process (every user, not just this party) — contain it to this one message.
     ws.on('message', (raw) => {
+      try { handleMessage(raw); } catch (err) { console.error('[WATCH PARTY] message handler error:', err); }
+    });
+
+    function handleMessage(raw) {
       let msg;
       try { msg = JSON.parse(raw); } catch { return; }
+      // `null`, a number or an array is valid JSON too — only a plain object is a message.
+      if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return;
 
       // First message must be auth
       if (userId === null) {
@@ -218,7 +233,7 @@ function setupWatchPartyWS(db, resolveVideoForUser) {
         userId = user.id;
         userName = uname(user);
 
-        const code = (msg.code || '').toUpperCase();
+        const code = String(msg.code || '').toUpperCase();
         const party = parties.get(code);
         if (!party) {
           sendMsg(ws, { type: 'error', message: 'Party not found' });
@@ -258,48 +273,60 @@ function setupWatchPartyWS(db, resolveVideoForUser) {
       const canControl = member.canControl;
 
       switch (msg.type) {
-        case 'play':
+        case 'play': {
           if (!canControl) return;
+          const pos = parsePosition(msg.position);
+          if (msg.position !== undefined && pos === null) return;
           party.playing = true;
-          if (msg.position !== undefined) party.position = msg.position;
+          if (pos !== null) party.position = pos;
           party.positionUpdatedAt = Date.now();
           wpLog(partyCode, 'play', userId, userName, null, null,
             `pozycja: ${party.position.toFixed(1)}s`);
           broadcast(party, { type: 'play', position: party.position }, userId);
           break;
+        }
 
-        case 'pause':
+        case 'pause': {
           if (!canControl) return;
+          const pos = parsePosition(msg.position);
+          if (msg.position !== undefined && pos === null) return;
           party.playing = false;
-          party.position = msg.position !== undefined
-            ? msg.position
+          party.position = pos !== null
+            ? pos
             : party.position + (Date.now() - party.positionUpdatedAt) / 1000;
           party.positionUpdatedAt = Date.now();
           wpLog(partyCode, 'pause', userId, userName, null, null,
             `pozycja: ${party.position.toFixed(1)}s`);
           broadcast(party, { type: 'pause', position: party.position }, userId);
           break;
+        }
 
-        case 'seek':
+        case 'seek': {
           if (!canControl) return;
-          party.position = msg.position;
+          const pos = parsePosition(msg.position);
+          if (pos === null) return;
+          party.position = pos;
           party.positionUpdatedAt = Date.now();
           wpLog(partyCode, 'seek', userId, userName, null, null,
             `pozycja: ${party.position.toFixed(1)}s`);
           broadcast(party, { type: 'seek', position: party.position, playing: party.playing }, userId);
           break;
+        }
 
-        case 'source_change':
+        case 'source_change': {
           if (!canControl) return;
+          if (typeof msg.sourceKey !== 'string') return;
+          const sourceKey = msg.sourceKey.slice(0, 100);
           if (party.currentIndex >= 0 && party.queue[party.currentIndex]) {
-            party.queue[party.currentIndex] = { ...party.queue[party.currentIndex], sourceKey: msg.sourceKey };
+            party.queue[party.currentIndex] = { ...party.queue[party.currentIndex], sourceKey };
           }
           party.position = 0;
           party.positionUpdatedAt = Date.now();
           wpLog(partyCode, 'source_change', userId, userName, null, null,
-            `źródło: ${msg.sourceKey}`);
-          broadcast(party, { type: 'source_change', sourceKey: msg.sourceKey, position: 0 });
+            `źródło: ${sourceKey}`);
+          broadcast(party, { type: 'source_change', sourceKey, position: 0 });
           break;
+        }
 
         case 'queue_add': {
           if (!canControl) return;
@@ -455,7 +482,7 @@ function setupWatchPartyWS(db, resolveVideoForUser) {
           break;
         }
       }
-    });
+    }
 
     ws.on('close', () => {
       if (!partyCode || userId === null) return;

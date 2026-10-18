@@ -51,4 +51,26 @@ async function pullThumbnailLocally(video) {
   } catch (e) { return false; }
 }
 
-module.exports = { STREAM_URL, STREAM_ERROR_LOG_MAX, STREAM_ERROR_DEDUPE_MS, streamErrorLog, logStreamError, isStreamUnreachable, pullThumbnailLocally };
+// /stream/media/* and /stream/keys/* are access-checked by their FIRST path segment (the stream
+// video id) and then proxied with the rest of the path appended. Express decodes %2F in the
+// wildcard and fetch() normalizes dot segments, so "<allowedId>/..%2F<otherId>/master.m3u8" used to
+// pass the check for one video and fetch another. Every segment must be a plain file/dir name:
+// letters, digits, "_", "-", "." — not starting with "." (so no "..", "." or hidden files), no empty
+// segments, nothing that could become a query string or another path.
+const STREAM_PATH_SEGMENT_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
+
+function isSafeStreamPath(p) {
+  if (typeof p !== 'string' || p.length === 0 || p.length > 300) return false;
+  return p.split('/').every(s => STREAM_PATH_SEGMENT_RE.test(s));
+}
+
+// Must run before requireAuthOrCastToken — that one also keys the cast token on the first segment.
+function requireSafeStreamPath(req, res, next) {
+  if (!isSafeStreamPath(req.params[0])) {
+    res.set('Cache-Control', 'no-store');
+    return res.status(400).send('Invalid path');
+  }
+  next();
+}
+
+module.exports = { isSafeStreamPath, requireSafeStreamPath, STREAM_URL, STREAM_ERROR_LOG_MAX, STREAM_ERROR_DEDUPE_MS, streamErrorLog, logStreamError, isStreamUnreachable, pullThumbnailLocally };

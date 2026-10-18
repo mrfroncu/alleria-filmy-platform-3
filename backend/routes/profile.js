@@ -6,7 +6,7 @@ const { consumePendingMerge, getPendingMerge, identityList, mergeUsers } = requi
 const { getLimit, getSetting } = require('../lib/settings');
 const { listUserSessions, sessionStore } = require('../lib/sessions');
 const { requireAuth } = require('../lib/auth');
-const { upload } = require('../lib/uploads');
+const { imageUpload } = require('../lib/uploads');
 
 const router = express.Router();
 
@@ -93,15 +93,20 @@ router.put('/api/profile', requireAuth, (req, res) => {
 });
 
 // Custom avatar upload — dev/admin can always use this; ordinary members only when the
-// allow_custom_avatars setting is on (see ManagePage "Własne avatary" toggle).
-router.post('/api/profile/avatar', requireAuth, upload.single('avatar_file'), (req, res) => {
+// allow_custom_avatars setting is on (see ManagePage "Własne avatary" toggle). Checked BEFORE the
+// upload middleware: otherwise every refused request still left its file behind on disk.
+function requireAvatarUploadAllowed(req, res, next) {
+  const role = req.session.user.role;
+  const isDevOrAdmin = role === 'admin' || role === 'dev';
+  const allowMembers = getSetting('allow_custom_avatars', '0') === '1';
+  if (!isDevOrAdmin && !allowMembers) {
+    return res.status(403).json({ error: 'Własne avatary są obecnie wyłączone dla zwykłych użytkowników.' });
+  }
+  next();
+}
+
+router.post('/api/profile/avatar', requireAuth, requireAvatarUploadAllowed, imageUpload('avatar_file'), (req, res) => {
   try {
-    const role = req.session.user.role;
-    const isDevOrAdmin = role === 'admin' || role === 'dev';
-    const allowMembers = getSetting('allow_custom_avatars', '0') === '1';
-    if (!isDevOrAdmin && !allowMembers) {
-      return res.status(403).json({ error: 'Własne avatary są obecnie wyłączone dla zwykłych użytkowników.' });
-    }
     if (!req.file) return res.status(400).json({ error: 'Brak pliku.' });
     const url = `/api/uploads/${req.file.filename}`;
     db.prepare('UPDATE users SET custom_avatar = ?, avatar_source = ?, avatar = ? WHERE id = ?').run(url, 'custom', url, req.session.user.id);

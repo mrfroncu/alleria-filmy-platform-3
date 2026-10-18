@@ -7,7 +7,7 @@ const db = require('../db');
 const { ts3Escape, ts3ParseLine, ts3Unescape } = require('../ts3proto');
 const { audit, logLogin } = require('../lib/helpers');
 const { authLimiter } = require('../lib/rateLimits');
-const { createPendingMerge, getMergeStats, identityList, maxRole } = require('../lib/accounts');
+const { createPendingMerge, getMergeStats, identityList, loginRole } = require('../lib/accounts');
 const { getSetting } = require('../lib/settings');
 const { getTsBotNickname, getTsSetting } = require('../lib/tsConfig');
 const { stampSessionMeta } = require('../lib/sessions');
@@ -76,10 +76,10 @@ function upsertTsUser({ method, tsNickname, tsUid, cleanIp, role }) {
   const existing = db.prepare(`SELECT * FROM users WHERE ${uidCol} = ?`).get(tsUid);
   let userId;
   if (existing) {
-    // Never let this login downgrade a role earned via a different linked identity
-    // (e.g. admin/dev via a linked Discord account, or admin via the OTHER TS server) —
-    // see maxRole's comment.
-    const finalRole = maxRole(existing.role, role);
+    // TS-only account: the server group is the truth (up or down). Linked account: never
+    // downgrade a role earned via another identity (e.g. admin/dev via a linked Discord account,
+    // or admin via the OTHER TS server) — see loginRole.
+    const finalRole = loginRole(existing, method, role);
     db.prepare(`UPDATE users SET username=?, display_name=?, role=?, ${ipCol}=?, ${uidCol}=?, last_login=datetime('now') WHERE id=?`)
       .run(tsNickname, tsNickname, finalRole, cleanIp, tsUid, existing.id);
     userId = existing.id;

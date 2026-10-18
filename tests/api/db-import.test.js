@@ -158,6 +158,8 @@ describe('Import bazy w częściach', () => {
   });
 
   it('inny dev nie może dosyłać części do cudzego uploadu', async () => {
+    // Sesja musi wskazywać na istniejące konto — nieistniejące jest od razu wylogowywane.
+    db.prepare("INSERT OR IGNORE INTO users (id, discord_id, username, display_name, role) VALUES (999, 'discord-999', 'inny-dev', 'Inny Dev', 'dev')").run();
     const other = await loginAs('dev', { id: 999, discord_id: 'discord-999' });
     const init = await dev.post('/api/debug/import/init').send({ filesize: 100, total_chunks: 1 });
     expect((await sendChunk(other, init.body.upload_id, 0, Buffer.from('x'))).status).toBe(404);

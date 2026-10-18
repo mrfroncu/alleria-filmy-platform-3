@@ -23,6 +23,9 @@ function stampSessionMeta(req) {
   req.session.ua = req.get('user-agent') || '';
   req.session.ip = req.ip || req.socket.remoteAddress || '';
   req.session.loggedInAt = new Date().toISOString();
+  // The login itself just checked Discord roles — the periodic re-check (lib/sessionUser.js)
+  // counts from here.
+  req.session.discordCheckedAt = Date.now();
 }
 
 // Good-enough device label from a raw User-Agent string — not a full parser, just enough

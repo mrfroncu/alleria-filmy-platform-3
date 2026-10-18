@@ -55,7 +55,10 @@ router.get('/api/categories', requireAuth, (req, res) => {
         const access = db.prepare('SELECT * FROM category_access WHERE category_id = ?').all(c.id);
         const rank_access = db.prepare('SELECT cra.*, r.name AS rank_name, r.color AS rank_color FROM category_rank_access cra JOIN app_ranks r ON cra.rank_id = r.id WHERE cra.category_id = ?').all(c.id);
         const videoCount = db.prepare('SELECT COUNT(*) AS c FROM videos WHERE category_id = ?').get(c.id).c;
-        return { ...c, access, rank_access, videoCount };
+        // webhook_url carries the Discord webhook's secret token (anyone holding it can post to
+        // the channel) — only the dev-only category editor ever needs it, never other viewers.
+        const { webhook_url, webhook_template, ...publicFields } = c;
+        return { ...publicFields, access, rank_access, videoCount };
       });
 
     res.json(cats);

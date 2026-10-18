@@ -4,8 +4,8 @@ const fetch = require('node-fetch');
 const db = require('../db');
 const { audit, isSafeReturnTo, logLogin } = require('../lib/helpers');
 const { authLimiter } = require('../lib/rateLimits');
-const { createPendingMerge, findAccountByVerifiedEmail, getMergeStats, identityList, maxRole, mergeUsers, tosNeedsAcceptance } = require('../lib/accounts');
-const { getDiscordRoleSetting } = require('../lib/tsConfig');
+const { createPendingMerge, findAccountByVerifiedEmail, getMergeStats, identityList, loginRole, maxRole, mergeUsers, tosNeedsAcceptance } = require('../lib/accounts');
+const { discordRoleFromRoles, fetchDiscordGuildRoles } = require('../lib/discordRoles');
 const { getSetting } = require('../lib/settings');
 const { stampSessionMeta } = require('../lib/sessions');
 const { isAuthentikConfigured, authentikDisplayName, authentikEndpoints, authentikRequiresDiscordRole, authentikTrustsEmail, createPkcePair, computeAuthentikRole } = require('../lib/authentik');
@@ -68,43 +68,6 @@ function finishOAuthLogin(req, res, sessionUser, popupMessageType) {
       res.redirect(returnTo);
     });
   });
-}
-
-// ============ DISCORD ROLES ============
-// 'dev' / 'admin' / 'member' from a guild member's Discord role ids, or null with none of the
-// required ones. Member/admin role ids are optionally panel-managed (DISCORD_ROLES_CONFIG_SOURCE);
-// the dev role always comes straight from .env, no override.
-function discordRoleFromRoles(roles) {
-  const memberRoleId = getDiscordRoleSetting('discord_member_role_id', process.env.DISCORD_MEMBER_ROLE_ID || '');
-  const adminRoleId = getDiscordRoleSetting('discord_admin_role_id', process.env.DISCORD_ADMIN_ROLE_ID || '');
-  const hasMemberRole = roles.includes(memberRoleId);
-  const hasAdminRole = roles.includes(adminRoleId);
-  const hasDevRole = roles.includes(process.env.DISCORD_DEV_ROLE_ID);
-  console.log('[AUTH] Role check - member:', hasMemberRole, 'admin:', hasAdminRole, 'dev:', hasDevRole);
-  if (hasDevRole) return 'dev';
-  if (hasAdminRole) return 'admin';
-  if (hasMemberRole) return 'member';
-  return null;
-}
-
-// Live guild roles of a Discord user via the bot: an array ([] = not on the server), or null when
-// that can't be determined right now (bot not configured, Discord down) — callers then keep
-// whatever they knew before instead of treating it as "no roles".
-async function fetchDiscordGuildRoles(discordId) {
-  if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_GUILD_ID) return null;
-  // DISCORD_API_URL exists only so the API tests can point this at a fake Discord.
-  const api = process.env.DISCORD_API_URL || 'https://discord.com/api';
-  try {
-    const r = await fetch(`${api}/guilds/${process.env.DISCORD_GUILD_ID}/members/${discordId}`,
-      { headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` } });
-    if (r.status === 404) return [];
-    if (!r.ok) { console.warn('[AUTH] Guild member lookup failed:', r.status); return null; }
-    const m = await r.json();
-    return Array.isArray(m.roles) ? m.roles : [];
-  } catch (e) {
-    console.warn('[AUTH] Guild member lookup error:', e.message);
-    return null;
-  }
 }
 
 // ============ DISCORD AUTH ============
@@ -203,6 +166,7 @@ async function discordCallbackHandler(req, res) {
     console.log('[AUTH] User roles:', roles);
 
     const role = discordRoleFromRoles(roles);
+    console.log('[AUTH] Role from Discord roles:', role);
     if (!role) {
       console.warn('[AUTH] User has none of the required roles');
       logLogin(null, discordUser.username, 'discord', clientIp, 0, 'Missing required role');
@@ -263,9 +227,9 @@ async function discordCallbackHandler(req, res) {
 
     let userId;
     if (existing) {
-      // Never let this login downgrade a role earned via a different linked identity
-      // (e.g. admin/dev via a linked TS3/TS6 account) — see maxRole's comment.
-      const finalRole = maxRole(existing.role, role);
+      // Discord-only account: Discord's role is the truth (up or down). Linked account: never
+      // downgrade a role earned via another identity (e.g. a linked TS3/TS6) — see loginRole.
+      const finalRole = loginRole(existing, 'discord', role);
       // By id, not discord_id — an e-mail-matched account doesn't have the Discord id yet.
       db.prepare(`UPDATE users SET discord_id = ?, username = ?, display_name = ?, avatar = ?, role = ?, discord_roles = ?, discord_avatar_hash = ?, discord_guild_avatar_hash = ?, discord_email = ?, discord_email_verified = ?, last_login = datetime('now') WHERE id = ?`)
         .run(discordUser.id, discordUser.username, member.nick || discordUser.global_name || discordUser.username, avatarUrl, finalRole, rolesJson, discordAvatarHash, discordGuildAvatarHash, discordEmail, discordEmailVerified, existing.id);
@@ -501,10 +465,11 @@ async function authentikCallbackHandler(req, res) {
 
     let userId;
     if (existing) {
-      // Never downgrade a role earned via another linked identity — see maxRole's comment.
-      // display_name is left alone (the user may have edited it, or it comes from Discord on a
-      // linked account); username only tracks Authentik on Authentik-origin accounts.
-      const finalRole = maxRole(existing.role, role);
+      // Authentik-only account: its role is the truth (up or down); a linked account never loses a
+      // role earned via another identity — see loginRole. display_name is left alone (the user may
+      // have edited it, or it comes from Discord on a linked account); username only tracks
+      // Authentik on Authentik-origin accounts.
+      const finalRole = loginRole(existing, 'authentik', role);
       const username = existing.auth_method === 'authentik' ? akUsername : existing.username;
       const attachDiscord = !existing.discord_id && claimDiscordIdFree;
       // Fresh guild roles only belong on a row that has (or now gets) the Discord id they were fetched for.

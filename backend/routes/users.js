@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { audit } = require('../lib/helpers');
 const { requireAdmin, requireAuth, requireDev } = require('../lib/auth');
+const { invalidateUserSessions } = require('../lib/sessions');
 
 const router = express.Router();
 
@@ -24,6 +25,8 @@ router.delete('/api/users/:id', requireAdmin, (req, res) => {
     db.prepare('DELETE FROM favorites WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM watch_logs WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    // Log them out everywhere right away (refreshSessionUser would also catch it on their next request)
+    invalidateUserSessions(userId);
     console.log(`[ADMIN] User deleted: ${user.display_name} (ID: ${userId}) by ${req.session.user.display_name}`);
     res.json({ success: true });
   } catch (err) {
