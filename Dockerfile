@@ -10,9 +10,15 @@ RUN npm run build
 FROM node:24-alpine AS production
 WORKDIR /app
 
-# Install backend dependencies
+# Pick up Alpine security fixes released after the base image was published
+RUN apk upgrade --no-cache
+
+# Install backend dependencies, then drop npm/npx/corepack: the app runs with plain `node`, and
+# npm's bundled packages (tar, undici, brace-expansion, ...) only add CVEs to the runtime image.
 COPY backend/package.json backend/package-lock.json* ./backend/
-RUN cd backend && npm install --production
+RUN cd backend && npm install --omit=dev \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+           /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 
 # Copy backend source
 COPY backend/ ./backend/
