@@ -42,6 +42,9 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 - **Captcha Cloudflare Turnstile przy logowaniu TeamSpeak (opcjonalnie)** — `TURNSTILE_ENABLED=true` + klucze w `.env`; przyciski TS3/TS6 odblokowują się po weryfikacji, a serwer sprawdza token w Cloudflare, zanim bot zacznie szukać klienta i wysyłać kod. Discord, SSO i łączenie TS z profilu działają bez captchy
 - **Redirect po logowaniu** — niezalogowany użytkownik wchodzący na `/video/24` zostaje przekierowany na login, a po zalogowaniu wraca na `/video/24`
 - **Konfiguracja logowania w panelu albo w `.env`** — dane połączenia TS3/TS6 oraz role Discord member/admin można trzymać wyłącznie w `.env` (domyślnie) albo w pełni edytować z Zarządzanie → Ustawienia → Logowanie bez restartu kontenera (`TS_CONFIG_SOURCE` / `DISCORD_ROLES_CONFIG_SOURCE`); rola `dev` zawsze zostaje tylko w `.env`
+- **Rola dev po ID konta albo po roli** — `DISCORD_DEV_MODE=user` (domyślnie) daje deva tylko kontom Discord z `DISCORD_DEV_USER_IDS`, `DISCORD_DEV_MODE=role` każdemu z rolą `DISCORD_DEV_ROLE_ID` na serwerze; szczegóły w [👥 Role i dostęp do stron](#-role-i-dostęp-do-stron)
+- **Uprawnienia sprawdzane na bieżąco** — rola i stan konta są czytane z bazy przy każdym żądaniu, nie tylko przy logowaniu; usunięcie, anonimizacja (RODO) albo blokada konta wylogowuje od razu, a konta logujące się wyłącznie Discordem mają role z serwera sprawdzane przez bota co 10 minut
+- **Blokada kont (ban)** — dev blokuje konto w Zarządzanie → Użytkownicy: odmowa logowania każdą metodą przypiętą do konta (Discord, TeamSpeak, SSO), natychmiastowe wylogowanie wszystkich sesji i rozłączenie z Watch Party, nieważne tokeny castowania
 
 ### 🔗 Łączenie i scalanie kont
 - W Profilu można dopiąć dodatkową metodę logowania (Discord / TeamSpeak 3 / TeamSpeak 6 / Authentik SSO) do już posiadanego konta
@@ -61,9 +64,14 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 - **Mirrory** — do 5 alternatywnych źródeł z opcją embed/iframe; każdy mirror może być oznaczony jako „wersja alternatywna" (inny cut/behind-the-scenes), renderowana w playerze jako osobno kolorowana zakładka
 - **Casting** — Chromecast (Cast Sender SDK) i AirPlay bezpośrednio z self-hosted playera; krótkotrwały (6h), podpisany token castowania pozwala urządzeniu odbiorczemu grać strumień bez ciasteczka sesji przeglądarki
 - **Tagi** — system tagów z autocompletem, chip-based input
-- **Planowane publikacje** — film z datą publikacji w przyszłości jest niewidoczny dla zwykłych użytkowników (widzą go tylko redaktorzy/dev w panelu) do momentu jej nadejścia; z chwilą publikacji automatycznie leci webhook Discord, powiadomienie push i/lub e-mail — każdy kanał osobno włączany per kategoria (patrz sekcje niżej)
-- **Progres uploadu** — podwójny progress bar: całość + bieżący chunk
+- **Planowane publikacje** — film z datą publikacji w przyszłości jest niewidoczny dla zwykłych użytkowników (widzą go tylko redaktorzy/dev w panelu) do momentu jej nadejścia; z chwilą publikacji (i po zakończeniu transkodowania) automatycznie leci webhook Discord, powiadomienie push, e-mail i powiadomienie w aplikacji — każdy kanał osobno włączany per kategoria (patrz sekcje niżej)
+- **Ukrywanie filmów (szkic / zdjęty z widoczności)** — przełącznik niezależny od daty publikacji: ukryty film widzą tylko admin/dev i redaktorzy jego kategorii. Działa jako szkic (wgraj teraz, opublikuj ręcznie później) i do zdjęcia opublikowanego filmu bez usuwania. Szkic, który nigdy nie był ogłoszony, przy publikacji dostaje bieżącą datę i normalne powiadomienia
+- **Panel publikacji** *(admin/dev)* — stan filmu (ukryty / zaplanowany / opublikowany), powód, dla którego automatyczne ogłoszenie jeszcze nie poszło (np. trwa transkodowanie), konfiguracja kanałów kategorii z wynikiem ostatniej wysyłki, pełna historia wysyłek (np. kod HTTP z Discorda) i ręczne ponowne wysłanie wybranych kanałów
+- **Progres uploadu** — podwójny progress bar: całość + bieżący chunk; opcjonalny limit przepustowości uploadu przez panel (Ustawienia)
 - **Auto-transkodowanie** — backend co 30s sprawdza status, redaktor widzi % postępu i aktualną jakość
+- **Kolejka transkodowania** — streamer transkoduje jeden film naraz, kolejne czekają w kolejce (z pozycją widoczną w panelu) i są wznawiane po restarcie kontenera; w trakcie transkodowania można normalnie oglądać inne filmy. Mirror, który jeszcze się transkoduje, pokazuje widzom planszę z informacją zamiast błędu
+- **Transkodowanie na GPU (NVENC, opcjonalnie)** — `docker-compose.gpu.yml` nałożony na bazowy compose; przy błędzie GPU każda jakość wraca sama do CPU (libx264), więc zła konfiguracja spowalnia transkodowanie, a nie psuje uploadu
+- **Ekran końcowy** — po zakończeniu filmu (po ustawionym opóźnieniu) plansza z oceną 1-5 gwiazdek, dodaniem do ulubionych i ponownym odtworzeniem; osobno włączana dla odtwarzacza Alleria i dla YouTube (główne źródło i mirrory, bez wersji alternatywnych). Widz widzi tylko swoją ocenę, zbiorcze oceny są w analityce
 - **Link do tej chwili** — kopiuje `/video/:id?t=<sekundy>&src=<źródło>`; wejście z takiego linku otwiera film na wskazanym źródle (np. mirrorze z wersją alternatywną) i ustawia odtwarzacz na ten moment (`t` przyjmuje też `12:34` i `1h2m3s`)
 - **Sterowanie systemowe (Media Session)** — tytuł, autor, miniatura oraz play/pauza/przewijanie na ekranie blokady telefonu, w centrum powiadomień i z klawiszy multimedialnych/słuchawek (self-hosted player na stronie filmu; wyłączone dla filmów z rozszerzonym DRM, bo te pauzują przy ukryciu strony)
 - **Podgląd poklatkowy miniaturki** — najechanie myszką na kafelek filmu (self-hosted, ready) pokazuje "filmstrip" ze sprite'a wygenerowanego przy transkodowaniu (do 100 klatek co ~10-60s zależnie od długości filmu), jak na YouTube; YouTube/embed zostaje przy statycznej miniaturce
@@ -77,6 +85,7 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 - **Solo vs Watch Party** — każde zdarzenie i wyświetlenie oznaczone kontekstem; przełącznik filtruje widok między „Wszystko" / „Solo" / „Watch Party" (uczestnicy party też trafiają do `watch_logs`, nie tylko osoba sterująca)
 - **Filtr osoby** — zawężenie wszystkich wykresów do sesji jednej wybranej osoby
 - **Statystyki zbiorcze** — unikalni widzowie, średnie ukończenie (%)
+- **Oceny z ekranu końcowego** — średnia, rozkład 1-5 gwiazdek i lista ocen z nazwami osób
 - **Reset danych** — usunięcie zdarzeń/wyświetleń filmu w całości albo zawężone do okresu i/lub jednej osoby; nie rusza zapamiętanej pozycji „Kontynuuj oglądanie"
 
 ### 🎞️ Shorts
@@ -164,7 +173,8 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 
 ### 🛠️ Panel Redaktora
 - **Biblioteka** — tabela filmów z kolumnami: checkbox, ID, tytuł, autor, kategoria, dostęp, data, akcje
-- **Bulk actions** — seryjne: zmiana kategorii, autora, uprawnień, usuwanie
+- **Bulk actions** — seryjne: zmiana kategorii, autora, uprawnień, ukrycie/publikacja, ponowne wygenerowanie miniaturek, usuwanie
+- **Panel publikacji** — przy każdym filmie: stan publikacji, historia powiadomień i ręczne ponowne wysłanie (patrz „🎬 Filmy”)
 - **Tagi** — zarządzanie tagami
 - **Status transkodowania** — auto-polling co 15s, badge z % i jakością
 - Zarządzanie kategoriami, użytkownikami i rangami **nie** znajduje się tutaj — patrz sekcja „Zarządzanie” niżej; logi mają też własną, osobną stronę
@@ -176,7 +186,7 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 - **Zgłoszenia** — kolejka moderacyjna zgłoszeń komentarzy (patrz sekcja „💬 Komentarze”)
 - **RODO** *(widoczna tylko gdy region RODO jest włączony w Ustawieniach)* — kolejka żądań eksportu/usunięcia danych, patrz sekcja „🔐 RODO / Ochrona danych” niżej
 - **Regulamin** — edytor treści regulaminu (markdown) z podglądem na żywo i przyciskiem „Przywróć domyślny”
-- **Ustawienia** — cztery podzakładki: **Wyświetlanie** (paginacja, kolumny siatki, limity treści, infinite scroll, własne avatary), **Bezpieczeństwo** (ograniczenie domen webhooków, region RODO), **E-mail** (SMTP + szablony wiadomości), **Logowanie** (źródło konfiguracji TS3/TS6 i ról Discord — `.env` albo panel)
+- **Ustawienia** — m.in. **Wyświetlanie** (paginacja, kolumny siatki, limity treści, infinite scroll, własne avatary, ekran końcowy, link „Zgłoś błąd”), **Bezpieczeństwo** (ograniczenie domen webhooków, region RODO), **E-mail** (SMTP + szablony wiadomości), **Logowanie** (źródło konfiguracji TS3/TS6 i ról Discord — `.env` albo panel), **Baza danych** (migracje, kopie); pełna lista w [📋 Ustawienia w aplikacji](#-ustawienia-w-aplikacji-zarządzanie--ustawienia)
 
 ### 🔐 RODO / Ochrona danych *(opcjonalne, wyłączone domyślnie)*
 - Włączane przez ustawienie **Region RODO** (Zarządzanie → Ustawienia → Bezpieczeństwo): wyłączone / UE / Brazylia (LGPD) — dopóki wyłączone, cała ścieżka poniżej jest niedostępna dla użytkowników
@@ -225,7 +235,21 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 | 📜 Logi systemowe | `/logs` | `dev` |
 | 🧰 Dev Tools *(Streaming, Administracyjne, Kategorie, Debug)* | `/debug` | `dev` |
 
-Role przypisywane są automatycznie na podstawie ról Discord (`DISCORD_MEMBER_ROLE_ID` / `DISCORD_ADMIN_ROLE_ID`; rola `dev` zależnie od `DISCORD_DEV_MODE`: domyślnie tylko dla kont Discord wpisanych w `DISCORD_DEV_USER_IDS`, w trybie `role` dla roli `DISCORD_DEV_ROLE_ID`) lub grup TeamSpeak (`TS_MEMBER_GROUP_ID` / `TS_ADMIN_GROUP_ID`), niezależnie od rang aplikacji (App Ranks), które służą wyłącznie do dostępu per kategoria.
+Role przypisywane są automatycznie na podstawie ról Discord (`DISCORD_MEMBER_ROLE_ID` / `DISCORD_ADMIN_ROLE_ID`), grup TeamSpeak (`TS_MEMBER_GROUP_ID` / `TS_ADMIN_GROUP_ID`) lub grup Authentik (`AUTHENTIK_*_GROUPS`), niezależnie od rang aplikacji (App Ranks), które służą wyłącznie do dostępu per kategoria.
+
+**Rola `dev`** pochodzi tylko z `.env` i zależy od `DISCORD_DEV_MODE`:
+
+| Tryb | Kto jest devem | Uwagi |
+|------|----------------|-------|
+| `user` *(domyślny)* | Konta Discord, których ID są w `DISCORD_DEV_USER_IDS` (po przecinku) | Zalecany: nikt nie nada sobie deva z poziomu serwera Discord. Brak zmiennej albo nieznana wartość też oznacza `user` (z ostrzeżeniem w logach) |
+| `role` | Każdy z rolą `DISCORD_DEV_ROLE_ID` na serwerze Discord | Mniej bezpieczny: każdy, kto może nadawać role na serwerze, może zostać devem. Serwer ostrzega o tym w logach przy starcie |
+
+Przy każdym starcie serwer odbiera rolę `dev` kontom, których bieżący tryb nie potwierdza (spadają do roli wynikającej z ról Discord, najniżej `member`). Dotyczy to zmiany trybu, usunięcia ID z listy albo zdjęcia roli dev na Discordzie. Konta połączone z Authentik zostają, dopóki ustawione jest `AUTHENTIK_DEV_GROUPS` (dev mógł przyjść z grupy SSO). Stan trybu widać w kroku diagnostyki kreatora konfiguracji i w logach startowych.
+
+**Jak rola się zmienia po zalogowaniu:**
+- konto z jedną metodą logowania ma zawsze rolę wynikającą z tej metody: utrata roli admina na Discordzie obniża rolę, utrata roli member (albo wyjście z serwera) wylogowuje; konta tylko z Discordem są sprawdzane przez bota co 10 minut, a przy niedostępnym Discordzie zostaje ostatni znany stan;
+- konto z kilkoma przypiętymi metodami dostaje najwyższą rolę z nich i nie jest automatycznie obniżane (wyjątek: rola `dev`, sprawdzana przy starcie jak wyżej);
+- zmiana roli w bazie, usunięcie, anonimizacja i blokada konta działają od następnego żądania, bez czekania na ponowne logowanie.
 
 ---
 
@@ -350,12 +374,12 @@ W Authentik: **Applications → Providers → OAuth2/OpenID Provider** (Client t
 |---------|------|
 | `TS_SERVER_HOST` / `TS6_HOST` | IP serwera TS |
 | `TS_API_PORT` / `TS6_QUERY_PORT` | Port ServerQuery HTTP (domyślnie: 10080) |
-| `TS6_USERNAME` | Użytkownik query (domyślnie: serveradmin) |
-| `TS6_PASSWORD` | Hasło do ServerQuery |
+| `TS6_USERNAME` / `TS_USERNAME` | Użytkownik query (domyślnie: serveradmin) |
+| `TS6_PASSWORD` / `TS_PASSWORD` | Hasło do ServerQuery |
 | `TS_API_KEY` / `TS6_API_KEY` | Klucz API |
-| `TS_SERVER_ID` | ID wirtualnego serwera (domyślnie: 1) |
-| `TS_MEMBER_GROUP_ID` | ID grupy dającej dostęp |
-| `TS_ADMIN_GROUP_ID` | ID grupy admina |
+| `TS_SERVER_ID` / `TS6_SERVER_ID` | ID wirtualnego serwera (domyślnie: 1) |
+| `TS_MEMBER_GROUP_ID` / `TS6_MEMBER_GROUP_ID` | ID grupy dającej dostęp |
+| `TS_ADMIN_GROUP_ID` / `TS6_ADMIN_GROUP_ID` | ID grupy admina |
 | `TS_BOT_NICKNAME` | Nazwa, pod jaką bot ServerQuery wysyła wiadomości z kodem logowania (domyślnie: „ALLERIA VIDEOS PLATFORM”) |
 
 ### TeamSpeak 3 (opcjonalnie)
@@ -398,6 +422,26 @@ W Cloudflare: **Turnstile → Add widget**, dodaj domenę aplikacji, tryb *Manag
 | `STREAM_PUBLIC_URL` | Publiczny URL streamingu |
 | `ALLOWED_ORIGIN` | Domena dla CORS |
 
+### Transkodowanie na GPU (opcjonalnie)
+Tylko z nakładką `docker-compose.gpu.yml` (wymaga działającego NVIDIA Container Toolkit, na Unraid wtyczka „Nvidia-Driver”):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build --force-recreate
+```
+
+`--force-recreate` jest potrzebne przy pierwszym dodaniu/usunięciu nakładki, inaczej Docker potrafi zostawić stary kontener bez GPU. Wynik wykrycia GPU jest w logach streamera (`GPU (NVENC): ✅ available`).
+
+| Zmienna | Opis |
+|---------|------|
+| `STREAM_USE_GPU` | `true` = koduj przez NVENC (ustawiane przez `docker-compose.gpu.yml`); bez enkodera `h264_nvenc` w ffmpeg zostaje CPU |
+| `NVIDIA_VISIBLE_DEVICES` | Które GPU udostępnić kontenerowi (`all` albo UUID karty) |
+| `NVIDIA_DRIVER_CAPABILITIES` | Możliwości sterownika przekazane do kontenera (domyślnie `all`) |
+
+### Integracja z dashboardem (opcjonalnie)
+| Zmienna | Opis |
+|---------|------|
+| `INTEGRATION_API_KEY` | Klucz dla `GET /api/integrations/latest-videos` (nagłówek `X-Integration-Key`), z którego korzysta dash.alleria.pl; ta sama wartość w ustawieniach dashboardu. Bez klucza endpoint odpowiada 503. Zwraca tylko opublikowane, gotowe filmy z kategorii z dostępem na poziomie kategorii (bez filmów z ręczną listą dostępu) |
+
 ### Streaming Storage
 | Zmienna | Domyślnie | Opis |
 |---------|-----------|------|
@@ -417,7 +461,7 @@ Poniższe (ustawiane w kontenerze streaming) reorganizują układ katalogów *we
 
 ## 📋 Ustawienia w aplikacji (Zarządzanie → Ustawienia)
 
-Poniższe ustawienia **nie** są w `.env` — są zapisane w bazie (tabela `app_settings`) i edytowalne w aplikacji bez restartu kontenera, rozłożone na cztery podzakładki: **Wyświetlanie**, **Bezpieczeństwo**, **E-mail**, **Logowanie**.
+Poniższe ustawienia **nie** są w `.env` — są zapisane w bazie (tabela `app_settings`) i edytowalne w aplikacji bez restartu kontenera. Zmiana działa od razu w karcie, w której ją zapisano (bez przeładowania strony); pozostali użytkownicy dostają ją przy kolejnym wczytaniu aplikacji.
 
 | Ustawienie | Domyślnie | Opis |
 |------------|:---:|------|
@@ -436,6 +480,10 @@ Poniższe ustawienia **nie** są w `.env` — są zapisane w bazie (tabela `app_
 | Źródło konfiguracji logowania | `.env` | Czy dane TS3/TS6 i role Discord member/admin czyta się z `.env` czy edytuje w panelu |
 | Osadzanie w iframe | ❌ wyłączone | Zezwala na osadzanie odtwarzacza na domenach z listy dozwolonych domen (dodawanych/usuwanych tuż obok, bez `.env`) |
 | Upload w częściach | ✅ włączony | Film wysyłany w kawałkach po 50 MB (wymagane za Cloudflare, limit 100 MB na żądanie) albo w całości jednym żądaniem (nginx/Traefik bez limitu) — patrz „📤 Upload wideo” |
+| Limit uploadu | `0` (bez limitu) | Łączna przepustowość uploadu filmów przez panel, w Mbit/s — żeby upload nie zapychał łącza serwera |
+| Ekran końcowy | ✅ / ✅ | Plansza z oceną, ulubionymi i ponownym odtworzeniem po zakończeniu filmu, osobno dla odtwarzacza Alleria i YouTube |
+| Opóźnienie ekranu końcowego | `1 s` | Ile sekund czarnego ekranu po końcu filmu, zanim pojawi się plansza (0-60 s) |
+| Link „Zgłoś błąd / Zaproponuj funkcjonalność” | issues tego repo | Adres przycisku w sidebarze; puste pole ukrywa przycisk |
 | Górny pasek | ✅ włączony | Pokazuje/ukrywa górny pasek (tytuł + smart search + profil); wyłączenie przywraca klasyczny układ z tytułem strony i profilem w sidebarze |
 
 > [!TIP]
@@ -512,6 +560,7 @@ alleria-filmy/
 │   │                       #   sessions + sessionStore, settings, notify/email, stream, accounts, gdpr, …
 │   ├── watchParty.js       # WebSocket Watch Party — in-memory parties, sync
 │   ├── notifications.js    # WebSocket centrum powiadomień — token auth, per-user rejestr
+│   ├── integrations.js     # Endpoint dla dash.alleria.pl (INTEGRATION_API_KEY)
 │   ├── defaultTos.js       # Wbudowana domyślna treść Regulaminu
 │   ├── versions.js         # Wersja panelu i minimum streamingu
 │   └── package.json
@@ -527,6 +576,8 @@ alleria-filmy/
 │   │   │   ├── WatchPartyTab.jsx   # Floating tab + slide-out panel Watch Party
 │   │   │   ├── VideoModal.jsx      # Dodawanie/edycja filmów
 │   │   │   ├── SecurePlayer.jsx    # HLS player z DRM, castingiem (Chromecast/AirPlay), Media Session + controlRef dla Watch Party/Shorts
+│   │   │   ├── PlayerEndScreen.jsx # Ekran końcowy: ocena, ulubione, ponowne odtworzenie
+│   │   │   ├── PublicationPanel.jsx # Panel publikacji filmu + historia powiadomień
 │   │   │   ├── CommentText.jsx     # Treść komentarza/opisu: klikalne znaczniki czasu i @wzmianki
 │   │   │   ├── MentionTextarea.jsx # Pole tekstowe z podpowiedziami @wzmianek
 │   │   │   ├── DatabaseStatusCard.jsx # Zarządzanie → Ustawienia → Baza danych (migracje, kopie)
@@ -570,6 +621,7 @@ alleria-filmy/
 │   ├── deploy.yml           # Auto-deploy na push do main
 │   └── deploy-watch-party.yml  # Ręczny deploy brancha watch-party
 ├── docker-compose.yml
+├── docker-compose.gpu.yml   # Nakładka: transkodowanie na GPU (NVENC)
 ├── Dockerfile
 ├── .env.example
 └── README.md
@@ -601,8 +653,10 @@ Filmy HLS leżą na serwerze streamingu, nie w panelu — przenosiny panelu ich 
 
 | Tabela | Opis |
 |--------|------|
-| `users` | Użytkownicy (Discord/TS3/TS6/manual), role, `discord_roles` JSON, e-mail kontaktowy (`email`, `discord_email`) + zgoda na powiadomienia (`email_notifications`), hashe avatara Discord (globalny + serwerowy) i `custom_avatar`, `avatar_source` (`global`/`guild`/`custom`), tożsamości TS3 i TS6 trzymane osobno (`ts3_uid`/`ts3_ip`, `ts6_uid`/`ts6_ip` — jeden user może mieć obie naraz), stan akceptacji regulaminu (`tos_accepted_at`), stan anonimizacji RODO (`is_anonymized`, `anonymized_original_username`, `anonymized_original_display_name`, `anonymized_at`) |
-| `videos` | Filmy, źródła, mirrory (do 5, każdy z opcjonalną flagą „wersja alternatywna”), `category_id`, `access_mode`, `stream_status`, `publish_date`, `webhook_sent` |
+| `users` | Użytkownicy (Discord/TS3/TS6/manual), role, `discord_roles` JSON, e-mail kontaktowy (`email`, `discord_email`) + zgoda na powiadomienia (`email_notifications`), hashe avatara Discord (globalny + serwerowy) i `custom_avatar`, `avatar_source` (`global`/`guild`/`custom`), tożsamości TS3 i TS6 trzymane osobno (`ts3_uid`/`ts3_ip`, `ts6_uid`/`ts6_ip` — jeden user może mieć obie naraz), `authentik_sub`, stan akceptacji regulaminu (`tos_accepted_at`), stan anonimizacji RODO (`is_anonymized`, `anonymized_original_username`, `anonymized_original_display_name`, `anonymized_at`), blokada konta (`banned_at`, `banned_by`) |
+| `videos` | Filmy, źródła, mirrory (do 5, każdy z opcjonalną flagą „wersja alternatywna”), `category_id`, `access_mode`, `stream_status`, `publish_date`, `is_hidden` (szkic / zdjęty), `webhook_sent` |
+| `video_notification_log` | Dziennik wysyłek ogłoszeń o nowym filmie: kanał (webhook/e-mail/push/dzwonek), wynik, wyzwalacz (automatycznie / ręcznie), liczba odbiorców |
+| `video_ratings` | Oceny 1-5 gwiazdek z ekranu końcowego (jedna na osobę i film), widoczne tylko w analityce |
 | `categories` | Kategorie z `parent_id` (podkategorie), slug, sort_order, webhook Discord (URL + szablon + osobny przełącznik `webhook_enabled`), powiadomienie e-mail (`email_enabled` — treść bierze się z sitewide szablonu, nie stąd), powiadomienie push (`push_enabled`), `is_shorts_category` |
 | `category_access` | Role Discord → kategoria (viewer/editor) |
 | `category_rank_access` | Rangi aplikacji → kategoria (viewer/editor) |
@@ -644,6 +698,7 @@ Filmy HLS leżą na serwerze streamingu, nie w panelu — przenosiny panelu ich 
 - `GET /auth/authentik` — Start Authentik OIDC (+`?returnTo=`, `?mode=link` do łączenia kont)
 - `GET /auth/authentik/callback` — Authentik OIDC callback
 - `POST /api/auth/teamspeak` / `POST /api/auth/teamspeak3` — logowanie po IP (TS6 / TS3)
+- `POST /api/auth/teamspeak/verify` / `POST /api/auth/teamspeak3/verify` — potwierdzenie kodu wysłanego przez bota (TS6 / TS3)
 - `GET /api/auth/me` — Current user
 - `POST /api/auth/logout` — Wylogowanie
 
@@ -653,7 +708,11 @@ Filmy HLS leżą na serwerze streamingu, nie w panelu — przenosiny panelu ich 
 - `POST /api/videos` — Dodaj film
 - `PUT /api/videos/:id` — Edytuj film (category_id, access_mode, allowed_users)
 - `DELETE /api/videos/:id` — Usuń film
-- `POST /api/videos/bulk` — Bulk actions (change_category, change_author, change_access, delete)
+- `POST /api/videos/bulk` — Bulk actions (change_category, change_author, change_access, hide, show, delete)
+- `PUT /api/videos/:id/visibility` — Ukryj / opublikuj film (`{ hidden }`, admin/dev)
+- `GET /api/videos/:id/publication` — Panel publikacji: stan, konfiguracja kanałów, historia wysyłek (admin/dev)
+- `POST /api/videos/:id/notifications/resend` — Ręczne ponowne wysłanie ogłoszenia wybranymi kanałami (admin/dev)
+- `GET /api/videos/:id/rating` / `PUT /api/videos/:id/rating` — Własna ocena 1-5 z ekranu końcowego
 - `GET /api/videos/:id/access` / `POST /api/videos/:id/access` — Per-video access list
 - `PUT /api/videos/:id/promote-source` — Zamień mirror (slot 1-5) z głównym źródłem, spychając stare główne źródło na jego miejsce
 - `POST /api/videos/:id/regenerate-thumbnail` — Wygeneruj miniaturkę self-hosted filmu ponownie
@@ -668,6 +727,7 @@ Filmy HLS leżą na serwerze streamingu, nie w panelu — przenosiny panelu ich 
 
 ### Tagi i autorzy
 - `GET /api/tags` — Lista tagów z liczbą/listą filmów
+- `GET /api/tags/category/:slug` — Tagi używane w danej kategorii
 - `DELETE /api/tags/:id` — Usuń tag (zablokowane, jeśli wciąż podpięty do filmów)
 - `GET /api/authors` — Lista wszystkich autorów treści
 - `GET /api/authors/:id` — Profil autora (liczba filmów, bio itd.)
@@ -704,6 +764,7 @@ Filmy HLS leżą na serwerze streamingu, nie w panelu — przenosiny panelu ich 
 - `GET /api/profile/gdpr/export/:id/download` — Pobierz gotowy plik eksportu
 - `POST /api/debug/gdpr/requests/:id/approve` / `POST /api/debug/gdpr/requests/:id/reject` — Rozpatrz żądanie (dev)
 - `POST /api/debug/gdpr/requests/:id/replace` — Podmień wygenerowany plik eksportu (dev)
+- `GET /api/debug/gdpr/requests/:id/file` — Pobierz wygenerowany plik eksportu (dev)
 - `POST /api/debug/gdpr/requests/:id/purge-activity` — Dociągnij czyszczenie logów aktywności dla zgłoszenia zatwierdzonego przed automatyzacją tego kroku (dev)
 - `GET /api/debug/gdpr/pending-count` — Licznik oczekujących zgłoszeń (badge w Zarządzaniu/wyszukiwarce)
 
@@ -737,6 +798,7 @@ Filmy HLS leżą na serwerze streamingu, nie w panelu — przenosiny panelu ich 
 - `GET /api/stream/cleanup` / `POST /api/stream/cleanup` — Znajdź/usuń osierocone lub błędne pliki (dev)
 - `GET /api/stream/transcoding` — Trwające transkodowania, zestawione z bazą
 - `GET /api/stream/stats` — Statystyki dyskowe streamera (dev)
+- `GET /api/debug/stream-errors` — Log błędów proxy streamingu (dev)
 
 ### Postęp oglądania, ulubione i historia
 - `GET /api/favorites` / `POST /api/favorites/:videoId` / `DELETE /api/favorites/:videoId` / `GET /api/favorites/check/:videoId` — Ulubione
@@ -768,10 +830,13 @@ Filmy HLS leżą na serwerze streamingu, nie w panelu — przenosiny panelu ich 
 - `GET /api/users` — Lista użytkowników (filtrowana wg kontekstu)
 - `GET /api/users/all` — Pełna, lekka lista (id/username/display_name/avatar/role)
 - `DELETE /api/users/:id` — Usuń konto (to nie ban — można się zalogować ponownie i założyć nowe)
+- `POST /api/users/:id/ban` / `DELETE /api/users/:id/ban` — Zablokuj / odblokuj konto (dev; nie można zablokować siebie ani innego deva)
 - `GET /api/stats` — KPI, najczęściej oglądane, top widzowie/autorzy, chmura tagów
 
 ### Ustawienia i debug (dev only, o ile nie zaznaczono inaczej)
-- `GET /api/health` — Publiczny health-check konfiguracji Discorda (bez auth)
+- `GET /api/health` — Publiczny health-check konfiguracji (Discord, tryb deva `dev_mode`/`dev_configured`, klucz Turnstile; bez auth)
+- `POST /api/setup/complete` / `POST /api/setup/skip` / `POST /api/setup/reset` — Kreator konfiguracji: zakończ / pomiń / uruchom ponownie (dev)
+- `GET /api/integrations/latest-videos` — Najnowsze filmy per kategoria dla dashboardu (nagłówek `X-Integration-Key`, patrz `INTEGRATION_API_KEY`)
 - `GET /api/config` — Ustawienia widoczne dla każdego zalogowanego (paginacja, limity, `showTopBar`)
 - `GET /api/debug/settings` / `POST /api/debug/settings` — Odczyt/zapis ustawień runtime
 - `GET /api/debug/env-check` — Wykrywanie przestarzałych/literówkowych zmiennych `.env`
