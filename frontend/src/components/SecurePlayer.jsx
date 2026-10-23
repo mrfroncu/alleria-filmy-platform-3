@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { api } from '../utils/api';
 import PlayerEndScreen from './PlayerEndScreen';
+import PlayerSpinner from './PlayerSpinner';
 import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Settings, Cast, Airplay, PictureInPicture2, RotateCcw, RotateCw, WifiOff, Loader2 } from 'lucide-react';
 
 /*
@@ -319,6 +320,9 @@ export default function SecurePlayer({
     setToken(null);
     setTranscodingStatus(null);
     setLoading(true);
+    // The <video> element is remounted, so drop the old one's duration/buffering state
+    setDuration(0);
+    setBuffering(false);
     fetchToken();
   };
 
@@ -481,6 +485,8 @@ export default function SecurePlayer({
     const onReady = () => setBuffering(false);
     const onPause = () => setPlaying(false);
     const onTime = () => {
+      // Time moving with frame data means playback recovered, even if no 'playing' event followed
+      if (video.readyState >= 3) setBuffering(false);
       setCurrentTime(video.currentTime);
       if (onTimeUpdate) onTimeUpdate(video.currentTime, video.duration || 0);
     };
@@ -498,7 +504,6 @@ export default function SecurePlayer({
     video.addEventListener('play', onPlay);
     video.addEventListener('seeking', onSeeking);
     video.addEventListener('waiting', onWaiting);
-    video.addEventListener('stalled', onWaiting);
     video.addEventListener('playing', onReady);
     video.addEventListener('canplay', onReady);
     video.addEventListener('seeked', onReady);
@@ -514,7 +519,6 @@ export default function SecurePlayer({
       video.removeEventListener('play', onPlay);
       video.removeEventListener('seeking', onSeeking);
       video.removeEventListener('waiting', onWaiting);
-      video.removeEventListener('stalled', onWaiting);
       video.removeEventListener('playing', onReady);
       video.removeEventListener('canplay', onReady);
       video.removeEventListener('seeked', onReady);
@@ -1125,7 +1129,7 @@ export default function SecurePlayer({
       {loading && (
         <div className="absolute inset-0 bg-black flex items-center justify-center z-30">
           <div className="text-center">
-            <div className="w-10 h-10 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <PlayerSpinner size={56} className="mx-auto mb-4" />
             <p className="text-zinc-400 text-sm">Ładowanie streamu...</p>
           </div>
         </div>
@@ -1134,8 +1138,8 @@ export default function SecurePlayer({
       {/* Spinner while metadata (0:00 / 0:00) or data is still being fetched */}
       {!loading && !casting && !showEnd && (buffering || !duration) && (
         <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-          <div className="w-14 h-14 rounded-full bg-black/50 backdrop-blur flex items-center justify-center">
-            <Loader2 className="w-8 h-8 text-white animate-spin" />
+          <div className="w-20 h-20 rounded-full bg-black/60 flex items-center justify-center">
+            <PlayerSpinner size={56} />
           </div>
         </div>
       )}

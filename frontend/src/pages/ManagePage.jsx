@@ -450,6 +450,7 @@ export default function ManagePage() {
       const r = await api.setSettings({ feedback_url: feedbackUrl });
       setSettingsState(r);
       setFeedbackUrl(r.feedback_url || '');
+      refreshConfig();
       setStatus({ type: 'success', msg: 'Link zgłaszania błędów zapisany.' });
     } catch (e) {
       setStatus({ type: 'error', msg: e.message });
@@ -1590,7 +1591,7 @@ export default function ManagePage() {
               <div className="flex-1">
                 <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Ekran końcowy filmu</h3>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                  Po ilu sekundach od zakończenia filmu pojawi się plansza z oceną (0–60 s).
+                  Po ilu sekundach od zakończenia filmu pojawi się plansza z oceną (od 0 do 60 s).
                 </p>
                 <label className="label-field">Opóźnienie (sekundy)</label>
                 <input type="number" min="0" max="60" step="0.5" value={endScreenDelay}

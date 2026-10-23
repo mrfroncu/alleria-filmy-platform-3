@@ -141,6 +141,40 @@
 .animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
 .animate-float { animation: float 3s ease-in-out infinite; }
 
+/* Player loading spinner (PlayerSpinner.jsx) — always drawn over the black player, both themes */
+.player-spinner { position: relative; display: inline-block; }
+.player-spinner svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.player-spinner circle { fill: none; stroke-linecap: round; }
+.player-spinner-outer { animation: spinnerRotate 1.8s linear infinite; }
+.player-spinner-inner { animation: spinnerRotate 1.2s linear infinite reverse; }
+.player-spinner-track { stroke: rgba(139, 92, 246, 0.18); stroke-width: 3.5; }
+.player-spinner-arc {
+  stroke: #8b5cf6; stroke-width: 3.5;
+  stroke-dasharray: 1 126; stroke-dashoffset: 0;
+  filter: drop-shadow(0 0 3px rgba(139, 92, 246, 0.7));
+  animation: spinnerDash 1.8s ease-in-out infinite;
+}
+.player-spinner-arc-inner { stroke: #d946ef; stroke-width: 3; stroke-dasharray: 20 56; opacity: 0.8; }
+.player-spinner-core {
+  position: absolute; left: 50%; top: 50%; width: 16%; height: 16%;
+  border-radius: 9999px; background: #a78bfa;
+  box-shadow: 0 0 10px 2px rgba(167, 139, 250, 0.55);
+  animation: spinnerCore 1.8s ease-in-out infinite;
+}
+@keyframes spinnerRotate { to { transform: rotate(360deg); } }
+@keyframes spinnerDash {
+  0% { stroke-dasharray: 1 126; stroke-dashoffset: 0; }
+  50% { stroke-dasharray: 90 126; stroke-dashoffset: -32; }
+  100% { stroke-dasharray: 90 126; stroke-dashoffset: -124; }
+}
+@keyframes spinnerCore {
+  0%, 100% { transform: translate(-50%, -50%) scale(0.6); opacity: 0.5; }
+  50% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .player-spinner-outer, .player-spinner-inner, .player-spinner-arc, .player-spinner-core { animation-duration: 3.6s; }
+}
+
 /* Video page directional transitions — DRAMATIC */
 @keyframes enterFromRight { from { opacity: 0; transform: translateX(100vw); } to { opacity: 1; transform: translateX(0); } }
 @keyframes enterFromLeft { from { opacity: 0; transform: translateX(-100vw); } to { opacity: 1; transform: translateX(0); } }

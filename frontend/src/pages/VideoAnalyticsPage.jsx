@@ -423,7 +423,7 @@ export default function VideoAnalyticsPage() {
 
       <div className="space-y-6" style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 0.15s' }}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <ChartCard title="Oceny widzów" subtitle="Widoczne tylko dla redaktorów — niezależne od filtrów powyżej">
+          <ChartCard title="Oceny widzów" subtitle="Widoczne tylko dla redaktorów, niezależne od filtrów powyżej">
             {!data?.ratings?.count ? (
               <p className="text-sm text-zinc-400 py-4 text-center">Brak ocen.</p>
             ) : (
@@ -455,7 +455,7 @@ export default function VideoAnalyticsPage() {
               </>
             )}
           </ChartCard>
-          <ChartCard title="Ulubione" subtitle="Kto dodał film do ulubionych — niezależne od filtrów powyżej">
+          <ChartCard title="Ulubione" subtitle="Kto dodał film do ulubionych, niezależne od filtrów powyżej">
             {!data?.favorites?.length ? (
               <p className="text-sm text-zinc-400 py-4 text-center">Brak polubień.</p>
             ) : (
