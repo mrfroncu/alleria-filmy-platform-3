@@ -669,7 +669,7 @@ export default function SecurePlayer({
   };
 
   const changeVolume = (e) => {
-    const val = parseFloat(e.target.value);
+    const val = Math.min(1, Math.max(0, Number(parseFloat(e.target.value).toFixed(2))));
     if (casting && castControllerRef.current) {
       castPlayerRef.current.volumeLevel = val;
       castControllerRef.current.setVolumeLevel();
@@ -1215,8 +1215,8 @@ export default function SecurePlayer({
                     type="range"
                     min="0"
                     max="1"
-                    step="0.05"
-                    value={volume}
+                    step="0.01"
+                    value={Number(volume.toFixed(2))}
                     onChange={changeVolume}
                     className="w-20 accent-violet-500 cursor-pointer"
                   />

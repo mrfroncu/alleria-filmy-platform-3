@@ -345,7 +345,7 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, c
 
   const changeVolume = (e) => {
     const p = playerRef.current;
-    const val = parseFloat(e.target.value);
+    const val = Math.min(1, Math.max(0, Number(parseFloat(e.target.value).toFixed(2))));
     if (!p) return;
     p.setVolume(val * 100);
     if (val === 0) p.mute(); else p.unMute();
@@ -586,8 +586,8 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, c
                     type="range"
                     min="0"
                     max="1"
-                    step="0.05"
-                    value={volume}
+                    step="0.01"
+                    value={Number(volume.toFixed(2))}
                     onChange={changeVolume}
                     className="w-20 accent-violet-500 cursor-pointer"
                   />
