@@ -1,7 +1,16 @@
+// SQLite datetime('now') values are UTC without a zone marker ("YYYY-MM-DD HH:MM:SS");
+// mark them as UTC so they are shown in the browser's time zone.
+export function parseDate(dateStr) {
+  if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(dateStr)) {
+    return new Date(`${dateStr.replace(' ', 'T')}Z`);
+  }
+  return new Date(dateStr);
+}
+
 // Format date to DD/MM/YYYY HH:mm
 export function formatDate(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
+  const d = parseDate(dateStr);
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const year = d.getFullYear();
@@ -12,7 +21,7 @@ export function formatDate(dateStr) {
 
 export function formatDateShort(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
+  const d = parseDate(dateStr);
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const year = d.getFullYear();

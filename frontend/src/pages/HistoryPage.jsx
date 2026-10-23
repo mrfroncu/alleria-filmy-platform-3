@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock, Film, Play } from 'lucide-react';
 import { api } from '../utils/api';
-import { formatDate } from '../utils/helpers';
+import { formatDate, parseDate } from '../utils/helpers';
 import { useSettings } from '../contexts/SettingsContext';
 
 export default function HistoryPage() {
@@ -15,7 +15,7 @@ export default function HistoryPage() {
 
   // Group by date
   const grouped = history.reduce((acc, item) => {
-    const day = new Date(item.watched_at).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const day = parseDate(item.watched_at).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' });
     if (!acc[day]) acc[day] = [];
     acc[day].push(item);
     return acc;
@@ -86,7 +86,7 @@ export default function HistoryPage() {
                     </div>
                     <div className="text-right shrink-0">
                       <span className="text-[11px] text-zinc-400 font-mono">
-                        {new Date(item.watched_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+                        {parseDate(item.watched_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
                   </Link>
