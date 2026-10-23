@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, RotateCcw, Users, TrendingUp, X, ChevronDown, Star, Heart } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea, ReferenceLine } from 'recharts';
 import { api } from '../utils/api';
-import { formatDateShort } from '../utils/helpers';
+import { formatDateShort, extractYoutubeId } from '../utils/helpers';
+import SecurePlayer from '../components/SecurePlayer';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useToast } from '../contexts/ToastContext';
 
@@ -79,8 +80,9 @@ function RetentionTooltip({ active, payload, label }) {
 // hover layer here — a deliberate scope call given these are small multiples, not one chart
 // authors will pore over bucket-by-bucket. bucketDuration/offset are passed explicitly (rather
 // than derived from values.length) so tooltip times stay correct once `values` is a zoomed-in
-// slice of the full bucket array, not the whole thing.
-function HeatmapStrip({ label, color, values, bucketDuration, offset = 0 }) {
+// slice of the full bucket array, not the whole thing. Each column is a full-height button (not
+// just the bar itself) so short bars stay easy to hit; empty buckets have nothing to show.
+function HeatmapStrip({ label, color, values, bucketDuration, offset = 0, onSelect, selectedIdx }) {
   const max = Math.max(1, ...values);
   return (
     <div>
@@ -88,17 +90,134 @@ function HeatmapStrip({ label, color, values, bucketDuration, offset = 0 }) {
         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
         <span className="text-xs font-bold text-zinc-600 dark:text-zinc-300">{label}</span>
       </div>
-      <div className="flex items-end gap-px h-14 bg-zinc-50 dark:bg-zinc-800/40 rounded-lg p-1.5">
-        {values.map((v, i) => (
-          <div
-            key={offset + i}
-            title={`${formatTime((offset + i) * bucketDuration)} — ${v}`}
-            className="flex-1 rounded-t-sm"
-            style={{ height: `${v === 0 ? 3 : Math.max(6, (v / max) * 100)}%`, background: color, opacity: v === 0 ? 0.15 : 0.85 }}
-          />
-        ))}
+      <div className="flex gap-px h-14 bg-zinc-50 dark:bg-zinc-800/40 rounded-lg p-1.5">
+        {values.map((v, i) => {
+          const idx = offset + i;
+          const clickable = !!onSelect && v > 0;
+          const active = selectedIdx === idx;
+          const range = `${formatTime(idx * bucketDuration)} - ${formatTime((idx + 1) * bucketDuration)}`;
+          return (
+            <button
+              key={idx}
+              type="button"
+              disabled={!clickable}
+              onClick={() => onSelect(idx, v)}
+              title={clickable ? `${range}: ${v} (kliknij, by obejrzeć)` : `${range}: ${v}`}
+              aria-label={`${label}, ${range}: ${v}`}
+              className={`flex-1 h-full flex items-end rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60 ${active ? 'bg-zinc-200 dark:bg-zinc-700' : clickable ? 'hover:bg-zinc-200/70 dark:hover:bg-zinc-700/50' : ''} ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
+            >
+              <span
+                className="w-full rounded-t-sm"
+                style={{ height: `${v === 0 ? 3 : Math.max(6, (v / max) * 100)}%`, background: color, opacity: v === 0 ? 0.15 : active ? 1 : 0.85 }}
+              />
+            </button>
+          );
+        })}
       </div>
     </div>
+  );
+}
+
+const INTERACTION_KINDS = {
+  pauses: { label: 'Pauzy', color: COLORS.pauses, hint: 'Widzowie pauzowali w tym fragmencie.' },
+  rewinds: { label: 'Cofnięcia', color: COLORS.rewinds, hint: 'Widzowie cofali się do tego fragmentu, by obejrzeć go ponownie.' },
+  skips: { label: 'Pominięcia', color: COLORS.skips, hint: 'Widzowie przewijali dalej, zaczynając od tego fragmentu.' },
+};
+
+function pluralEvents(n) {
+  if (n === 1) return 'zdarzenie';
+  const mod10 = n % 10, mod100 = n % 100;
+  return mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'zdarzenia' : 'zdarzeń';
+}
+
+// What the moment preview can play and seek. Playback events don't record which source they
+// came from (SecurePlayer and the YouTube players both report them), so this takes the first
+// seekable source in display order: self-hosted main, then streamer/YouTube links, skipping
+// alternative versions (other cut, behind the scenes) and sources with no seeking (Plex).
+function pickPreviewSource(video) {
+  if (!video) return null;
+  if (video.stream_video_id && video.stream_status === 'ready') {
+    return { kind: 'stream', id: video.stream_video_id, drm: !!video.drm_enhanced };
+  }
+  const specs = [{ url: video.main_source, type: video.main_source_type }];
+  for (let i = 1; i <= 5; i++) {
+    if (video[`mirror${i}_url`] && !video[`mirror${i}_is_alt`]) specs.push({ url: video[`mirror${i}_url`], type: video[`mirror${i}_type`] });
+  }
+  for (const s of specs) {
+    if (!s.url || s.type === 'plex') continue;
+    if (s.type === 'streamer') return { kind: 'stream', id: s.url.replace('self-hosted:', ''), drm: false };
+    const yt = extractYoutubeId(s.url);
+    if (yt) return { kind: 'youtube', id: yt };
+  }
+  return null;
+}
+
+// Small docked player opened from a heatmap column: seeks straight to that bucket's start so the
+// editor sees what led up to the pauses/rewinds/skips. No onPlay/onPause/onSeek are passed, so
+// watching here never feeds back into the analytics it's previewing.
+function MomentPreview({ source, moment, title, onClose }) {
+  const controlRef = useRef(null);
+  const kind = INTERACTION_KINDS[moment.kind];
+
+  // Same wait-for-metadata loop as VideoPage's pending seek: an HLS player ignores (or snaps
+  // back from) a seek issued before it knows its duration. Re-runs per click, since every
+  // click creates a new `moment` object, even on the same column.
+  useEffect(() => {
+    if (source.kind !== 'stream') return;
+    let tries = 0;
+    const iv = setInterval(() => {
+      tries++;
+      const ctl = controlRef.current;
+      const dur = ctl?.getDuration?.() || 0;
+      if (ctl && (dur > 0 || tries > 12)) {
+        clearInterval(iv);
+        ctl.seek(dur > 0 ? Math.min(moment.start, Math.max(0, dur - 1)) : moment.start);
+        ctl.play?.();
+      } else if (tries > 80) {
+        clearInterval(iv);
+      }
+    }, 250);
+    return () => clearInterval(iv);
+  }, [source, moment]);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <Portal>
+      <div className="fixed bottom-4 right-4 z-40 w-[calc(100%-2rem)] sm:w-[420px] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-3 animate-scale-in">
+        <div className="flex items-start gap-3 mb-2.5 px-1">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: kind.color }} />
+              <span className="text-sm font-bold text-zinc-900 dark:text-white truncate">
+                {kind.label} · {formatTime(moment.start)} - {formatTime(moment.end)}
+              </span>
+              <span className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0">{moment.count} {pluralEvents(moment.count)}</span>
+            </div>
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">{kind.hint} Podgląd nie jest liczony do analityki.</p>
+          </div>
+          <button onClick={onClose} className="btn-icon-zinc shrink-0" title="Zamknij podgląd"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="rounded-xl overflow-hidden bg-black">
+          {source.kind === 'stream' ? (
+            <SecurePlayer streamVideoId={source.id} drmEnhanced={source.drm} title={title} controlRef={controlRef} containerClassName="aspect-video" />
+          ) : (
+            <iframe
+              key={moment.key}
+              src={`https://www.youtube.com/embed/${source.id}?start=${Math.floor(moment.start)}&autoplay=1&rel=0`}
+              title={title || 'Podgląd'}
+              className="w-full aspect-video block"
+              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+              allowFullScreen
+            />
+          )}
+        </div>
+      </div>
+    </Portal>
   );
 }
 
@@ -275,7 +394,15 @@ export default function VideoAnalyticsPage() {
   const [posRange, setPosRange] = useState(null); // { start, end } | null
   const [posDrag, setPosDrag] = useState(null); // { start, end } | null
 
+  // Heatmap column clicked → docked preview player at that moment.
+  const [moment, setMoment] = useState(null); // { kind, bucket, start, end, count, key } | null
+  const previewSource = useMemo(() => pickPreviewSource(video), [video]);
+  const closeMoment = useCallback(() => setMoment(null), []);
+
   useEffect(() => { api.getVideo(id).then(setVideo).catch(() => {}); }, [id]);
+  // Bucket boundaries move with the filters (new duration/data), so a stale selection would point
+  // at the wrong fragment.
+  useEffect(() => { setMoment(null); }, [id, context, userFilterMode, selectedUserIds, activeRange]);
 
   const loadAnalytics = useCallback(() => {
     setLoading(true); setError(null);
@@ -361,6 +488,17 @@ export default function VideoAnalyticsPage() {
     if (start === end) return;
     setPosRange({ start, end });
   };
+
+  // undefined (no preview source, e.g. Plex-only) leaves the strips non-clickable.
+  const selectMoment = (kind) => (previewSource ? (bucket, count) => setMoment({
+    kind, bucket, count,
+    start: bucket * bucketDuration,
+    end: (bucket + 1) * bucketDuration,
+    key: Date.now(),
+  }) : undefined);
+  const momentTime = moment && (!zoomActive || (moment.bucket >= posRange.start && moment.bucket <= posRange.end))
+    ? retentionSeries[moment.bucket]?.time
+    : null;
 
   return (
     <div className="p-6 sm:p-10 max-w-5xl mx-auto page-enter">
@@ -570,6 +708,9 @@ export default function VideoAnalyticsPage() {
                   <YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} domain={[0, 1]} tickFormatter={v => `${Math.round(v * 100)}%`} width={36} />
                   <Tooltip content={<RetentionTooltip />} cursor={{ stroke: '#3f3f46', strokeWidth: 1 }} />
                   <Area type="monotone" dataKey="value" stroke={COLORS.retention} strokeWidth={2} fill="url(#retentionFill)" />
+                  {momentTime && (
+                    <ReferenceLine x={momentTime} stroke={INTERACTION_KINDS[moment.kind].color} strokeWidth={2} strokeDasharray="4 3" />
+                  )}
                   {posDrag && posDrag.start !== posDrag.end && (
                     <ReferenceArea
                       x1={retentionSeries[Math.min(posDrag.start, posDrag.end)]?.time}
@@ -584,16 +725,27 @@ export default function VideoAnalyticsPage() {
               </ResponsiveContainer>
             </ChartCard>
 
-            <ChartCard title="Interakcje widzów" subtitle="Gdzie widzowie pauzują, cofają się i pomijają fragmenty">
+            <ChartCard
+              title="Interakcje widzów"
+              subtitle={previewSource
+                ? 'Gdzie widzowie pauzują, cofają się i pomijają fragmenty. Kliknij słupek, by obejrzeć ten moment w podglądzie.'
+                : 'Gdzie widzowie pauzują, cofają się i pomijają fragmenty. Podgląd momentów wymaga źródła z przewijaniem (self-hosted lub YouTube).'}
+            >
               <div className="space-y-5">
-                <HeatmapStrip label="Pauzy" color={COLORS.pauses} values={slicePos(heatmap.pauses)} bucketDuration={bucketDuration} offset={zoomOffset} />
-                <HeatmapStrip label="Cofnięcia (ponowne obejrzenie)" color={COLORS.rewinds} values={slicePos(heatmap.rewinds)} bucketDuration={bucketDuration} offset={zoomOffset} />
-                <HeatmapStrip label="Pominięcia (skip)" color={COLORS.skips} values={slicePos(heatmap.skips)} bucketDuration={bucketDuration} offset={zoomOffset} />
+                <HeatmapStrip label="Pauzy" color={COLORS.pauses} values={slicePos(heatmap.pauses)} bucketDuration={bucketDuration} offset={zoomOffset} onSelect={selectMoment('pauses')} selectedIdx={moment?.kind === 'pauses' ? moment.bucket : null} />
+                <HeatmapStrip label="Cofnięcia (ponowne obejrzenie)" color={COLORS.rewinds} values={slicePos(heatmap.rewinds)} bucketDuration={bucketDuration} offset={zoomOffset} onSelect={selectMoment('rewinds')} selectedIdx={moment?.kind === 'rewinds' ? moment.bucket : null} />
+                <HeatmapStrip label="Pominięcia (skip)" color={COLORS.skips} values={slicePos(heatmap.skips)} bucketDuration={bucketDuration} offset={zoomOffset} onSelect={selectMoment('skips')} selectedIdx={moment?.kind === 'skips' ? moment.bucket : null} />
               </div>
             </ChartCard>
+            {/* Room to scroll the strips out from under the docked preview. */}
+            {moment && <div className="h-80" aria-hidden="true" />}
           </>
         )}
       </div>
+
+      {moment && previewSource && heatmap && (
+        <MomentPreview source={previewSource} moment={moment} title={video?.title} onClose={closeMoment} />
+      )}
 
       {showReset && (
         <ResetModal
