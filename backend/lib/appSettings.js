@@ -31,6 +31,7 @@ function settingsPayload() {
     youtube_custom_player: getSetting('youtube_custom_player', '0') === '1',
     gdpr_region: getSetting('gdpr_region', 'off'),
     feedback_url: getSetting('feedback_url', DEFAULT_FEEDBACK_URL),
+    end_screen_delay: Number(getSetting('end_screen_delay', '1')) || 0,
 
     // SMTP — dev-only payload, so the raw password is returned here same as ts3/ts6 passwords below.
     smtp_host: getSetting('smtp_host', ''),

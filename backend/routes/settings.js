@@ -159,6 +159,15 @@ router.post('/api/debug/settings', requireDev, (req, res) => {
     setSetting('feedback_url', v);
     audit(req.session.user.id, 'edit', 'settings', null, `feedback_url → ${v || '(ukryty)'}`);
   }
+  // Seconds of black screen after the video ends before the rating screen appears
+  if (req.body.end_screen_delay !== undefined) {
+    const n = Number(req.body.end_screen_delay);
+    if (!Number.isFinite(n) || n < 0 || n > 60) {
+      return res.status(400).json({ error: 'Nieprawidłowy czas — podaj liczbę sekund od 0 do 60.' });
+    }
+    setSetting('end_screen_delay', n);
+    audit(req.session.user.id, 'edit', 'settings', null, `end_screen_delay → ${n}s`);
+  }
   // Custom-chrome YouTube player overlay vs. plain YouTube embed
   if (req.body.youtube_custom_player !== undefined) {
     setSetting('youtube_custom_player', req.body.youtube_custom_player ? '1' : '0');

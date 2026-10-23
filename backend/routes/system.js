@@ -48,6 +48,7 @@ router.get('/api/config', requireAuth, (req, res) => {
     customYoutubePlayer: s.youtube_custom_player,
     gdprRegion: s.gdpr_region,
     feedbackUrl: s.feedback_url,
+    endScreenDelay: s.end_screen_delay,
   });
 });
 

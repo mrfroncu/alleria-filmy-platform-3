@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { FolderOpen, Plus, Pencil, Trash2, Users, Shield, Lock, FileText, Settings, ShieldCheck, LayoutGrid, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail, Play, AlertTriangle, Flag, ExternalLink, Loader2, Image, Database, Upload, MessageSquarePlus } from 'lucide-react';
+import { FolderOpen, Plus, Pencil, Trash2, Users, Shield, Lock, FileText, Settings, ShieldCheck, LayoutGrid, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail, Play, AlertTriangle, Flag, ExternalLink, Loader2, Image, Database, Upload, MessageSquarePlus, Star } from 'lucide-react';
 import { api } from '../utils/api';
 import { buildCategoryTreeOptions, formatDate } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
@@ -153,6 +153,7 @@ export default function ManagePage() {
   const [displayForm, setDisplayForm] = useState({ videos_per_page: '', grid_columns: '', grid_card_min_width: '' });
   const [displayBaseline, setDisplayBaseline] = useState(displayForm);
   const [feedbackUrl, setFeedbackUrl] = useState('');
+  const [endScreenDelay, setEndScreenDelay] = useState('1');
   const [logsForm, setLogsForm] = useState({ logs_per_page: '' });
   const [logsBaseline, setLogsBaseline] = useState(logsForm);
   const [originsForm, setOriginsForm] = useState([]);
@@ -199,6 +200,7 @@ export default function ManagePage() {
       const logs = { logs_per_page: s.logs_per_page };
       setLogsForm(logs); setLogsBaseline(logs);
       setFeedbackUrl(s.feedback_url || '');
+      setEndScreenDelay(String(s.end_screen_delay ?? 1));
       const origins = s.iframe_allowed_origins || [];
       setOriginsForm(origins); setOriginsBaseline(origins);
       const ts6 = {
@@ -449,6 +451,19 @@ export default function ManagePage() {
       setSettingsState(r);
       setFeedbackUrl(r.feedback_url || '');
       setStatus({ type: 'success', msg: 'Link zgłaszania błędów zapisany.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const saveEndScreenDelay = async () => {
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ end_screen_delay: Number(endScreenDelay) });
+      setSettingsState(r);
+      setEndScreenDelay(String(r.end_screen_delay ?? 1));
+      setStatus({ type: 'success', msg: 'Czas ekranu końcowego zapisany.' });
     } catch (e) {
       setStatus({ type: 'error', msg: e.message });
     }
@@ -1559,6 +1574,28 @@ export default function ManagePage() {
                   onChange={e => setFeedbackUrl(e.target.value)}
                   className="input-field !py-3 text-sm" />
                 <button onClick={saveFeedbackUrl} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
+                  {savingSettings ? 'Zapisywanie...' : 'Zapisz'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* End screen delay */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <Star className="w-6 h-6 text-amber-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Ekran końcowy filmu</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Po ilu sekundach od zakończenia filmu pojawi się plansza z oceną (0–60 s).
+                </p>
+                <label className="label-field">Opóźnienie (sekundy)</label>
+                <input type="number" min="0" max="60" step="0.5" value={endScreenDelay}
+                  onChange={e => setEndScreenDelay(e.target.value)}
+                  className="input-field !py-3 text-sm" />
+                <button onClick={saveEndScreenDelay} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
                   {savingSettings ? 'Zapisywanie...' : 'Zapisz'}
                 </button>
               </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { api } from '../utils/api';
 import PlayerEndScreen from './PlayerEndScreen';
 import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Settings, Cast, Airplay, PictureInPicture2, RotateCcw, RotateCw, WifiOff, Loader2 } from 'lucide-react';
@@ -45,6 +46,8 @@ export default function SecurePlayer({
   endScreen,
 }) {
   const { user } = useAuth();
+  const { config: appConfig } = useSettings();
+  const endScreenDelay = appConfig.endScreenDelay;
   const videoRef = useRef(null);
   const containerRef = useRef(null);
   const hlsRef = useRef(null);
@@ -527,7 +530,7 @@ export default function SecurePlayer({
     onEnded?.();
     if (!endScreen || loop) return;
     clearTimeout(endTimerRef.current);
-    endTimerRef.current = setTimeout(() => setShowEnd(true), 1000);
+    endTimerRef.current = setTimeout(() => setShowEnd(true), Math.max(0, Number(endScreenDelay) || 0) * 1000);
   };
 
   const replay = () => {

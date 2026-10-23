@@ -18,6 +18,7 @@ const DEFAULT_CONFIG = {
   customYoutubePlayer: false,
   gdprRegion: 'off',
   feedbackUrl: '',
+  endScreenDelay: 1,
 };
 
 export function SettingsProvider({ children }) {
