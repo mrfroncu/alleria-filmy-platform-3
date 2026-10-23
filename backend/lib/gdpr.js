@@ -20,6 +20,7 @@ function buildUserDataExport(userId) {
     authored_videos: db.prepare('SELECT id, title, created_at, publish_date FROM videos WHERE author_id = ?').all(userId),
     watch_history: db.prepare('SELECT video_id, watched_at FROM watch_logs WHERE user_id = ?').all(userId),
     favorites: db.prepare('SELECT video_id, created_at FROM favorites WHERE user_id = ?').all(userId),
+    ratings: db.prepare('SELECT video_id, rating, created_at FROM video_ratings WHERE user_id = ?').all(userId),
     login_history: db.prepare('SELECT auth_method, ip_address, success, logged_at FROM login_logs WHERE user_id = ? ORDER BY logged_at DESC LIMIT 500').all(userId),
   };
 }
@@ -46,7 +47,7 @@ function anonymizeUser(userId) {
 function purgeUserActivityData(userId) {
   const tables = [
     'watch_logs', 'video_playback_events', 'watch_progress', 'video_watched',
-    'favorites', 'notifications', 'push_subscriptions', 'login_logs', 'comment_reactions',
+    'favorites', 'video_ratings', 'notifications', 'push_subscriptions', 'login_logs', 'comment_reactions',
   ];
   for (const t of tables) {
     db.prepare(`DELETE FROM ${t} WHERE user_id = ?`).run(userId);

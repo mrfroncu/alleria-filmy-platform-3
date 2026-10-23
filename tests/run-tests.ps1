@@ -25,5 +25,5 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 Write-Host "Node.js nie znaleziony - fallback: uruchamiam testy w kontenerze Docker..."
-docker run --rm -v "${repo}:/work" -w /work node:24 bash -c "cd backend && npm install --no-audit --no-fund --loglevel=error && cd ../tests && npm install --no-audit --no-fund --loglevel=error && node --test $Filter"
+docker run --rm -v "${repo}:/work" -w /work node:26 bash -c "cd backend && npm install --no-audit --no-fund --loglevel=error && cd ../tests && npm install --no-audit --no-fund --loglevel=error && node --test $Filter"
 exit $LASTEXITCODE

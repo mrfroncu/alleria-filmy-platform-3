@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { api } from '../utils/api';
+import PlayerEndScreen from './PlayerEndScreen';
 import { Shield, Lock, Play, Pause, Volume1, Volume2, VolumeX, Maximize, Settings, Cast, Airplay, PictureInPicture2, RotateCcw, RotateCw, WifiOff, Loader2 } from 'lucide-react';
 
 /*
@@ -40,8 +42,12 @@ export default function SecurePlayer({
   // { artist, artwork } — only VideoPage passes it. Shorts/Watch Party leave it off (a lock-screen
   // "pause" there would desync the party or fight the Shorts feed).
   mediaSession,
+  // Opt-in end-of-video screen (rating / favorite / replay): { rating, onRate, isFav, onToggleFav, favDisabled }
+  endScreen,
 }) {
   const { user } = useAuth();
+  const { config: appConfig } = useSettings();
+  const endScreenDelay = appConfig.endScreenDelay;
   const videoRef = useRef(null);
   const containerRef = useRef(null);
   const hlsRef = useRef(null);
@@ -64,6 +70,9 @@ export default function SecurePlayer({
   const [captureDetected, setCaptureDetected] = useState(false);
   const [buffered, setBuffered] = useState(0);
   const [pipActive, setPipActive] = useState(false);
+  const [buffering, setBuffering] = useState(false);
+  const [showEnd, setShowEnd] = useState(false);
+  const endTimerRef = useRef(null);
   const controlsTimer = useRef(null);
 
   // Mobile double-tap-to-seek (edges of the video, YouTube-style)
@@ -466,7 +475,10 @@ export default function SecurePlayer({
     const video = videoRef.current;
     if (!video) return;
 
-    const onPlay = () => setPlaying(true);
+    const onPlay = () => { setPlaying(true); clearTimeout(endTimerRef.current); setShowEnd(false); };
+    const onSeeking = () => { clearTimeout(endTimerRef.current); };
+    const onWaiting = () => setBuffering(true);
+    const onReady = () => setBuffering(false);
     const onPause = () => setPlaying(false);
     const onTime = () => {
       setCurrentTime(video.currentTime);
@@ -482,16 +494,31 @@ export default function SecurePlayer({
     const onEnterPiP = () => setPipActive(true);
     const onLeavePiP = () => setPipActive(false);
 
+    if (video.duration > 0) setDuration(video.duration);
     video.addEventListener('play', onPlay);
+    video.addEventListener('seeking', onSeeking);
+    video.addEventListener('waiting', onWaiting);
+    video.addEventListener('stalled', onWaiting);
+    video.addEventListener('playing', onReady);
+    video.addEventListener('canplay', onReady);
+    video.addEventListener('seeked', onReady);
     video.addEventListener('pause', onPause);
     video.addEventListener('timeupdate', onTime);
     video.addEventListener('loadedmetadata', onDur);
+    video.addEventListener('durationchange', onDur);
     video.addEventListener('progress', onProgress);
     video.addEventListener('enterpictureinpicture', onEnterPiP);
     video.addEventListener('leavepictureinpicture', onLeavePiP);
 
     return () => {
       video.removeEventListener('play', onPlay);
+      video.removeEventListener('seeking', onSeeking);
+      video.removeEventListener('waiting', onWaiting);
+      video.removeEventListener('stalled', onWaiting);
+      video.removeEventListener('playing', onReady);
+      video.removeEventListener('canplay', onReady);
+      video.removeEventListener('seeked', onReady);
+      video.removeEventListener('durationchange', onDur);
       video.removeEventListener('pause', onPause);
       video.removeEventListener('timeupdate', onTime);
       video.removeEventListener('loadedmetadata', onDur);
@@ -499,7 +526,31 @@ export default function SecurePlayer({
       video.removeEventListener('enterpictureinpicture', onEnterPiP);
       video.removeEventListener('leavepictureinpicture', onLeavePiP);
     };
-  }, []);
+  }, [error, transcodingStatus]);
+
+  useEffect(() => () => clearTimeout(endTimerRef.current), []);
+  useEffect(() => {
+    clearTimeout(endTimerRef.current);
+    setShowEnd(false);
+  }, [streamVideoId]);
+
+  const handleEnded = () => {
+    onEnded?.();
+    if (!endScreen || loop) return;
+    clearTimeout(endTimerRef.current);
+    endTimerRef.current = setTimeout(() => {
+      if (videoRef.current?.ended) setShowEnd(true);
+    }, Math.max(0, Number(endScreenDelay) || 0) * 1000);
+  };
+
+  const replay = () => {
+    setShowEnd(false);
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = 0;
+    if (onSeek) onSeek(0);
+    v.play().catch(() => {});
+  };
 
   // Clear pending double-tap timers on unmount
   useEffect(() => {
@@ -1026,7 +1077,7 @@ export default function SecurePlayer({
         tabIndex={-1}
         onClick={() => { togglePlay(); containerRef.current?.focus(); }}
         onTouchEnd={handleVideoTouchEnd}
-        onEnded={() => onEnded?.()}
+        onEnded={handleEnded}
         controlsList="nodownload noremoteplayback"
         disablePictureInPicture={drmEnhanced || disablePip}
         loop={loop}
@@ -1079,6 +1130,17 @@ export default function SecurePlayer({
           </div>
         </div>
       )}
+
+      {/* Spinner while metadata (0:00 / 0:00) or data is still being fetched */}
+      {!loading && !casting && !showEnd && (buffering || !duration) && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+          <div className="w-14 h-14 rounded-full bg-black/50 backdrop-blur flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-white animate-spin" />
+          </div>
+        </div>
+      )}
+
+      {showEnd && endScreen && <PlayerEndScreen {...endScreen} onReplay={replay} />}
 
       {/* Casting overlay — playback continues on the receiver device, controls below stay live */}
       {casting && (

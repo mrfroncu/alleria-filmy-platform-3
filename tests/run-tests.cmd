@@ -18,7 +18,7 @@ if errorlevel 1 (
     exit /b 1
 )
 echo Node.js nie znaleziony - fallback: uruchamiam testy w kontenerze Docker...
-docker run --rm -v "%REPO%:/work" -w /work node:24 bash -c "cd backend && npm install --no-audit --no-fund --loglevel=error && cd ../tests && npm install --no-audit --no-fund --loglevel=error && node --test %~1"
+docker run --rm -v "%REPO%:/work" -w /work node:26 bash -c "cd backend && npm install --no-audit --no-fund --loglevel=error && cd ../tests && npm install --no-audit --no-fund --loglevel=error && node --test %~1"
 exit /b %errorlevel%
 
 :native

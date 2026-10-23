@@ -181,8 +181,8 @@ albo nie zmieniają zachowania wcale):
 3. `backend/watchParty.js` — timery oznaczone `unref()`, żeby proces testów mógł
    się zakończyć (bez wpływu na działanie serwera).
 4. `backend/package.json` — `better-sqlite3` w linii 12.x (`^12.11.1`), z gotowymi
-   binarkami dla Node 22/24 na Windows/macOS/Linux/Alpine. Produkcyjny Docker
-   działa na Node 24 LTS (wcześniejsze przypięcie do 12.4.x wynikało tylko z Node 20,
+   binarkami dla Node 22/26 na Windows/macOS/Linux/Alpine. Produkcyjny Docker
+   działa na Node 26 LTS (wcześniejsze przypięcie do 12.4.x wynikało tylko z Node 20,
    któremu skończyło się wsparcie 30.04.2026).
 
 ## Deploy

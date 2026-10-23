@@ -16,7 +16,7 @@ fi
 
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   echo "Node.js nie znaleziony - fallback: uruchamiam testy w kontenerze Docker..."
-  exec docker run --rm -v "$REPO:/work" -w /work node:24 bash -c "cd backend && npm install --no-audit --no-fund --loglevel=error && cd ../tests && npm install --no-audit --no-fund --loglevel=error && node --test $*"
+  exec docker run --rm -v "$REPO:/work" -w /work node:26 bash -c "cd backend && npm install --no-audit --no-fund --loglevel=error && cd ../tests && npm install --no-audit --no-fund --loglevel=error && node --test $*"
 fi
 
 echo "Nie znaleziono Node.js ani Dockera. Zainstaluj Node.js 22+: https://nodejs.org" >&2

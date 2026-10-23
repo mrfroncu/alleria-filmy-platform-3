@@ -119,7 +119,7 @@ app.use('/api/uploads', express.static(uploadsDir, { setHeaders: setUploadHeader
 const ROUTES = [
   'system', 'watchParty', 'notifications', 'auth', 'teamspeak', 'tos', 'setup', 'videos', 'tags',
   'categories', 'ranks', 'authors', 'users', 'logs', 'favorites', 'analytics', 'stats', 'profile',
-  'push', 'gdpr', 'debug', 'settings', 'stream', 'comments', 'progress',
+  'push', 'gdpr', 'debug', 'settings', 'stream', 'comments', 'progress', 'ratings',
 ];
 for (const name of ROUTES) app.use(require(`./routes/${name}`));
 

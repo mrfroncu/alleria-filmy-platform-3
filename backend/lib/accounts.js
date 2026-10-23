@@ -144,7 +144,7 @@ function mergeUsers(primaryId, secondaryId, { performedBy } = {}) {
     // Composite-PK "membership" tables — the data is binary (has/doesn't have), so on
     // collision just drop the secondary's redundant row, then reassign what's left.
     for (const [table, keyCol] of [
-      ['favorites', 'video_id'], ['video_access', 'video_id'],
+      ['favorites', 'video_id'], ['video_ratings', 'video_id'], ['video_access', 'video_id'],
       ['category_user_access', 'category_id'], ['user_rank_assignments', 'rank_id'],
     ]) {
       db.prepare(`DELETE FROM ${table} WHERE user_id = ? AND ${keyCol} IN (SELECT ${keyCol} FROM ${table} WHERE user_id = ?)`)

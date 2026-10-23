@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { ArrowLeft, Loader2, RotateCcw, Users, TrendingUp, X, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Loader2, RotateCcw, Users, TrendingUp, X, ChevronDown, Star, Heart } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
 import { api } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
@@ -422,6 +422,61 @@ export default function VideoAnalyticsPage() {
       </div>
 
       <div className="space-y-6" style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 0.15s' }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <ChartCard title="Oceny widzów" subtitle="Widoczne tylko dla redaktorów — niezależne od filtrów powyżej">
+            {!data?.ratings?.count ? (
+              <p className="text-sm text-zinc-400 py-4 text-center">Brak ocen.</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
+                  <span className="text-2xl font-bold text-zinc-900 dark:text-white">{data.ratings.average}</span>
+                  <span className="text-xs text-zinc-500">/ 5 ({data.ratings.count})</span>
+                </div>
+                <div className="space-y-1 mb-3">
+                  {[5, 4, 3, 2, 1].map(n => (
+                    <div key={n} className="flex items-center gap-2 text-xs text-zinc-500">
+                      <span className="w-3">{n}</span>
+                      <div className="flex-1 h-2 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+                        <div className="h-full bg-amber-400" style={{ width: `${(data.ratings.distribution[n - 1] / data.ratings.count) * 100}%` }} />
+                      </div>
+                      <span className="w-6 text-right">{data.ratings.distribution[n - 1]}</span>
+                    </div>
+                  ))}
+                </div>
+                <ul className="max-h-40 overflow-y-auto text-sm divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {data.ratings.entries.map(r => (
+                    <li key={r.user_id} className="flex items-center justify-between py-1.5">
+                      <span className="text-zinc-700 dark:text-zinc-300 truncate">{r.display_name || r.username || `#${r.user_id}`}</span>
+                      <span className="text-amber-500 font-bold shrink-0 ml-2">{r.rating} ★</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </ChartCard>
+          <ChartCard title="Ulubione" subtitle="Kto dodał film do ulubionych — niezależne od filtrów powyżej">
+            {!data?.favorites?.length ? (
+              <p className="text-sm text-zinc-400 py-4 text-center">Brak polubień.</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <Heart className="w-5 h-5 fill-pink-500 text-pink-500" />
+                  <span className="text-2xl font-bold text-zinc-900 dark:text-white">{data.favorites.length}</span>
+                </div>
+                <ul className="max-h-64 overflow-y-auto text-sm divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {data.favorites.map(f => (
+                    <li key={f.user_id} className="flex items-center justify-between py-1.5">
+                      <span className="text-zinc-700 dark:text-zinc-300 truncate">{f.display_name || f.username || `#${f.user_id}`}</span>
+                      <span className="text-xs text-zinc-400 shrink-0 ml-2">{formatDateShort(f.created_at)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </ChartCard>
+        </div>
+
         <ChartCard
           title="Oglądalność w czasie"
           subtitle={
