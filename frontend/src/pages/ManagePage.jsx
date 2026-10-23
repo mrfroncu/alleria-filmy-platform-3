@@ -49,7 +49,7 @@ function SettingsSectionHeader({ id, icon: Icon, label, first }) {
 }
 
 export default function ManagePage() {
-  const { config, refreshConfig } = useSettings();
+  const { config, saveSettings } = useSettings();
   const confirm = useConfirm();
   const toast = useToast();
   const [searchParams] = useSearchParams();
@@ -238,7 +238,7 @@ export default function ManagePage() {
   const saveLimits = async () => {
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({
+      const r = await saveSettings({
         limit_display_name: parseInt(limitForm.limit_display_name, 10),
         limit_bio: parseInt(limitForm.limit_bio, 10),
         limit_comment: parseInt(limitForm.limit_comment, 10),
@@ -257,7 +257,7 @@ export default function ManagePage() {
     if (!settings) return;
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ webhook_domain_restriction: !settings.webhook_domain_restriction });
+      const r = await saveSettings({ webhook_domain_restriction: !settings.webhook_domain_restriction });
       setSettingsState(s => ({ ...s, webhook_domain_restriction: r.webhook_domain_restriction }));
       setStatus({ type: 'success', msg: `Ograniczenie domen webhooków: ${r.webhook_domain_restriction ? 'WŁĄCZONE' : 'WYŁĄCZONE'}` });
     } catch (e) {
@@ -270,7 +270,7 @@ export default function ManagePage() {
     if (!settings || settings.ts3_code_delivery === value) return;
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ ts3_code_delivery: value });
+      const r = await saveSettings({ ts3_code_delivery: value });
       setSettingsState(s => ({ ...s, ts3_code_delivery: r.ts3_code_delivery }));
       const label = value === 'pm' ? 'prywatna wiadomość' : value === 'poke' ? 'poke' : 'wiadomość + poke';
       setStatus({ type: 'success', msg: `Wysyłka kodu TS3: ${label}` });
@@ -284,7 +284,7 @@ export default function ManagePage() {
     if (!settings || settings.gdpr_region === value) return;
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ gdpr_region: value });
+      const r = await saveSettings({ gdpr_region: value });
       setSettingsState(s => ({ ...s, gdpr_region: r.gdpr_region }));
       const label = value === 'off' ? 'wyłączone' : value === 'eu' ? 'UE' : 'Brazylia';
       setStatus({ type: 'success', msg: `Region RODO: ${label}` });
@@ -429,7 +429,7 @@ export default function ManagePage() {
   const saveDisplaySettings = async () => {
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({
+      const r = await saveSettings({
         videos_per_page: parseInt(displayForm.videos_per_page, 10),
         grid_columns: parseInt(displayForm.grid_columns, 10),
         grid_card_min_width: parseInt(displayForm.grid_card_min_width, 10),
@@ -447,10 +447,9 @@ export default function ManagePage() {
   const saveFeedbackUrl = async () => {
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ feedback_url: feedbackUrl });
+      const r = await saveSettings({ feedback_url: feedbackUrl });
       setSettingsState(r);
       setFeedbackUrl(r.feedback_url || '');
-      refreshConfig();
       setStatus({ type: 'success', msg: 'Link zgłaszania błędów zapisany.' });
     } catch (e) {
       setStatus({ type: 'error', msg: e.message });
@@ -461,11 +460,23 @@ export default function ManagePage() {
   const saveEndScreenDelay = async () => {
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ end_screen_delay: Number(endScreenDelay) });
+      const r = await saveSettings({ end_screen_delay: Number(endScreenDelay) });
       setSettingsState(r);
       setEndScreenDelay(String(r.end_screen_delay ?? 1));
-      refreshConfig();
       setStatus({ type: 'success', msg: 'Czas ekranu końcowego zapisany.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const toggleEndScreen = async (key, playerName) => {
+    if (!settings) return;
+    setSavingSettings(true);
+    try {
+      const r = await saveSettings({ [key]: !settings[key] });
+      setSettingsState(s => ({ ...s, [key]: r[key] }));
+      setStatus({ type: 'success', msg: `Ekran końcowy (${playerName}): ${r[key] ? 'WŁĄCZONY' : 'WYŁĄCZONY'}` });
     } catch (e) {
       setStatus({ type: 'error', msg: e.message });
     }
@@ -475,7 +486,7 @@ export default function ManagePage() {
   const saveLogsSettings = async () => {
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ logs_per_page: parseInt(logsForm.logs_per_page, 10) });
+      const r = await saveSettings({ logs_per_page: parseInt(logsForm.logs_per_page, 10) });
       setSettingsState(r);
       const newLogs = { logs_per_page: r.logs_per_page };
       setLogsForm(newLogs); setLogsBaseline(newLogs);
@@ -490,7 +501,7 @@ export default function ManagePage() {
     if (!settings) return;
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ iframe_embed_enabled: !settings.iframe_embed_enabled });
+      const r = await saveSettings({ iframe_embed_enabled: !settings.iframe_embed_enabled });
       setSettingsState(s => ({ ...s, iframe_embed_enabled: r.iframe_embed_enabled }));
       setStatus({ type: 'success', msg: `Osadzanie w iframe: ${r.iframe_embed_enabled ? 'WŁĄCZONE' : 'WYŁĄCZONE'}` });
     } catch (e) {
@@ -516,7 +527,7 @@ export default function ManagePage() {
   const saveOrigins = async () => {
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ iframe_allowed_origins: originsForm });
+      const r = await saveSettings({ iframe_allowed_origins: originsForm });
       setSettingsState(s => ({ ...s, iframe_allowed_origins: r.iframe_allowed_origins }));
       const newOrigins = r.iframe_allowed_origins || [];
       setOriginsForm(newOrigins); setOriginsBaseline(newOrigins);
@@ -531,7 +542,7 @@ export default function ManagePage() {
     if (!settings) return;
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ youtube_custom_player: !settings.youtube_custom_player });
+      const r = await saveSettings({ youtube_custom_player: !settings.youtube_custom_player });
       setSettingsState(s => ({ ...s, youtube_custom_player: r.youtube_custom_player }));
       setStatus({ type: 'success', msg: `Własny odtwarzacz YouTube: ${r.youtube_custom_player ? 'WŁĄCZONY' : 'WYŁĄCZONY'}` });
     } catch (e) {
@@ -548,7 +559,7 @@ export default function ManagePage() {
   const saveUploadLimit = async () => {
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ upload_limit_mbps: parseFloat(uploadLimit) || 0 });
+      const r = await saveSettings({ upload_limit_mbps: parseFloat(uploadLimit) || 0 });
       setSettingsState(r);
       setStatus({ type: 'success', msg: r.upload_limit_mbps ? `Limit uploadu: ${r.upload_limit_mbps} Mbit/s` : 'Limit uploadu wyłączony.' });
     } catch (e) {
@@ -561,7 +572,7 @@ export default function ManagePage() {
     if (!settings) return;
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ chunked_upload: !settings.chunked_upload });
+      const r = await saveSettings({ chunked_upload: !settings.chunked_upload });
       setSettingsState(s => ({ ...s, chunked_upload: r.chunked_upload }));
       setStatus({ type: 'success', msg: `Upload w częściach: ${r.chunked_upload ? 'WŁĄCZONY' : 'WYŁĄCZONY'}` });
     } catch (e) {
@@ -574,7 +585,7 @@ export default function ManagePage() {
     if (!settings) return;
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ show_top_bar: !settings.show_top_bar });
+      const r = await saveSettings({ show_top_bar: !settings.show_top_bar });
       setSettingsState(s => ({ ...s, show_top_bar: r.show_top_bar }));
       setStatus({ type: 'success', msg: `Górny pasek: ${r.show_top_bar ? 'WŁĄCZONY' : 'WYŁĄCZONY'}` });
     } catch (e) {
@@ -587,7 +598,7 @@ export default function ManagePage() {
     if (!settings) return;
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ allow_custom_avatars: !settings.allow_custom_avatars });
+      const r = await saveSettings({ allow_custom_avatars: !settings.allow_custom_avatars });
       setSettingsState(s => ({ ...s, allow_custom_avatars: r.allow_custom_avatars }));
       setStatus({ type: 'success', msg: `Własne avatary: ${r.allow_custom_avatars ? 'WŁĄCZONE' : 'WYŁĄCZONE'}` });
     } catch (e) {
@@ -600,7 +611,7 @@ export default function ManagePage() {
     if (!settings) return;
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ infinite_scroll: !settings.infinite_scroll });
+      const r = await saveSettings({ infinite_scroll: !settings.infinite_scroll });
       setSettingsState(s => ({ ...s, infinite_scroll: r.infinite_scroll }));
       setStatus({ type: 'success', msg: `Infinite scroll: ${r.infinite_scroll ? 'WŁĄCZONY' : 'WYŁĄCZONY'}` });
     } catch (e) {
@@ -612,7 +623,7 @@ export default function ManagePage() {
   const saveBotNickname = async () => {
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({ ts_bot_nickname: botNickname });
+      const r = await saveSettings({ ts_bot_nickname: botNickname });
       setSettingsState(s => ({ ...s, ts_bot_nickname: r.ts_bot_nickname }));
       setBotNickname(r.ts_bot_nickname || ''); setBotNicknameBaseline(r.ts_bot_nickname || '');
       setStatus({ type: 'success', msg: 'Nazwa bota ServerQuery zapisana.' });
@@ -625,7 +636,7 @@ export default function ManagePage() {
   const saveTs6Settings = async () => {
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({
+      const r = await saveSettings({
         ts6_host: ts6Form.host, ts6_port: ts6Form.port, ts6_username: ts6Form.username, ts6_password: ts6Form.password,
         ts6_api_key: ts6Form.api_key, ts6_server_id: ts6Form.server_id, ts6_member_group_id: ts6Form.member_group_id, ts6_admin_group_id: ts6Form.admin_group_id,
       });
@@ -645,7 +656,7 @@ export default function ManagePage() {
   const saveTs3Settings = async () => {
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({
+      const r = await saveSettings({
         ts3_host: ts3Form.host, ts3_port: ts3Form.port, ts3_username: ts3Form.username, ts3_password: ts3Form.password,
         ts3_server_id: ts3Form.server_id, ts3_member_group_id: ts3Form.member_group_id, ts3_admin_group_id: ts3Form.admin_group_id,
       });
@@ -665,7 +676,7 @@ export default function ManagePage() {
   const saveSmtpSettings = async () => {
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({
+      const r = await saveSettings({
         smtp_host: smtpForm.host, smtp_port: smtpForm.port, smtp_secure: smtpForm.secure,
         smtp_user: smtpForm.user, smtp_password: smtpForm.password, smtp_from: smtpForm.from,
       });
@@ -696,7 +707,7 @@ export default function ManagePage() {
   const saveNewVideoTemplate = async () => {
     setSavingNewVideoTemplate(true);
     try {
-      const r = await api.setSettings({ email_template_new_video: newVideoTemplate });
+      const r = await saveSettings({ email_template_new_video: newVideoTemplate });
       setSettingsState(s => ({ ...s, ...r }));
       const v = r.email_template_new_video || '';
       setNewVideoTemplate(v); setNewVideoTemplateBaseline(v);
@@ -710,7 +721,7 @@ export default function ManagePage() {
   const saveGdprTemplate = async () => {
     setSavingGdprTemplate(true);
     try {
-      const r = await api.setSettings({ email_template_gdpr_notify: gdprTemplate });
+      const r = await saveSettings({ email_template_gdpr_notify: gdprTemplate });
       setSettingsState(s => ({ ...s, ...r }));
       const v = r.email_template_gdpr_notify || '';
       setGdprTemplate(v); setGdprTemplateBaseline(v);
@@ -724,7 +735,7 @@ export default function ManagePage() {
   const saveGdprResultExportTemplate = async () => {
     setSavingGdprResultExportTemplate(true);
     try {
-      const r = await api.setSettings({ email_template_gdpr_result_export: gdprResultExportTemplate });
+      const r = await saveSettings({ email_template_gdpr_result_export: gdprResultExportTemplate });
       setSettingsState(s => ({ ...s, ...r }));
       const v = r.email_template_gdpr_result_export || '';
       setGdprResultExportTemplate(v); setGdprResultExportTemplateBaseline(v);
@@ -738,7 +749,7 @@ export default function ManagePage() {
   const saveGdprResultDeletionTemplate = async () => {
     setSavingGdprResultDeletionTemplate(true);
     try {
-      const r = await api.setSettings({ email_template_gdpr_result_deletion: gdprResultDeletionTemplate });
+      const r = await saveSettings({ email_template_gdpr_result_deletion: gdprResultDeletionTemplate });
       setSettingsState(s => ({ ...s, ...r }));
       const v = r.email_template_gdpr_result_deletion || '';
       setGdprResultDeletionTemplate(v); setGdprResultDeletionTemplateBaseline(v);
@@ -752,7 +763,7 @@ export default function ManagePage() {
   const saveDiscordRoles = async () => {
     setSavingSettings(true);
     try {
-      const r = await api.setSettings({
+      const r = await saveSettings({
         discord_member_role_id: discordRolesForm.member_role_id,
         discord_admin_role_id: discordRolesForm.admin_role_id,
       });
@@ -1591,9 +1602,23 @@ export default function ManagePage() {
               <div className="flex-1">
                 <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Ekran końcowy filmu</h3>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-                  Po ilu sekundach od zakończenia filmu pojawi się plansza z oceną (od 0 do 60 s).
+                  Plansza z oceną, dodaniem do ulubionych i ponownym odtworzeniem, pokazywana po zakończeniu filmu.
                 </p>
-                <label className="label-field">Opóźnienie (sekundy)</label>
+                <div className="flex flex-col items-start gap-3 mb-5">
+                  <ToggleSwitch
+                    checked={!!settings?.end_screen_selfhosted}
+                    onChange={() => toggleEndScreen('end_screen_selfhosted', 'odtwarzacz Alleria')}
+                    disabled={!settings || savingSettings}
+                    label={settings == null ? 'Ładowanie...' : `Odtwarzacz Alleria: ${settings.end_screen_selfhosted ? 'WŁĄCZONY' : 'WYŁĄCZONY'}`}
+                  />
+                  <ToggleSwitch
+                    checked={!!settings?.end_screen_youtube}
+                    onChange={() => toggleEndScreen('end_screen_youtube', 'YouTube')}
+                    disabled={!settings || savingSettings}
+                    label={settings == null ? 'Ładowanie...' : `YouTube: ${settings.end_screen_youtube ? 'WŁĄCZONY' : 'WYŁĄCZONY'}`}
+                  />
+                </div>
+                <label className="label-field">Opóźnienie (od 0 do 60 s)</label>
                 <input type="number" min="0" max="60" step="0.5" value={endScreenDelay}
                   onChange={e => setEndScreenDelay(e.target.value)}
                   className="input-field !py-3 text-sm" />

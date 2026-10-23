@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Frame, X } from 'lucide-react';
-import { api } from '../../utils/api';
 import { useToast } from '../../contexts/ToastContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { ToggleSwitch, Segmented } from './SetupUI';
 
 // Same fields, same payload keys as ManagePage.jsx's "Bezpieczeństwo i prywatność" section.
 export default function SecurityStep({ settings, reloadSettings }) {
+  const { saveSettings } = useSettings();
   const toast = useToast();
   const [saving, setSaving] = useState(false);
   const [originsForm, setOriginsForm] = useState([]);
@@ -20,7 +21,7 @@ export default function SecurityStep({ settings, reloadSettings }) {
   const save = async (payload, okMsg) => {
     setSaving(true);
     try {
-      await api.setSettings(payload);
+      await saveSettings(payload);
       await reloadSettings();
       toast.success(okMsg);
     } catch (e) {

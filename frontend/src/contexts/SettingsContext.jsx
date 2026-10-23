@@ -19,6 +19,8 @@ const DEFAULT_CONFIG = {
   gdprRegion: 'off',
   feedbackUrl: '',
   endScreenDelay: 1,
+  endScreenSelfHosted: true,
+  endScreenYoutube: true,
 };
 
 export function SettingsProvider({ children }) {
@@ -33,8 +35,16 @@ export function SettingsProvider({ children }) {
     refreshConfig().finally(() => setLoading(false));
   }, [refreshConfig]);
 
+  // Every settings write goes through here so the public config the rest of the app reads
+  // (top bar, grid, players, limits...) follows immediately instead of after a page reload.
+  const saveSettings = useCallback(async (data) => {
+    const r = await api.setSettings(data);
+    refreshConfig();
+    return r;
+  }, [refreshConfig]);
+
   return (
-    <SettingsContext.Provider value={{ config, loading, refreshConfig }}>
+    <SettingsContext.Provider value={{ config, loading, refreshConfig, saveSettings }}>
       {children}
     </SettingsContext.Provider>
   );

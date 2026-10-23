@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { LayoutGrid } from 'lucide-react';
-import { api } from '../../utils/api';
 import { useToast } from '../../contexts/ToastContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { ToggleSwitch } from './SetupUI';
 
 // Same fields, same payload keys as ManagePage.jsx's "Wygląd i treść" section.
 export default function DisplayStep({ settings, reloadSettings }) {
+  const { saveSettings } = useSettings();
   const toast = useToast();
   const [saving, setSaving] = useState(false);
   const [limitForm, setLimitForm] = useState({ limit_display_name: '', limit_bio: '', limit_comment: '' });
@@ -26,7 +27,7 @@ export default function DisplayStep({ settings, reloadSettings }) {
   const save = async (payload, okMsg) => {
     setSaving(true);
     try {
-      await api.setSettings(payload);
+      await saveSettings(payload);
       await reloadSettings();
       toast.success(okMsg);
     } catch (e) {

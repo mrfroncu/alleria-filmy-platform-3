@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LogIn, Bot, Headphones, Radio, MessageSquare } from 'lucide-react';
-import { api } from '../../utils/api';
 import { useToast } from '../../contexts/ToastContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { Segmented, sourceBadgeClass } from './SetupUI';
 
 const emptyTs = { host: '', port: '', server_id: '', username: '', password: '', member_group_id: '', admin_group_id: '' };
@@ -9,6 +9,7 @@ const emptyTs = { host: '', port: '', server_id: '', username: '', password: '',
 // Same fields, same payload keys, same .env-vs-panel locking as ManagePage.jsx's "Logowanie"
 // section — see that file for the authoritative behavior this mirrors.
 export default function LoginStep({ settings, reloadSettings }) {
+  const { saveSettings } = useSettings();
   const toast = useToast();
   const [saving, setSaving] = useState(false);
   const [botNickname, setBotNickname] = useState('');
@@ -42,7 +43,7 @@ export default function LoginStep({ settings, reloadSettings }) {
   const save = async (payload, okMsg) => {
     setSaving(true);
     try {
-      await api.setSettings(payload);
+      await saveSettings(payload);
       await reloadSettings();
       toast.success(okMsg);
     } catch (e) {

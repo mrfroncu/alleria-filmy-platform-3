@@ -168,6 +168,13 @@ router.post('/api/debug/settings', requireDev, (req, res) => {
     setSetting('end_screen_delay', n);
     audit(req.session.user.id, 'edit', 'settings', null, `end_screen_delay → ${n}s`);
   }
+  // End screen on/off, separately for the self-hosted (Alleria) player and the YouTube players
+  for (const key of ['end_screen_selfhosted', 'end_screen_youtube']) {
+    if (req.body[key] !== undefined) {
+      setSetting(key, req.body[key] ? '1' : '0');
+      audit(req.session.user.id, 'edit', 'settings', null, `${key} → ${req.body[key] ? 'ON' : 'OFF'}`);
+    }
+  }
   // Custom-chrome YouTube player overlay vs. plain YouTube embed
   if (req.body.youtube_custom_player !== undefined) {
     setSetting('youtube_custom_player', req.body.youtube_custom_player ? '1' : '0');

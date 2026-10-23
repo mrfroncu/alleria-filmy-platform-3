@@ -9,6 +9,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import SecurePlayer from '../components/SecurePlayer';
+import PlayerEndScreen from '../components/PlayerEndScreen';
 import VideoModal from '../components/VideoModal';
 import PublicationPanel from '../components/PublicationPanel';
 import CommentText from '../components/CommentText';
@@ -72,9 +73,47 @@ function ytControls(player) {
   };
 }
 
+// End screen for the YouTube players, mirroring SecurePlayer's: after ENDED and the configured
+// delay (if the video is still ended by then) PlayerEndScreen covers the iframe. ended/resumed
+// only touch refs, so the IFrame API callbacks wired once per videoId can call them.
+function useYtEndScreen(endScreen, videoId) {
+  const { config } = useSettings();
+  const [showEnd, setShowEnd] = useState(false);
+  const timerRef = useRef(null);
+  const enabledRef = useRef(!!endScreen);
+  useEffect(() => { enabledRef.current = !!endScreen; }, [endScreen]);
+  const delayRef = useRef(config.endScreenDelay);
+  useEffect(() => { delayRef.current = config.endScreenDelay; }, [config.endScreenDelay]);
+
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+  useEffect(() => { clearTimeout(timerRef.current); setShowEnd(false); }, [videoId]);
+
+  const ended = useCallback((player) => {
+    if (!enabledRef.current) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      if (player.getPlayerState?.() === window.YT.PlayerState.ENDED) setShowEnd(true);
+    }, Math.max(0, Number(delayRef.current) || 0) * 1000);
+  }, []);
+  const resumed = useCallback(() => { clearTimeout(timerRef.current); setShowEnd(false); }, []);
+
+  return { showEnd: showEnd && !!endScreen, ended, resumed };
+}
+
+// Restart from the top after the end screen, reported as a seek like SecurePlayer's replay
+// (the poll baseline is reset on ENDED, so the jump detector would not catch it).
+function ytReplay(player, onSeek) {
+  if (!player) return;
+  player.seekTo(0, true);
+  onSeek?.(0);
+  player.playVideo();
+}
+
 // YouTube player with progress tracking — React owns wrapper div only, YT owns inner element
-function YouTubeTrackingPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, controlRef }) {
+function YouTubeTrackingPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, controlRef, endScreen }) {
   const wrapperRef = useRef(null);
+  const playerRef = useRef(null);
+  const { showEnd, ended, resumed } = useYtEndScreen(endScreen, videoId);
   const onTimeUpdateRef = useRef(onTimeUpdate);
   useEffect(() => { onTimeUpdateRef.current = onTimeUpdate; }, [onTimeUpdate]);
   const onPlayRef = useRef(onPlay);
@@ -125,6 +164,7 @@ function YouTubeTrackingPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek,
         playerVars: { autoplay: 0, controls: 1, rel: 0, origin: window.location.origin },
         events: {
           onReady: () => {
+            playerRef.current = player;
             if (controlRef) controlRef.current = ytControls(player);
           },
           onStateChange: ({ data }) => {
@@ -136,6 +176,7 @@ function YouTubeTrackingPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek,
             // and PLAYING only (re)starts the poll if it isn't already running, so a
             // BUFFERING → PLAYING bounce mid-seek never resets it either.
             if (data === window.YT.PlayerState.PLAYING) {
+              resumed();
               if (!pollId) startPoll();
               onPlayRef.current?.(player.getCurrentTime?.() ?? 0);
             } else if (data === window.YT.PlayerState.PAUSED) {
@@ -143,6 +184,7 @@ function YouTubeTrackingPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek,
               onPauseRef.current?.(player.getCurrentTime?.() ?? 0);
             } else if (data === window.YT.PlayerState.ENDED) {
               stopPoll();
+              ended(player);
             }
           },
         },
@@ -151,21 +193,28 @@ function YouTubeTrackingPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek,
 
     return () => {
       destroyed = true; stopPoll();
+      playerRef.current = null;
       try { player?.destroy(); } catch (_) {}
       try { if (wrapper.firstChild) wrapper.innerHTML = ''; } catch (_) {}
     };
   }, [videoId]);
 
-  return <div ref={wrapperRef} className="w-full h-full" />;
+  return (
+    <div className="relative w-full h-full">
+      <div ref={wrapperRef} className="w-full h-full" />
+      {showEnd && <PlayerEndScreen {...endScreen} onReplay={() => { resumed(); ytReplay(playerRef.current, onSeekRef.current); }} />}
+    </div>
+  );
 }
 
 // YouTube player with our own control chrome (matches SecurePlayer's look) instead of the native
 // YouTube UI — mounted with controls:0. Quality control is intentionally omitted: YouTube stopped
 // honoring setPlaybackQuality() for regular embeds years ago, so there is nothing real to expose.
-function YouTubeCustomPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, controlRef }) {
+function YouTubeCustomPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, controlRef, endScreen }) {
   const wrapperRef = useRef(null);
   const containerRef = useRef(null);
   const playerRef = useRef(null);
+  const { showEnd, ended, resumed } = useYtEndScreen(endScreen, videoId);
   const onTimeUpdateRef = useRef(onTimeUpdate);
   useEffect(() => { onTimeUpdateRef.current = onTimeUpdate; }, [onTimeUpdate]);
   const onPlayRef = useRef(onPlay);
@@ -248,6 +297,7 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, c
             // reset its jump-detection baseline — same fix here, `playing` visuals unaffected.
             if (data === window.YT.PlayerState.PLAYING) {
               setPlaying(true);
+              resumed();
               if (!pollId) startPoll();
               onPlayRef.current?.(player.getCurrentTime?.() ?? 0);
             } else {
@@ -257,6 +307,7 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, c
                 onPauseRef.current?.(player.getCurrentTime?.() ?? 0);
               } else if (data === window.YT.PlayerState.ENDED) {
                 stopPoll();
+                ended(player);
               }
             }
           },
@@ -555,6 +606,8 @@ function YouTubeCustomPlayer({ videoId, onTimeUpdate, onPlay, onPause, onSeek, c
           </div>
         </div>
       </div>
+
+      {showEnd && <PlayerEndScreen {...endScreen} onReplay={() => { resumed(); ytReplay(playerRef.current, onSeekRef.current); }} />}
     </div>
   );
 }
@@ -1017,6 +1070,11 @@ export default function VideoPage() {
 
   useEffect(() => { activeSourceRef.current = activeSource; }, [activeSource]);
   const sources = useMemo(() => buildSources(video), [video]);
+  // The rating screen is about the film itself: main source and mirrors only, never an
+  // alternative version (other cut, behind the scenes) marked with mirrorN_is_alt.
+  const activeIsAlt = !!sources.find(s => s.key === activeSource)?.isAlt;
+  const selfHostedEndScreen = config.endScreenSelfHosted && !activeIsAlt ? endScreen : null;
+  const youtubeEndScreen = config.endScreenYoutube && !activeIsAlt ? endScreen : null;
 
   // Switching sources remounts the player; dropping the old control handle means a pending seek
   // waits for the NEW player instead of firing into the one being torn down.
@@ -1211,9 +1269,9 @@ export default function VideoPage() {
 
         <div ref={playerWrapRef} className="mb-2 anim-stagger-2 scroll-mt-6" key={`player-${activeSource}`}>
           {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
-            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={selectSource} mediaSession={mediaSessionInfo} endScreen={endScreen} />
+            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={selectSource} mediaSession={mediaSessionInfo} endScreen={selfHostedEndScreen} />
           ) : isStreamer && streamerVideoId ? (
-            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={selectSource} mediaSession={mediaSessionInfo} endScreen={endScreen} />
+            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={selectSource} mediaSession={mediaSessionInfo} endScreen={selfHostedEndScreen} />
           ) : isPlex && src.url ? (
             <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in plex-container flex items-center justify-center">
               {/* Floating particles */}
@@ -1249,8 +1307,8 @@ export default function VideoPage() {
           ) : embedUrl ? (
             <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in">
               {config.customYoutubePlayer
-                ? <YouTubeCustomPlayer videoId={extractYoutubeId(src.url)} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} controlRef={playerControlRef} />
-                : <YouTubeTrackingPlayer videoId={extractYoutubeId(src.url)} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} controlRef={playerControlRef} />}
+                ? <YouTubeCustomPlayer videoId={extractYoutubeId(src.url)} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} controlRef={playerControlRef} endScreen={youtubeEndScreen} />
+                : <YouTubeTrackingPlayer videoId={extractYoutubeId(src.url)} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} controlRef={playerControlRef} endScreen={youtubeEndScreen} />}
             </div>
           ) : isHtml && src.url ? (
             <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in"><HtmlEmbed html={src.url} /></div>

@@ -57,6 +57,22 @@ describe('Ustawienia aplikacji', () => {
     const on = await dev.post('/api/debug/settings').send({ webhook_domain_restriction: true });
     expect(on.body.webhook_domain_restriction).toBe(true);
   });
+
+  it('ekran końcowy włącza się osobno dla odtwarzacza Alleria i YouTube, widać to w /api/config', async () => {
+    const initial = await member.get('/api/config');
+    expect(initial.body.endScreenSelfHosted).toBe(true);
+    expect(initial.body.endScreenYoutube).toBe(true);
+
+    const res = await dev.post('/api/debug/settings').send({ end_screen_youtube: false });
+    expect(res.body.end_screen_youtube).toBe(false);
+    expect(res.body.end_screen_selfhosted).toBe(true);
+
+    const config = await member.get('/api/config');
+    expect(config.body.endScreenYoutube).toBe(false);
+    expect(config.body.endScreenSelfHosted).toBe(true);
+
+    await dev.post('/api/debug/settings').send({ end_screen_youtube: true }).expect(200);
+  });
 });
 
 describe('Tworzenie użytkowników (dev)', () => {

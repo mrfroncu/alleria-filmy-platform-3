@@ -49,6 +49,8 @@ router.get('/api/config', requireAuth, (req, res) => {
     gdprRegion: s.gdpr_region,
     feedbackUrl: s.feedback_url,
     endScreenDelay: s.end_screen_delay,
+    endScreenSelfHosted: s.end_screen_selfhosted,
+    endScreenYoutube: s.end_screen_youtube,
   });
 });
 

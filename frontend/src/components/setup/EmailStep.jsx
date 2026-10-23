@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Mail } from 'lucide-react';
 import { api } from '../../utils/api';
 import { useToast } from '../../contexts/ToastContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { ToggleSwitch } from './SetupUI';
 
 const TEMPLATE_FIELDS = [
@@ -13,6 +14,7 @@ const TEMPLATE_FIELDS = [
 
 // Same fields, same payload keys as ManagePage.jsx's "Ustawienia serwera E-mail" section.
 export default function EmailStep({ settings, reloadSettings }) {
+  const { saveSettings } = useSettings();
   const toast = useToast();
   const [saving, setSaving] = useState(false);
   const [smtpForm, setSmtpForm] = useState({ host: '', port: '', user: '', password: '', from: '', secure: false });
@@ -40,7 +42,7 @@ export default function EmailStep({ settings, reloadSettings }) {
   const save = async (payload, okMsg) => {
     setSaving(true);
     try {
-      await api.setSettings(payload);
+      await saveSettings(payload);
       await reloadSettings();
       toast.success(okMsg);
     } catch (e) {
