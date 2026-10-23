@@ -4,7 +4,7 @@
 
 **Prywatna platforma wideo społeczności [Alleria.pl](https://alleria.pl)**
 
-![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white) ![Node](https://img.shields.io/badge/Node-24-339933?logo=node.js&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-better--sqlite3-003B57?logo=sqlite&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white) ![Node](https://img.shields.io/badge/Node-26-339933?logo=node.js&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-better--sqlite3-003B57?logo=sqlite&logoColor=white)
 
 </div>
 
@@ -800,7 +800,7 @@ Filmy HLS leżą na serwerze streamingu, nie w panelu — przenosiny panelu ich 
 | Warstwa | Stack |
 |---------|-------|
 | **Frontend** | React 18, Tailwind CSS 3, Vite 6, hls.js, YouTube IFrame API, Google Cast Sender SDK, Lucide icons, React Router 7, Recharts (analityka) |
-| **Backend** | Node.js 24 LTS, Express.js, better-sqlite3 (baza + store sesji), express-session, multer, ws (WebSocket), web-push, nodemailer |
+| **Backend** | Node.js 26 LTS, Express.js, better-sqlite3 (baza + store sesji), express-session, multer, ws (WebSocket), web-push, nodemailer |
 | **Streaming** | FFmpeg (Alpine), AES-128 HLS encryption |
 | **Deploy** | Docker, Docker Compose, Cloudflare Tunnel, GitHub Actions |
 
