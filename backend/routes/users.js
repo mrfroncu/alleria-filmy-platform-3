@@ -3,13 +3,62 @@ const db = require('../db');
 const { audit } = require('../lib/helpers');
 const { requireAdmin, requireAuth, requireDev } = require('../lib/auth');
 const { invalidateUserSessions } = require('../lib/sessions');
+const { disconnectUser } = require('../notifications');
+const { disconnectUserFromParties } = require('../watchParty');
 
 const router = express.Router();
 
 // ============ USERS API ============
 router.get('/api/users', requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, username, display_name, avatar, role, auth_method, created_at, last_login, discord_roles, email, discord_email FROM users ORDER BY created_at DESC').all();
+  const users = db.prepare(`SELECT u.id, u.username, u.display_name, u.avatar, u.role, u.auth_method, u.created_at, u.last_login, u.discord_roles, u.email, u.discord_email,
+      u.banned_at, COALESCE(b.display_name, b.username) AS banned_by_name
+    FROM users u LEFT JOIN users b ON b.id = u.banned_by ORDER BY u.created_at DESC`).all();
   res.json(users);
+});
+
+// ============ BANS ============
+// Deleting an account is no block — the next login just recreates it. A ban keeps the row and
+// refuses every login method of that account (see the login routes and refreshSessionUser).
+// Dev-only like the rest of Zarządzanie; devs come from .env only, so they can't be banned here.
+function banTarget(req, res) {
+  const userId = parseInt(req.params.id);
+  if (userId === req.session.user.id) {
+    res.status(400).json({ error: 'Nie możesz zablokować własnego konta.' });
+    return null;
+  }
+  const user = db.prepare('SELECT id, username, display_name, role, banned_at FROM users WHERE id = ?').get(userId);
+  if (!user) {
+    res.status(404).json({ error: 'Użytkownik nie znaleziony.' });
+    return null;
+  }
+  if (user.role === 'dev') {
+    res.status(403).json({ error: 'Konta dewelopera nie można zablokować z panelu.' });
+    return null;
+  }
+  return user;
+}
+
+router.post('/api/users/:id/ban', requireDev, (req, res) => {
+  const user = banTarget(req, res);
+  if (!user) return;
+  if (!user.banned_at) {
+    db.prepare("UPDATE users SET banned_at = datetime('now'), banned_by = ? WHERE id = ?").run(req.session.user.id, user.id);
+    audit(req.session.user.id, 'user_ban', 'user', user.id, `zablokował ${user.display_name || user.username}`);
+  }
+  invalidateUserSessions(user.id);
+  disconnectUser(user.id);
+  disconnectUserFromParties(user.id);
+  res.json({ success: true });
+});
+
+router.delete('/api/users/:id/ban', requireDev, (req, res) => {
+  const user = banTarget(req, res);
+  if (!user) return;
+  if (user.banned_at) {
+    db.prepare('UPDATE users SET banned_at = NULL, banned_by = NULL WHERE id = ?').run(user.id);
+    audit(req.session.user.id, 'user_unban', 'user', user.id, `odblokował ${user.display_name || user.username}`);
+  }
+  res.json({ success: true });
 });
 
 router.delete('/api/users/:id', requireAdmin, (req, res) => {
@@ -28,6 +77,8 @@ router.delete('/api/users/:id', requireAdmin, (req, res) => {
     db.prepare('DELETE FROM users WHERE id = ?').run(userId);
     // Log them out everywhere right away (refreshSessionUser would also catch it on their next request)
     invalidateUserSessions(userId);
+    disconnectUser(userId);
+    disconnectUserFromParties(userId);
     console.log(`[ADMIN] User deleted: ${user.display_name} (ID: ${userId}) by ${req.session.user.display_name}`);
     res.json({ success: true });
   } catch (err) {

@@ -6,7 +6,7 @@ const { discordRoleFromRoles, fetchDiscordGuildRoles } = require('./discordRoles
 // req.session.user is a snapshot taken at login and sessions live 7 days — on its own, deleting a
 // user, anonymizing them (RODO) or changing their role never reached a session that was already
 // logged in. This runs on every request, before any route:
-//   - the user row is gone or anonymized → the login is dropped (routes then answer 401);
+//   - the user row is gone, anonymized or banned → the login is dropped (routes then answer 401);
 //   - the role always comes from the DB, so a change there applies on the very next request;
 //   - for a Discord-only account the live guild roles are re-checked every DISCORD_RECHECK_MS via
 //     the bot (the same rule as a fresh Discord login, see loginRole): losing the admin role on
@@ -35,7 +35,7 @@ async function recheckDiscord(req, su, row) {
 
   const ids = identityList(row);
   if (ids.length !== 1 || ids[0] !== 'discord') return; // linked account: role may come from elsewhere
-  const discordRole = discordRoleFromRoles(roles);
+  const discordRole = discordRoleFromRoles(roles, row.discord_id);
   if (!discordRole) {
     console.log(`[AUTH] User #${row.id} no longer has a required Discord role — logging out`);
     dropLogin(req);
@@ -53,7 +53,7 @@ async function refreshSessionUser(req, res, next) {
   if (!su) return next();
   try {
     const row = db.prepare('SELECT * FROM users WHERE id = ?').get(su.id);
-    if (!row || row.is_anonymized) {
+    if (!row || row.is_anonymized || row.banned_at) {
       dropLogin(req);
       return next();
     }

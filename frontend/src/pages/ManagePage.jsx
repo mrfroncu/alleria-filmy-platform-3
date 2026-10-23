@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { FolderOpen, Plus, Pencil, Trash2, Users, Shield, Lock, FileText, Settings, ShieldCheck, LayoutGrid, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail, Play, AlertTriangle, Flag, ExternalLink, Loader2, Image, Database, Upload, MessageSquarePlus, Star } from 'lucide-react';
+import { FolderOpen, Plus, Pencil, Trash2, Users, Shield, Lock, FileText, Settings, ShieldCheck, LayoutGrid, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail, Play, AlertTriangle, Flag, ExternalLink, Loader2, Image, Database, Upload, MessageSquarePlus, Star, Ban, LockOpen } from 'lucide-react';
 import { api } from '../utils/api';
 import { buildCategoryTreeOptions, formatDate } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
 import { useSettings } from '../contexts/SettingsContext';
 import { useConfirm } from '../contexts/ConfirmContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { useUnsavedForm, useUnsavedGuard } from '../contexts/UnsavedChangesContext';
 import { renderMarkdown } from '../utils/markdown';
@@ -50,6 +51,7 @@ function SettingsSectionHeader({ id, icon: Icon, label, first }) {
 
 export default function ManagePage() {
   const { config, saveSettings } = useSettings();
+  const { user } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
   const [searchParams] = useSearchParams();
@@ -1100,6 +1102,12 @@ export default function ManagePage() {
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex px-2 py-0.5 rounded-lg text-[10px] font-bold border ${roleBadgeClass(u.role)}`}>{u.role?.toUpperCase()}</span>
+                        {u.banned_at && (
+                          <span className="ml-1 inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[10px] font-bold border bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100"
+                            title={`Zablokowany ${formatDate(u.banned_at)}${u.banned_by_name ? ` przez ${u.banned_by_name}` : ''}`}>
+                            <Ban className="w-2.5 h-2.5" /> ZABLOKOWANY
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1 max-w-[200px]">
@@ -1141,10 +1149,46 @@ export default function ManagePage() {
                       <td className="px-4 py-3 text-xs text-zinc-500">{u.auth_method}</td>
                       <td className="px-4 py-3 text-xs text-zinc-500 font-mono truncate max-w-[160px]">{u.email || u.discord_email || '—'}</td>
                       <td className="px-4 py-3 text-xs text-zinc-500 font-mono">{formatDate(u.last_login)}</td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        {u.role !== 'dev' && u.id !== user?.id && (
+                          u.banned_at ? (
+                            <button
+                              onClick={async () => {
+                                if (!(await confirm(`Odblokować konto „${u.display_name || u.username}”?\n\nUżytkownik znów będzie mógł się zalogować.`, { confirmLabel: 'Odblokuj' }))) return;
+                                try {
+                                  await api.unbanUser(u.id);
+                                  setUsers(prev => prev.map(x => x.id === u.id ? { ...x, banned_at: null, banned_by_name: null } : x));
+                                  toast.success('Konto odblokowane.');
+                                } catch (err) { toast.error('Błąd: ' + err.message); }
+                              }}
+                              className="btn-icon-emerald mr-1"
+                              title="Odblokuj konto"
+                            >
+                              <LockOpen className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={async () => {
+                                if (!(await confirm(`Zablokować konto „${u.display_name || u.username}”?\n\nUżytkownik zostanie od razu wylogowany i nie zaloguje się żadną metodą połączoną z tym kontem (Discord, TeamSpeak, SSO), dopóki go nie odblokujesz.`, { danger: true, confirmLabel: 'Zablokuj' }))) return;
+                                try {
+                                  await api.banUser(u.id);
+                                  setUsers(prev => prev.map(x => x.id === u.id ? { ...x, banned_at: new Date().toISOString(), banned_by_name: user?.display_name || user?.username } : x));
+                                  toast.success('Konto zablokowane.');
+                                } catch (err) { toast.error('Błąd: ' + err.message); }
+                              }}
+                              className="btn-icon-red mr-1"
+                              title="Zablokuj konto (ban)"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                            </button>
+                          )
+                        )}
                         <button
                           onClick={async () => {
-                            if (!(await confirm(`Usunąć konto "${u.display_name || u.username}"?\n\nTo nie jest ban - użytkownik może zalogować się ponownie.`, { danger: true, confirmLabel: 'Usuń' }))) return;
+                            const note = u.banned_at
+                              ? 'Usunięcie zdejmie też blokadę - przy kolejnym logowaniu konto powstanie od nowa.'
+                              : 'To nie jest ban - użytkownik może zalogować się ponownie. Żeby odciąć dostęp, użyj blokady.';
+                            if (!(await confirm(`Usunąć konto „${u.display_name || u.username}”?\n\n${note}`, { danger: true, confirmLabel: 'Usuń' }))) return;
                             try {
                               await api.deleteUser(u.id);
                               setUsers(prev => prev.filter(x => x.id !== u.id));

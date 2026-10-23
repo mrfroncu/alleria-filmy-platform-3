@@ -24,6 +24,7 @@ const { setUploadHeaders } = require('./lib/uploads');
 const { refreshSessionUser } = require('./lib/sessionUser');
 const { startBackgroundJobs } = require('./jobs');
 const { isAuthentikConfigured } = require('./lib/authentik');
+const { devDiscordIds, demoteUnlistedDevs } = require('./lib/discordRoles');
 
 const app = express();
 
@@ -195,16 +196,22 @@ if (require.main === module) httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`  Redirect URI:      ${rUri || '❌ Not set'} ${rUri && !rUriOk ? '🚨 WRONG! Must include /api/' : rUri ? '✅' : ''}`);
   console.log(`  Member Role ID:    ${process.env.DISCORD_MEMBER_ROLE_ID || '❌ Not set'}`);
   console.log(`  Admin Role ID:     ${process.env.DISCORD_ADMIN_ROLE_ID || '❌ Not set'}`);
-  console.log(`  Dev Role ID:       ${process.env.DISCORD_DEV_ROLE_ID || '❌ Not set'}`);
+  console.log(`  Dev users (IDs):   ${devDiscordIds().length ? `✅ ${devDiscordIds().length}` : '❌ DISCORD_DEV_USER_IDS not set'}`);
   console.log(`  Authentik SSO:     ${isAuthentikConfigured() ? `✅ ${process.env.AUTHENTIK_URL}` : '⚪ Off (AUTHENTIK_* not set)'}`);
   if (rUri && !rUriOk) {
     console.log('  ─────────────────────────────────────');
     console.log(`  🚨 REDIRECT URI does not contain /auth/discord/callback`);
     console.log(`     Make sure it matches what is set in Discord Developer Portal`);
   }
+  if (process.env.DISCORD_DEV_ROLE_ID) {
+    console.log('  ─────────────────────────────────────');
+    console.log('  🚨 DISCORD_DEV_ROLE_ID is no longer used — dev is granted by Discord');
+    console.log('     account id only: set DISCORD_DEV_USER_IDS (comma-separated user ids)');
+  }
   console.log('========================================');
   console.log(`  http://localhost:${PORT}`);
   console.log('========================================\n');
 
+  demoteUnlistedDevs();
   startBackgroundJobs();
 });

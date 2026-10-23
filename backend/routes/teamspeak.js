@@ -236,6 +236,12 @@ function handleTsVerify(method) {
         logLogin(null, ch.tsNickname, method, clientIp, 0, 'Missing group (checked after code verified)');
         return res.status(403).json({ error: `Nie posiadasz wymaganej grupy na serwerze ${method === 'teamspeak3' ? 'TeamSpeak 3' : 'TeamSpeak'}.` });
       }
+      const uidCol = method === 'teamspeak3' ? 'ts3_uid' : 'ts6_uid';
+      const known = db.prepare(`SELECT id, banned_at FROM users WHERE ${uidCol} = ?`).get(ch.tsUid);
+      if (known?.banned_at) {
+        logLogin(known.id, ch.tsNickname, method, clientIp, 0, 'Account banned');
+        return res.status(403).json({ error: 'To konto zostało zablokowane.' });
+      }
       if (ch.linkPrimaryUserId) return handleTsLinkCompletion(req, res, { ...ch, role });
       const user = upsertTsUser({ method, tsNickname: ch.tsNickname, tsUid: ch.tsUid, cleanIp: ch.cleanIp, role });
       logLogin(user.id, ch.tsNickname, method, clientIp, 1, 'challenge OK');

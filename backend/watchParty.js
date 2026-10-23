@@ -168,6 +168,15 @@ function reassignUserIdInParties(oldId, newId) {
   }
 }
 
+// Drops a user's live connection from every party (ban / delete); the close handler does the
+// usual leave bookkeeping (member_left, host handover).
+function disconnectUserFromParties(userId) {
+  for (const party of parties.values()) {
+    const member = party.members.get(userId);
+    if (member) { try { member.ws.close(); } catch (_) {} }
+  }
+}
+
 function deleteParty(code, byUserId, byUserName) {
   const party = parties.get(code);
   if (!party) return;
@@ -511,4 +520,4 @@ function setupWatchPartyWS(db, resolveVideoForUser) {
   return wss;
 }
 
-module.exports = { createParty, getParty, deleteParty, listParties, createWsToken, setupWatchPartyWS, reassignUserIdInParties };
+module.exports = { createParty, getParty, deleteParty, listParties, createWsToken, setupWatchPartyWS, reassignUserIdInParties, disconnectUserFromParties };

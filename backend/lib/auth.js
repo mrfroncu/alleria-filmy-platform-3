@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { SESSION_SECRET } = require('./config');
+const db = require('../db');
 
 // ============ AUTH MIDDLEWARE ============
 function requireAuth(req, res, next) {
@@ -52,7 +53,11 @@ function verifyCastToken(videoId, uid, ct, cte) {
 function requireAuthOrCastToken(req, res, next) {
   if (req.session.user) return next();
   const videoId = (req.params[0] || '').split('/')[0];
-  if (verifyCastToken(videoId, req.query.uid, req.query.ct, req.query.cte)) return next();
+  if (verifyCastToken(videoId, req.query.uid, req.query.ct, req.query.cte)) {
+    // A token minted before the account was banned or deleted must stop working too.
+    const u = db.prepare('SELECT banned_at, is_anonymized FROM users WHERE id = ?').get(req.query.uid);
+    if (u && !u.banned_at && !u.is_anonymized) return next();
+  }
   return res.status(401).json({ error: 'Unauthorized' });
 }
 

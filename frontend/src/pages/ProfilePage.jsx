@@ -100,6 +100,7 @@ export default function ProfilePage() {
     else if (linked === 'authentik') setLinkMsg({ type: 'success', text: 'Połączono konto SSO.' });
     else if (err === 'already_linked_discord') setLinkMsg({ type: 'error', text: 'To konto ma już połączony inny Discord.' });
     else if (err === 'already_linked_authentik') setLinkMsg({ type: 'error', text: 'To konto ma już połączone inne konto SSO.' });
+    else if (err === 'account_banned') setLinkMsg({ type: 'error', text: 'To konto Discord należy do zablokowanego konta - nie można go połączyć.' });
     else if (err === 'link_failed') setLinkMsg({ type: 'error', text: 'Nie udało się połączyć konta. Spróbuj ponownie.' });
     if (mergeId) {
       api.getPendingMerge(mergeId).then(data => setPendingMerge({ mergeId, ...data })).catch(() => {

@@ -21,6 +21,7 @@ const MIGRATIONS = [
   require('./006_video_hidden'),
   require('./007_notification_log'),
   require('./008_video_ratings'),
+  require('./009_user_bans'),
 ];
 
 const BACKUP_PREFIX = 'alleria-';

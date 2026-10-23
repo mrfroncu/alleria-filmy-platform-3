@@ -165,7 +165,7 @@ async function discordCallbackHandler(req, res) {
     const roles = member.roles || [];
     console.log('[AUTH] User roles:', roles);
 
-    const role = discordRoleFromRoles(roles);
+    const role = discordRoleFromRoles(roles, discordUser.id);
     console.log('[AUTH] Role from Discord roles:', role);
     if (!role) {
       console.warn('[AUTH] User has none of the required roles');
@@ -188,6 +188,17 @@ async function discordCallbackHandler(req, res) {
       if (existing) console.log(`[AUTH] Discord ${discordUser.username} matched existing account #${existing.id} by verified e-mail`);
     }
     const rolesJson = JSON.stringify(roles);
+
+    // A banned account stays out — and its identity can't be linked or merged into another one.
+    if (existing?.banned_at) {
+      console.warn(`[AUTH] Discord login refused for banned account #${existing.id}`);
+      logLogin(existing.id, discordUser.username, 'discord', clientIp, 0, 'Account banned');
+      if (req.session.linkPrimaryUserId) {
+        delete req.session.linkPrimaryUserId;
+        return req.session.save(() => res.redirect('/profile?error=account_banned'));
+      }
+      return res.redirect('/login?error=banned');
+    }
 
     // Account-linking mode: attach this Discord identity to the already-logged-in primary
     // account instead of logging in as `existing` (or creating a new row). If `existing`
@@ -401,12 +412,13 @@ async function authentikCallbackHandler(req, res) {
     const discordIdForRoles = claimDiscordId || (target && target.discord_id) || null;
     const liveDiscordRoles = discordIdForRoles ? await fetchDiscordGuildRoles(discordIdForRoles) : null;
     const groupRole = computeAuthentikRole(groups);
-    const discordRole = liveDiscordRoles ? discordRoleFromRoles(liveDiscordRoles) : null;
+    const discordRole = liveDiscordRoles ? discordRoleFromRoles(liveDiscordRoles, discordIdForRoles) : null;
     const deny = (reason, why) => {
       console.warn(`[AUTH] Authentik login denied for ${akUsername}: ${why}`);
       logLogin(null, akUsername, 'authentik', clientIp, 0, why);
       return fail(reason);
     };
+    if (match?.banned_at || existing?.banned_at) return deny('banned', 'Account banned');
     let role;
     if (authentikRequiresDiscordRole()) {
       // SSO is just another door for people who could log in with Discord right now: a live

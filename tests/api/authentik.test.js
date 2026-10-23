@@ -220,6 +220,19 @@ describe('Authentik — dopasowanie do istniejącego konta', () => {
     expect(db.prepare('SELECT discord_id FROM users WHERE id = ?').get(me.id).discord_id).toBe('555000222');
   });
 
+  it('zablokowane konto nie zaloguje się przez SSO (ani po claimie discord_id, ani po sub)', async () => {
+    addUser({ username: 'dc-ban', role: 'member', discord_id: '555000123', auth_method: 'discord', banned_at: '2026-01-01 00:00:00' });
+    addUser({ username: 'sso-ban', role: 'member', auth_method: 'authentik', authentik_sub: 'ak-ban-2', banned_at: '2026-01-01 00:00:00' });
+    for (const u of [{ sub: 'ak-ban-1', discord_id: '555000123' }, { sub: 'ak-ban-2' }]) {
+      fakeUser = { preferred_username: 'ban', groups: [], ...u };
+      const agent = supertest.agent(app);
+      const { code, state } = await startFlow(agent);
+      const res = await agent.get(`/auth/authentik/callback?code=${code}&state=${state}`);
+      expect(res.headers.location).toBe('/login?error=banned');
+      expect((await agent.get('/api/auth/me')).status).toBe(401);
+    }
+  });
+
   it('dopasowanie po e-mailu jest domyślnie wyłączone', async () => {
     const id = addUser({ username: 'mail-off', role: 'member', discord_id: '555000333', discord_email: 'off@example.com', discord_email_verified: 1 });
     fakeUser = { sub: 'ak-mail-off', preferred_username: 'x', email: 'off@example.com', email_verified: true, groups: [] };

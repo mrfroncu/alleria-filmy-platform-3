@@ -99,4 +99,9 @@ function setupNotificationsWS(db) {
   return wss;
 }
 
-module.exports = { createWsToken, notifyUser, setupNotificationsWS };
+// Closes every live notification socket of a user (ban / delete).
+function disconnectUser(userId) {
+  for (const ws of connections.get(userId) || []) ws.close();
+}
+
+module.exports = { createWsToken, notifyUser, setupNotificationsWS, disconnectUser };

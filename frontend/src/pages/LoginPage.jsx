@@ -61,6 +61,7 @@ export default function LoginPage() {
       authentik_no_group: 'Twoje konto SSO nie należy do wymaganej grupy.',
       authentik_no_discord: 'Do logowania przez SSO potrzebne jest konto Discord połączone z kontem SSO.',
       discord_unavailable:  'Nie udało się sprawdzić Twojej roli na Discordzie. Spróbuj ponownie za chwilę.',
+      banned:         'To konto zostało zablokowane.',
     };
     setDiscordError(map[err] ?? 'Logowanie nie powiodło się.');
   }, []);

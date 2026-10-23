@@ -172,7 +172,7 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 ### ⚙️ Zarządzanie *(dev only)*
 - **Kategorie** — drzewo z podkategoriami, osobny tryb dostępu widz/redaktor (publiczny / role Discord / rangi / lista użytkowników), konfiguracja webhooka/push/e-maila per kategoria, znacznik „Kategoria Shortów"
 - **Rangi** — tworzenie/edycja/usuwanie rang aplikacji
-- **Użytkownicy** — podgląd roli i metody logowania, przypisywanie rang aplikacji, podgląd dostępu widza/redaktora per kategoria, usuwanie kont
+- **Użytkownicy** — podgląd roli i metody logowania, przypisywanie rang aplikacji, podgląd dostępu widza/redaktora per kategoria, usuwanie kont, blokowanie kont (ban: odmowa logowania każdą metodą przypiętą do konta + natychmiastowe wylogowanie; usunięcie konta nie blokuje, bo kolejne logowanie tworzy je od nowa)
 - **Zgłoszenia** — kolejka moderacyjna zgłoszeń komentarzy (patrz sekcja „💬 Komentarze”)
 - **RODO** *(widoczna tylko gdy region RODO jest włączony w Ustawieniach)* — kolejka żądań eksportu/usunięcia danych, patrz sekcja „🔐 RODO / Ochrona danych” niżej
 - **Regulamin** — edytor treści regulaminu (markdown) z podglądem na żywo i przyciskiem „Przywróć domyślny”
@@ -225,7 +225,7 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 | 📜 Logi systemowe | `/logs` | `dev` |
 | 🧰 Dev Tools *(Streaming, Administracyjne, Kategorie, Debug)* | `/debug` | `dev` |
 
-Role przypisywane są automatycznie na podstawie ról Discord (`DISCORD_MEMBER_ROLE_ID` / `DISCORD_ADMIN_ROLE_ID` / `DISCORD_DEV_ROLE_ID`) lub grup TeamSpeak (`TS_MEMBER_GROUP_ID` / `TS_ADMIN_GROUP_ID`), niezależnie od rang aplikacji (App Ranks), które służą wyłącznie do dostępu per kategoria.
+Role przypisywane są automatycznie na podstawie ról Discord (`DISCORD_MEMBER_ROLE_ID` / `DISCORD_ADMIN_ROLE_ID`; rola `dev` tylko dla kont Discord wpisanych w `DISCORD_DEV_USER_IDS`) lub grup TeamSpeak (`TS_MEMBER_GROUP_ID` / `TS_ADMIN_GROUP_ID`), niezależnie od rang aplikacji (App Ranks), które służą wyłącznie do dostępu per kategoria.
 
 ---
 
@@ -276,7 +276,7 @@ nano .env
 Wypełnij co najmniej:
 - `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`
 - `DISCORD_REDIRECT_URI` — musi zgadzać się z Discord Developer Portal
-- `DISCORD_GUILD_ID`, `DISCORD_MEMBER_ROLE_ID`, `DISCORD_ADMIN_ROLE_ID`, `DISCORD_DEV_ROLE_ID`
+- `DISCORD_GUILD_ID`, `DISCORD_MEMBER_ROLE_ID`, `DISCORD_ADMIN_ROLE_ID`, `DISCORD_DEV_USER_IDS`
 - `SESSION_SECRET` — losowy string
 - `STREAM_SECRET` — losowy string (musi zgadzać się między app a streaming)
 
@@ -322,7 +322,7 @@ Lub konfiguracja permanentna w `~/.cloudflared/config.yml`.
 | `DISCORD_GUILD_ID` | ID serwera Discord |
 | `DISCORD_MEMBER_ROLE_ID` | ID roli dającej dostęp do platformy |
 | `DISCORD_ADMIN_ROLE_ID` | ID roli admina/redaktora |
-| `DISCORD_DEV_ROLE_ID` | ID roli developera — zawsze tylko `.env`, nawet gdy `DISCORD_ROLES_CONFIG_SOURCE=panel` |
+| `DISCORD_DEV_USER_IDS` | ID kont Discord (nie roli) z rolą developera, po przecinku — zawsze tylko `.env`, nawet gdy `DISCORD_ROLES_CONFIG_SOURCE=panel`. Zastępuje dawne `DISCORD_DEV_ROLE_ID` |
 
 ### Authentik SSO (opcjonalnie)
 W Authentik: **Applications → Providers → OAuth2/OpenID Provider** (Client type: *Confidential*, Redirect URI w trybie *Strict* = wartość `AUTHENTIK_REDIRECT_URI`), potem **Application** podpięta do tego providera. Dostęp można ograniczyć politykami/grupami przypiętymi do aplikacji w Authentik albo zmiennymi `*_GROUPS` poniżej. Wszystko tylko w `.env` (bez edycji z panelu).
