@@ -12,6 +12,7 @@ module.exports = {
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
         PRIMARY KEY (user_id, video_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_video_ratings_video ON video_ratings(video_id);

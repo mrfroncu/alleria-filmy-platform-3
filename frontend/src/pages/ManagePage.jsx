@@ -49,7 +49,7 @@ function SettingsSectionHeader({ id, icon: Icon, label, first }) {
 }
 
 export default function ManagePage() {
-  const { config } = useSettings();
+  const { config, refreshConfig } = useSettings();
   const confirm = useConfirm();
   const toast = useToast();
   const [searchParams] = useSearchParams();
@@ -463,6 +463,7 @@ export default function ManagePage() {
       const r = await api.setSettings({ end_screen_delay: Number(endScreenDelay) });
       setSettingsState(r);
       setEndScreenDelay(String(r.end_screen_delay ?? 1));
+      refreshConfig();
       setStatus({ type: 'success', msg: 'Czas ekranu końcowego zapisany.' });
     } catch (e) {
       setStatus({ type: 'error', msg: e.message });

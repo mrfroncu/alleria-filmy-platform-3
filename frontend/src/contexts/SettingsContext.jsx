@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '../utils/api';
 
 const SettingsContext = createContext(null);
@@ -25,15 +25,16 @@ export function SettingsProvider({ children }) {
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(true);
 
+  const refreshConfig = useCallback(() => api.getConfig()
+    .then(c => setConfig(prev => ({ ...prev, ...c })))
+    .catch(() => {}), []);
+
   useEffect(() => {
-    api.getConfig()
-      .then(c => setConfig(prev => ({ ...prev, ...c })))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+    refreshConfig().finally(() => setLoading(false));
+  }, [refreshConfig]);
 
   return (
-    <SettingsContext.Provider value={{ config, loading }}>
+    <SettingsContext.Provider value={{ config, loading, refreshConfig }}>
       {children}
     </SettingsContext.Provider>
   );
