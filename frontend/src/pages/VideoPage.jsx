@@ -730,6 +730,7 @@ export default function VideoPage() {
   const [togglingHidden, setTogglingHidden] = useState(false);
   const [showPublication, setShowPublication] = useState(false);
   const [isFav, setIsFav] = useState(false);
+  const [myRating, setMyRating] = useState(0);
   const [favCount, setFavCount] = useState(0);
   const [favLoading, setFavLoading] = useState(false);
   const [prevVideo, setPrevVideo] = useState(null);
@@ -887,11 +888,24 @@ export default function VideoPage() {
     setTimeout(() => navigate(`/video/${videoId}?${p.toString()}`), 350);
   };
 
+  useEffect(() => {
+    setMyRating(0);
+    api.getMyRating(id).then(r => setMyRating(r.rating || 0)).catch(() => {});
+  }, [id]);
+
+  const rateVideo = async (n) => {
+    const prev = myRating;
+    setMyRating(n);
+    try { await api.rateVideo(id, n); } catch (e) { setMyRating(prev); }
+  };
+
   const toggleFav = async () => {
     setFavLoading(true);
     try { if (isFav) { await api.removeFavorite(id); setIsFav(false); setFavCount(c => Math.max(0, c - 1)); } else { await api.addFavorite(id); setIsFav(true); setFavCount(c => c + 1); } } catch (e) {}
     setFavLoading(false);
   };
+
+  const endScreen = { rating: myRating, onRate: rateVideo, isFav, onToggleFav: toggleFav, favDisabled: favLoading };
 
   // Admin/dev only (same as editing) — hide = draft / take down without deleting, publish = make
   // visible again. The backend decides the date (see PUT /api/videos/:id/visibility).
@@ -1187,9 +1201,9 @@ export default function VideoPage() {
 
         <div ref={playerWrapRef} className="mb-2 anim-stagger-2 scroll-mt-6" key={`player-${activeSource}`}>
           {video.stream_video_id && video.stream_status === 'ready' && activeSource === 'main' ? (
-            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={selectSource} mediaSession={mediaSessionInfo} />
+            <SecurePlayer streamVideoId={video.stream_video_id} drmEnhanced={video.drm_enhanced} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={selectSource} mediaSession={mediaSessionInfo} endScreen={endScreen} />
           ) : isStreamer && streamerVideoId ? (
-            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={selectSource} mediaSession={mediaSessionInfo} />
+            <SecurePlayer streamVideoId={streamerVideoId} drmEnhanced={false} title={video.title} controlRef={playerControlRef} onTimeUpdate={handleTimeUpdate} onPlay={handlePlayerPlay} onPause={handlePlayerPause} onSeek={handlePlayerSeek} mirrors={otherSources} onSelectMirror={selectSource} mediaSession={mediaSessionInfo} endScreen={endScreen} />
           ) : isPlex && src.url ? (
             <div className="aspect-video rounded-[32px] overflow-hidden shadow-2xl animate-scale-in plex-container flex items-center justify-center">
               {/* Floating particles */}

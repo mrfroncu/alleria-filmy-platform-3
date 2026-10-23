@@ -281,17 +281,19 @@ export default function Layout({ children }) {
             </>
           )}
 
-          <div className="mt-2">
-            <a
-              href="https://github.com/mrfroncu/alleria-filmy-platform-3/issues"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white transition-all duration-300 font-semibold text-[13px]"
-            >
-              <MessageSquarePlus className="w-[18px] h-[18px] shrink-0" />
-              Zgłoś Błąd / Zaproponuj funkcjonalność
-            </a>
-          </div>
+          {config.feedbackUrl && (
+            <div className="mt-2">
+              <a
+                href={config.feedbackUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white transition-all duration-300 font-semibold text-[13px]"
+              >
+                <MessageSquarePlus className="w-[18px] h-[18px] shrink-0" />
+                Zgłoś Błąd / Zaproponuj funkcjonalność
+              </a>
+            </div>
+          )}
         </div>
 
         {/* User card — only shown when the top bar (which hosts the profile menu) is off */}

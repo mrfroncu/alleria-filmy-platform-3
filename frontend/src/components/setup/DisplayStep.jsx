@@ -11,12 +11,14 @@ export default function DisplayStep({ settings, reloadSettings }) {
   const [limitForm, setLimitForm] = useState({ limit_display_name: '', limit_bio: '', limit_comment: '' });
   const [displayForm, setDisplayForm] = useState({ videos_per_page: '', grid_columns: '', grid_card_min_width: '' });
   const [logsForm, setLogsForm] = useState({ logs_per_page: '' });
+  const [feedbackUrl, setFeedbackUrl] = useState('');
 
   useEffect(() => {
     if (!settings) return;
     setLimitForm({ limit_display_name: settings.limit_display_name, limit_bio: settings.limit_bio, limit_comment: settings.limit_comment });
     setDisplayForm({ videos_per_page: settings.videos_per_page, grid_columns: settings.grid_columns, grid_card_min_width: settings.grid_card_min_width });
     setLogsForm({ logs_per_page: settings.logs_per_page });
+    setFeedbackUrl(settings.feedback_url || '');
   }, [settings]);
 
   if (!settings) return <div className="h-64 skeleton rounded-2xl" />;
@@ -94,6 +96,16 @@ export default function DisplayStep({ settings, reloadSettings }) {
             label={settings.infinite_scroll ? 'Infinite scroll: WŁĄCZONY' : 'Infinite scroll: WYŁĄCZONY'}
           />
         </div>
+      </div>
+
+      <div className="mb-6 pb-6 border-b border-zinc-100 dark:border-zinc-800">
+        <h3 className="text-sm font-bold text-zinc-900 dark:text-white font-display mb-1">Zgłoś błąd / Zaproponuj funkcjonalność</h3>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Adres linku w menu bocznym. Puste pole ukrywa link.</p>
+        <div className="max-w-xl">
+          <input type="url" value={feedbackUrl} placeholder="https://..."
+            onChange={e => setFeedbackUrl(e.target.value)} className="input-field !py-3 text-sm" />
+        </div>
+        <button onClick={() => save({ feedback_url: feedbackUrl }, 'Zapisano.')} disabled={saving} className="btn-primary text-sm mt-4 disabled:opacity-50">Zapisz</button>
       </div>
 
       <div className="mb-6 pb-6 border-b border-zinc-100 dark:border-zinc-800">

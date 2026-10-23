@@ -207,7 +207,21 @@ router.get('/api/videos/:id/analytics', requireAuth, (req, res) => {
     const oldestView = db.prepare('SELECT MIN(watched_at) AS d FROM watch_logs WHERE video_id = ?').get(video.id)?.d;
     const oldestActivity = [oldestEvent, oldestView].filter(Boolean).sort()[0] || null;
 
+    // Ratings and favorites are not filtered by the viewer/context/date filters above.
+    const ratingRows = db.prepare(`SELECT r.rating, r.updated_at, u.id AS user_id, u.username, u.display_name
+      FROM video_ratings r LEFT JOIN users u ON u.id = r.user_id WHERE r.video_id = ? ORDER BY r.updated_at DESC`).all(video.id);
+    const distribution = [1, 2, 3, 4, 5].map(star => ratingRows.filter(r => r.rating === star).length);
+    const ratings = {
+      count: ratingRows.length,
+      average: ratingRows.length ? Math.round((ratingRows.reduce((a, r) => a + r.rating, 0) / ratingRows.length) * 100) / 100 : null,
+      distribution,
+      entries: ratingRows,
+    };
+    const favorites = db.prepare(`SELECT f.created_at, u.id AS user_id, u.username, u.display_name
+      FROM favorites f LEFT JOIN users u ON u.id = f.user_id WHERE f.video_id = ? ORDER BY f.created_at DESC`).all(video.id);
+
     res.json({
+      ratings, favorites,
       dailyViews, heatmap, summary, viewers, context, oldestActivity,
       includeUserIds: includeIds, excludeUserIds: excludeIds, after, before,
     });

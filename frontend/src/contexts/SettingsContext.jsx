@@ -17,6 +17,7 @@ const DEFAULT_CONFIG = {
   chunkedUpload: true,
   customYoutubePlayer: false,
   gdprRegion: 'off',
+  feedbackUrl: '',
 };
 
 export function SettingsProvider({ children }) {

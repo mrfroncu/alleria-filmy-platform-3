@@ -6,6 +6,7 @@ const { getUploadLimitMbps } = require('./uploadThrottle');
 
 // ============ APP SETTINGS API (dev only) ============
 const TS3_DELIVERY_VALUES = ['pm', 'poke', 'both'];
+const DEFAULT_FEEDBACK_URL = 'https://github.com/mrfroncu/alleria-filmy-platform-3/issues';
 const GDPR_REGION_VALUES = ['off', 'eu', 'brazil'];
 
 function settingsPayload() {
@@ -29,6 +30,7 @@ function settingsPayload() {
     upload_limit_mbps: getUploadLimitMbps(),
     youtube_custom_player: getSetting('youtube_custom_player', '0') === '1',
     gdpr_region: getSetting('gdpr_region', 'off'),
+    feedback_url: getSetting('feedback_url', DEFAULT_FEEDBACK_URL),
 
     // SMTP — dev-only payload, so the raw password is returned here same as ts3/ts6 passwords below.
     smtp_host: getSetting('smtp_host', ''),

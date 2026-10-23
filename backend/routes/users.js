@@ -23,6 +23,7 @@ router.delete('/api/users/:id', requireAdmin, (req, res) => {
     if (!user) return res.status(404).json({ error: 'Użytkownik nie znaleziony.' });
     // Clear related data
     db.prepare('DELETE FROM favorites WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM video_ratings WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM watch_logs WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM users WHERE id = ?').run(userId);
     // Log them out everywhere right away (refreshSessionUser would also catch it on their next request)

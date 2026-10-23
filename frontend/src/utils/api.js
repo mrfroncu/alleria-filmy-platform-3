@@ -199,6 +199,8 @@ export const api = {
   addFavorite: (videoId) => request(`/favorites/${videoId}`, { method: 'POST' }),
   removeFavorite: (videoId) => request(`/favorites/${videoId}`, { method: 'DELETE' }),
   checkFavorite: (videoId) => request(`/favorites/check/${videoId}`),
+  getMyRating: (videoId) => request(`/videos/${videoId}/rating`),
+  rateVideo: (videoId, rating) => request(`/videos/${videoId}/rating`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating }) }),
 
   // History
   getHistory: () => request('/history'),

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { FolderOpen, Plus, Pencil, Trash2, Users, Shield, Lock, FileText, Settings, ShieldCheck, LayoutGrid, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail, Play, AlertTriangle, Flag, ExternalLink, Loader2, Image, Database, Upload } from 'lucide-react';
+import { FolderOpen, Plus, Pencil, Trash2, Users, Shield, Lock, FileText, Settings, ShieldCheck, LayoutGrid, Frame, PanelTop, X, LogIn, Bot, Headphones, Radio, MessageSquare, Info, Mail, Play, AlertTriangle, Flag, ExternalLink, Loader2, Image, Database, Upload, MessageSquarePlus } from 'lucide-react';
 import { api } from '../utils/api';
 import { buildCategoryTreeOptions, formatDate } from '../utils/helpers';
 import { roleBadgeClass } from '../utils/roleColors';
@@ -152,6 +152,7 @@ export default function ManagePage() {
   const [limitBaseline, setLimitBaseline] = useState(limitForm);
   const [displayForm, setDisplayForm] = useState({ videos_per_page: '', grid_columns: '', grid_card_min_width: '' });
   const [displayBaseline, setDisplayBaseline] = useState(displayForm);
+  const [feedbackUrl, setFeedbackUrl] = useState('');
   const [logsForm, setLogsForm] = useState({ logs_per_page: '' });
   const [logsBaseline, setLogsBaseline] = useState(logsForm);
   const [originsForm, setOriginsForm] = useState([]);
@@ -197,6 +198,7 @@ export default function ManagePage() {
       setDisplayForm(display); setDisplayBaseline(display);
       const logs = { logs_per_page: s.logs_per_page };
       setLogsForm(logs); setLogsBaseline(logs);
+      setFeedbackUrl(s.feedback_url || '');
       const origins = s.iframe_allowed_origins || [];
       setOriginsForm(origins); setOriginsBaseline(origins);
       const ts6 = {
@@ -434,6 +436,19 @@ export default function ManagePage() {
       const newDisplay = { videos_per_page: r.videos_per_page, grid_columns: r.grid_columns, grid_card_min_width: r.grid_card_min_width };
       setDisplayForm(newDisplay); setDisplayBaseline(newDisplay);
       setStatus({ type: 'success', msg: 'Ustawienia wyświetlania filmów zapisane.' });
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message });
+    }
+    setSavingSettings(false);
+  };
+
+  const saveFeedbackUrl = async () => {
+    setSavingSettings(true);
+    try {
+      const r = await api.setSettings({ feedback_url: feedbackUrl });
+      setSettingsState(r);
+      setFeedbackUrl(r.feedback_url || '');
+      setStatus({ type: 'success', msg: 'Link zgłaszania błędów zapisany.' });
     } catch (e) {
       setStatus({ type: 'error', msg: e.message });
     }
@@ -1524,6 +1539,28 @@ export default function ManagePage() {
                     <b>WŁĄCZONY</b>: kolejne filmy doładowują się automatycznie podczas przewijania, zamiast przycisków stron.
                   </p>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Feedback link */}
+          <div className="card p-8 h-full flex flex-col">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-violet-50 dark:bg-violet-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                <MessageSquarePlus className="w-6 h-6 text-violet-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white font-display mb-2">Zgłoś błąd / Zaproponuj funkcjonalność</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Adres linku w menu bocznym. Puste pole ukrywa link.
+                </p>
+                <label className="label-field">Adres URL</label>
+                <input type="url" value={feedbackUrl} placeholder="https://..."
+                  onChange={e => setFeedbackUrl(e.target.value)}
+                  className="input-field !py-3 text-sm" />
+                <button onClick={saveFeedbackUrl} disabled={savingSettings || settings == null} className="btn-primary text-sm mt-4">
+                  {savingSettings ? 'Zapisywanie...' : 'Zapisz'}
+                </button>
               </div>
             </div>
           </div>
