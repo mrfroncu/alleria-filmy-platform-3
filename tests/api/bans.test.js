@@ -1,4 +1,4 @@
-// Blokada kont z panelu (ban) i rola dev tylko dla kont Discord z DISCORD_DEV_USER_IDS.
+// Blokada kont z panelu (ban) i źródło roli dev z Discorda (DISCORD_DEV_MODE: user / role).
 import { describe, it, before as beforeAll, after as afterAll } from 'node:test';
 import { expect } from 'expect';
 import http from 'node:http';
@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { seedUsers, loginAs, db } from '../helpers/testApp.js';
 
 const require = createRequire(import.meta.url);
-const { discordRoleFromRoles, demoteUnlistedDevs } = require('../../backend/lib/discordRoles');
+const { devMode, discordRoleFromRoles, demoteUnauthorizedDevs } = require('../../backend/lib/discordRoles');
 const { refreshSessionUser, DISCORD_RECHECK_MS } = require('../../backend/lib/sessionUser');
 const { signCastToken, requireAuthOrCastToken } = require('../../backend/lib/auth');
 
@@ -69,37 +69,61 @@ describe('Blokada konta', () => {
   });
 });
 
-describe('Rola dev tylko z DISCORD_DEV_USER_IDS', () => {
-  afterAll(() => {
-    for (const k of ['DISCORD_DEV_USER_IDS', 'DISCORD_DEV_ROLE_ID', 'DISCORD_MEMBER_ROLE_ID', 'DISCORD_ADMIN_ROLE_ID', 'AUTHENTIK_DEV_GROUPS']) delete process.env[k];
-  });
+describe('Tryb roli dev (DISCORD_DEV_MODE)', () => {
+  const envKeys = ['DISCORD_DEV_MODE', 'DISCORD_DEV_USER_IDS', 'DISCORD_DEV_ROLE_ID', 'DISCORD_MEMBER_ROLE_ID', 'DISCORD_ADMIN_ROLE_ID', 'AUTHENTIK_DEV_GROUPS'];
+  afterAll(() => { for (const k of envKeys) delete process.env[k]; });
 
-  it('rola Discorda nie daje deva, ID konta tak', () => {
+  it('tryb user (domyślny, także przy nieznanej wartości): rola Discorda nie daje deva, ID konta tak', () => {
     Object.assign(process.env, { DISCORD_DEV_ROLE_ID: 'r-dev', DISCORD_MEMBER_ROLE_ID: 'r-member', DISCORD_ADMIN_ROLE_ID: 'r-admin', DISCORD_DEV_USER_IDS: '111, 222' });
-    expect(discordRoleFromRoles(['r-dev', 'r-member'], '999')).toBe('member');
-    expect(discordRoleFromRoles(['r-dev'], '999')).toBeNull();
-    expect(discordRoleFromRoles(['r-admin'], '999')).toBe('admin');
-    expect(discordRoleFromRoles(['r-member'], '222')).toBe('dev');
-    expect(discordRoleFromRoles([], '111')).toBe('dev');
+    for (const mode of [undefined, 'user', 'USER', 'cokolwiek']) {
+      if (mode === undefined) delete process.env.DISCORD_DEV_MODE; else process.env.DISCORD_DEV_MODE = mode;
+      expect(devMode()).toBe('user');
+      expect(discordRoleFromRoles(['r-dev', 'r-member'], '999')).toBe('member');
+      expect(discordRoleFromRoles(['r-dev'], '999')).toBeNull();
+      expect(discordRoleFromRoles(['r-admin'], '999')).toBe('admin');
+      expect(discordRoleFromRoles(['r-member'], '222')).toBe('dev');
+      expect(discordRoleFromRoles([], '111')).toBe('dev');
+    }
   });
 
-  it('przy starcie dev bez wpisu w DISCORD_DEV_USER_IDS spada do roli z Discorda', () => {
+  it('tryb role: dev z roli DISCORD_DEV_ROLE_ID, lista ID jest ignorowana', () => {
+    Object.assign(process.env, { DISCORD_DEV_MODE: 'role', DISCORD_DEV_ROLE_ID: 'r-dev', DISCORD_MEMBER_ROLE_ID: 'r-member', DISCORD_ADMIN_ROLE_ID: 'r-admin', DISCORD_DEV_USER_IDS: '111' });
+    expect(devMode()).toBe('role');
+    expect(discordRoleFromRoles(['r-dev'], '999')).toBe('dev');
+    expect(discordRoleFromRoles(['r-member'], '111')).toBe('member');
+    expect(discordRoleFromRoles([], '111')).toBeNull();
+    delete process.env.DISCORD_DEV_ROLE_ID;
+    expect(discordRoleFromRoles(['r-dev', 'r-member'], '999')).toBe('member'); // brak ID roli = nikt nie jest devem
+  });
+
+  it('tryb role: przy starcie spada dev bez roli dev na Discordzie', () => {
+    Object.assign(process.env, { DISCORD_DEV_MODE: 'role', DISCORD_DEV_ROLE_ID: 'r-dev', DISCORD_MEMBER_ROLE_ID: 'r-member', DISCORD_ADMIN_ROLE_ID: 'r-admin' });
+    db.prepare("UPDATE users SET discord_roles = '[\"r-dev\"]' WHERE id = 103").run(); // testowy dev z seedUsers
+    db.prepare("UPDATE users SET role = 'member' WHERE role = 'dev' AND id != 103").run(); // devowie z innych testów
+    addUser(430, { role: 'dev', discord_id: '9430', discord_roles: '["r-dev","r-member"]' });
+    addUser(431, { role: 'dev', discord_id: '9431', discord_roles: '["r-admin"]' });
+    expect(demoteUnauthorizedDevs()).toEqual([{ id: 431, role: 'admin' }]);
+    db.prepare("UPDATE users SET discord_roles = '[]' WHERE id = 103").run();
+  });
+
+  it('tryb user: przy starcie dev bez wpisu w DISCORD_DEV_USER_IDS spada do roli z Discorda', () => {
+    delete process.env.DISCORD_DEV_MODE;
     // discord-103 = testowy dev z seedUsers
     Object.assign(process.env, { DISCORD_MEMBER_ROLE_ID: 'r-member', DISCORD_ADMIN_ROLE_ID: 'r-admin', DISCORD_DEV_USER_IDS: '9410,discord-103' });
-    db.prepare("UPDATE users SET role = 'member' WHERE id = 403").run(); // dev z testu blokady
+    db.prepare("UPDATE users SET role = 'member' WHERE role = 'dev' AND id != 103").run(); // devowie z innych testów
     addUser(410, { role: 'dev', discord_id: '9410' });
     addUser(411, { role: 'dev', discord_id: '9411', discord_roles: '["r-admin"]' });
     addUser(412, { role: 'dev', discord_id: '9412', discord_roles: '["r-dev"]', authentik_sub: 'ak-412' });
     addUser(413, { role: 'dev', discord_id: null, authentik_sub: 'ak-413' });
 
-    expect(demoteUnlistedDevs().map(d => d.id).sort()).toEqual([411, 412, 413]);
+    expect(demoteUnauthorizedDevs().map(d => d.id).sort()).toEqual([411, 412, 413]);
     const role = (id) => db.prepare('SELECT role FROM users WHERE id = ?').get(id).role;
     expect([role(410), role(411), role(412), role(413)]).toEqual(['dev', 'admin', 'member', 'member']);
 
     // Z AUTHENTIK_DEV_GROUPS dev mógł przyjść z grupy SSO, więc konta z Authentikiem zostają
     db.prepare("UPDATE users SET role = 'dev' WHERE id IN (412, 413)").run();
     process.env.AUTHENTIK_DEV_GROUPS = 'alleria-dev';
-    expect(demoteUnlistedDevs()).toEqual([]);
+    expect(demoteUnauthorizedDevs()).toEqual([]);
   });
 });
 

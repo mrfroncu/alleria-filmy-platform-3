@@ -225,7 +225,7 @@ Uwierzytelnianie Discord/TeamSpeak 3/6 (z łączeniem i scalaniem kont), zarząd
 | 📜 Logi systemowe | `/logs` | `dev` |
 | 🧰 Dev Tools *(Streaming, Administracyjne, Kategorie, Debug)* | `/debug` | `dev` |
 
-Role przypisywane są automatycznie na podstawie ról Discord (`DISCORD_MEMBER_ROLE_ID` / `DISCORD_ADMIN_ROLE_ID`; rola `dev` tylko dla kont Discord wpisanych w `DISCORD_DEV_USER_IDS`) lub grup TeamSpeak (`TS_MEMBER_GROUP_ID` / `TS_ADMIN_GROUP_ID`), niezależnie od rang aplikacji (App Ranks), które służą wyłącznie do dostępu per kategoria.
+Role przypisywane są automatycznie na podstawie ról Discord (`DISCORD_MEMBER_ROLE_ID` / `DISCORD_ADMIN_ROLE_ID`; rola `dev` zależnie od `DISCORD_DEV_MODE`: domyślnie tylko dla kont Discord wpisanych w `DISCORD_DEV_USER_IDS`, w trybie `role` dla roli `DISCORD_DEV_ROLE_ID`) lub grup TeamSpeak (`TS_MEMBER_GROUP_ID` / `TS_ADMIN_GROUP_ID`), niezależnie od rang aplikacji (App Ranks), które służą wyłącznie do dostępu per kategoria.
 
 ---
 
@@ -276,7 +276,7 @@ nano .env
 Wypełnij co najmniej:
 - `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`
 - `DISCORD_REDIRECT_URI` — musi zgadzać się z Discord Developer Portal
-- `DISCORD_GUILD_ID`, `DISCORD_MEMBER_ROLE_ID`, `DISCORD_ADMIN_ROLE_ID`, `DISCORD_DEV_USER_IDS`
+- `DISCORD_GUILD_ID`, `DISCORD_MEMBER_ROLE_ID`, `DISCORD_ADMIN_ROLE_ID`, `DISCORD_DEV_MODE` + `DISCORD_DEV_USER_IDS` (lub `DISCORD_DEV_ROLE_ID` w trybie `role`)
 - `SESSION_SECRET` — losowy string
 - `STREAM_SECRET` — losowy string (musi zgadzać się między app a streaming)
 
@@ -322,7 +322,9 @@ Lub konfiguracja permanentna w `~/.cloudflared/config.yml`.
 | `DISCORD_GUILD_ID` | ID serwera Discord |
 | `DISCORD_MEMBER_ROLE_ID` | ID roli dającej dostęp do platformy |
 | `DISCORD_ADMIN_ROLE_ID` | ID roli admina/redaktora |
-| `DISCORD_DEV_USER_IDS` | ID kont Discord (nie roli) z rolą developera, po przecinku — zawsze tylko `.env`, nawet gdy `DISCORD_ROLES_CONFIG_SOURCE=panel`. Zastępuje dawne `DISCORD_DEV_ROLE_ID` |
+| `DISCORD_DEV_MODE` | Skąd Discord daje rolę developera: `user` (domyślnie) — konta z `DISCORD_DEV_USER_IDS`; `role` — rola `DISCORD_DEV_ROLE_ID` (mniej bezpieczne: każdy, kto może nadawać role na serwerze, może zostać devem). Przy starcie devowie, których bieżący tryb nie potwierdza, tracą rolę dev. Zawsze tylko `.env`, nawet gdy `DISCORD_ROLES_CONFIG_SOURCE=panel` |
+| `DISCORD_DEV_USER_IDS` | Tryb `user`: ID kont Discord (nie roli) z rolą developera, po przecinku |
+| `DISCORD_DEV_ROLE_ID` | Tryb `role`: ID roli developera na serwerze Discord |
 
 ### Authentik SSO (opcjonalnie)
 W Authentik: **Applications → Providers → OAuth2/OpenID Provider** (Client type: *Confidential*, Redirect URI w trybie *Strict* = wartość `AUTHENTIK_REDIRECT_URI`), potem **Application** podpięta do tego providera. Dostęp można ograniczyć politykami/grupami przypiętymi do aplikacji w Authentik albo zmiennymi `*_GROUPS` poniżej. Wszystko tylko w `.env` (bez edycji z panelu).

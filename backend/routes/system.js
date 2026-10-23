@@ -7,7 +7,7 @@ const { requireAuth, requireDev } = require('../lib/auth');
 const { settingsPayload } = require('../lib/appSettings');
 const { isAuthentikConfigured, authentikDisplayName } = require('../lib/authentik');
 const { turnstileSiteKey } = require('../lib/turnstile');
-const { devDiscordIds } = require('../lib/discordRoles');
+const { devMode, devConfigured } = require('../lib/discordRoles');
 
 const router = express.Router();
 
@@ -21,7 +21,8 @@ router.get('/api/health', (req, res) => {
     guild_id_set: !!process.env.DISCORD_GUILD_ID,
     member_role_set: !!process.env.DISCORD_MEMBER_ROLE_ID,
     admin_role_set: !!process.env.DISCORD_ADMIN_ROLE_ID,
-    dev_users_set: devDiscordIds().length > 0,
+    dev_mode: devMode(),
+    dev_configured: devConfigured(),
     // The login page shows the SSO button only when this is true, labelled with authentik_name.
     authentik_configured: isAuthentikConfigured(),
     authentik_name: authentikDisplayName(),
