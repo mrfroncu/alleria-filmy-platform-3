@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { ArrowLeft, Loader2, RotateCcw, Users, TrendingUp, X, ChevronDown, Star, Heart } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Loader2, RotateCcw, Users, TrendingUp, X, ChevronDown, Star, Heart } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea, ReferenceLine } from 'recharts';
 import { api } from '../utils/api';
-import { formatDateShort, extractYoutubeId } from '../utils/helpers';
+import { formatDate, formatDateShort, parseDate, extractYoutubeId } from '../utils/helpers';
 import SecurePlayer from '../components/SecurePlayer';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useToast } from '../contexts/ToastContext';
@@ -124,18 +124,29 @@ const INTERACTION_KINDS = {
   skips: { label: 'Pominięcia', color: COLORS.skips, hint: 'Widzowie przewijali dalej, zaczynając od tego fragmentu.' },
 };
 
-function pluralEvents(n) {
-  if (n === 1) return 'zdarzenie';
+function plural(n, one, few, many) {
+  if (n === 1) return one;
   const mod10 = n % 10, mod100 = n % 100;
-  return mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'zdarzenia' : 'zdarzeń';
+  return mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? few : many;
 }
 
-// What the moment preview can play and seek. Playback events don't record which source they
-// came from (SecurePlayer and the YouTube players both report them), so this takes the first
-// seekable source in display order: self-hosted main, then streamer/YouTube links, skipping
-// alternative versions (other cut, behind the scenes) and sources with no seeking (Plex).
-function pickPreviewSource(video) {
+function seekableSpec(s) {
+  if (!s.url || s.type === 'plex') return null;
+  if (s.type === 'streamer') return { kind: 'stream', id: s.url.replace('self-hosted:', ''), drm: false };
+  const yt = extractYoutubeId(s.url);
+  return yt ? { kind: 'youtube', id: yt } : null;
+}
+
+// What the moment preview can play and seek for the selected version. An alternative version
+// (mirrorN) previews exactly that mirror. The film itself spans main + regular mirrors with the
+// same timeline, so it takes the first seekable one in display order: self-hosted main, then
+// streamer/YouTube links, skipping sources with no seeking (Plex).
+function pickPreviewSource(video, versionKey) {
   if (!video) return null;
+  if (versionKey && versionKey !== 'main') {
+    const n = versionKey.slice(6);
+    return seekableSpec({ url: video[`mirror${n}_url`], type: video[`mirror${n}_type`] });
+  }
   if (video.stream_video_id && video.stream_status === 'ready') {
     return { kind: 'stream', id: video.stream_video_id, drm: !!video.drm_enhanced };
   }
@@ -144,12 +155,119 @@ function pickPreviewSource(video) {
     if (video[`mirror${i}_url`] && !video[`mirror${i}_is_alt`]) specs.push({ url: video[`mirror${i}_url`], type: video[`mirror${i}_type`] });
   }
   for (const s of specs) {
-    if (!s.url || s.type === 'plex') continue;
-    if (s.type === 'streamer') return { kind: 'stream', id: s.url.replace('self-hosted:', ''), drm: false };
-    const yt = extractYoutubeId(s.url);
-    if (yt) return { kind: 'youtube', id: yt };
+    const spec = seekableSpec(s);
+    if (spec) return spec;
   }
   return null;
+}
+
+function formatWatched(seconds) {
+  const s = Math.round(seconds || 0);
+  if (s < 60) return `${s} s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h ${m % 60} min`;
+}
+
+function formatClock(dateStr) {
+  const d = parseDate(dateStr);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function AltBadge() {
+  return <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-lime-50 dark:bg-lime-500/10 text-lime-700 dark:text-lime-400 shrink-0">Alt</span>;
+}
+
+// Which source people watch on: share of watch time per source, plus the most common switches.
+// Independent of the version selector: it compares sources, not one version's content.
+function SourceUsageCard({ usage }) {
+  const sources = usage?.sources || [];
+  const total = sources.reduce((a, s) => a + s.watchedSeconds, 0);
+  return (
+    <ChartCard title="Źródła odtwarzania" subtitle="Z których źródeł oglądano film (wszystkie wersje, wg filtrów powyżej). Udział liczony z czasu oglądania.">
+      {sources.length === 0 ? (
+        <p className="text-sm text-zinc-400 py-4 text-center">Brak danych o źródłach. Zbierane od tej wersji aplikacji.</p>
+      ) : (
+        <>
+          <div className="space-y-3">
+            {sources.map(s => {
+              const pct = total > 0 ? Math.round((s.watchedSeconds / total) * 100) : 0;
+              return (
+                <div key={s.key}>
+                  <div className="flex items-center gap-2 mb-1 text-xs">
+                    <span className="font-bold text-zinc-700 dark:text-zinc-200 truncate">{s.label}</span>
+                    {s.isAlt && <AltBadge />}
+                    <span className="ml-auto text-zinc-500 dark:text-zinc-400 shrink-0">
+                      {formatWatched(s.watchedSeconds)} · {s.users} {plural(s.users, 'widz', 'widzów', 'widzów')} · {s.sessions} {plural(s.sessions, 'sesja', 'sesje', 'sesji')}
+                    </span>
+                    <span className="w-9 text-right font-bold text-zinc-900 dark:text-white shrink-0">{pct}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: s.isAlt ? '#84cc16' : COLORS.retention }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {usage.switches.length > 0 && (
+            <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Przełączenia źródła</p>
+              <ul className="space-y-1 text-xs">
+                {usage.switches.map(sw => (
+                  <li key={`${sw.from}>${sw.to}`} className="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
+                    <span className="truncate">{sw.from}</span>
+                    <ArrowRight className="w-3 h-3 text-zinc-400 shrink-0" />
+                    <span className="truncate">{sw.to}</span>
+                    <span className="ml-auto font-bold text-zinc-900 dark:text-white shrink-0">{sw.count}×</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+    </ChartCard>
+  );
+}
+
+// Per-visit timeline: who opened the film when, on which source, which part they watched and
+// where they switched to another source.
+function SourceTimelineCard({ usage }) {
+  const visits = usage?.visits || [];
+  if (visits.length === 0) return null;
+  return (
+    <ChartCard title="Historia źródeł" subtitle="Ostatnie wizyty: na jakim źródle oglądano i kiedy widz przełączył się na inne.">
+      <ul className="max-h-[28rem] overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800 -mx-2">
+        {visits.map(v => (
+          <li key={v.viewId} className="px-2 py-3">
+            <div className="flex items-center gap-2 mb-2 text-xs">
+              <span className="font-bold text-zinc-800 dark:text-zinc-100 truncate">{v.userName}</span>
+              <span className="text-zinc-400 shrink-0">{formatDate(v.startedAt)}</span>
+            </div>
+            <ol className="space-y-1.5">
+              {v.segments.map((seg, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs">
+                  <span className="w-10 shrink-0 text-zinc-400 font-mono pt-px">{formatClock(seg.startedAt)}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {i > 0 && <span className="text-zinc-500 dark:text-zinc-400">Przełączenie na</span>}
+                      <span className="font-semibold text-zinc-700 dark:text-zinc-200">{seg.label}</span>
+                      {seg.isAlt && <AltBadge />}
+                    </div>
+                    <p className="text-zinc-500 dark:text-zinc-400">
+                      {formatTime(seg.startPosition ?? 0)} - {formatTime(seg.endPosition ?? seg.startPosition ?? 0)}
+                      {' · '}obejrzano {formatWatched(seg.watchedSeconds)}
+                      {seg.maxPosition > (seg.endPosition ?? 0) + 1 && ` · najdalej ${formatTime(seg.maxPosition)}`}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </li>
+        ))}
+      </ul>
+    </ChartCard>
+  );
 }
 
 // Small docked player opened from a heatmap column: seeks straight to that bucket's start so the
@@ -196,7 +314,7 @@ function MomentPreview({ source, moment, title, onClose }) {
               <span className="text-sm font-bold text-zinc-900 dark:text-white truncate">
                 {kind.label} · {formatTime(moment.start)} - {formatTime(moment.end)}
               </span>
-              <span className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0">{moment.count} {pluralEvents(moment.count)}</span>
+              <span className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0">{moment.count} {plural(moment.count, 'zdarzenie', 'zdarzenia', 'zdarzeń')}</span>
             </div>
             <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">{kind.hint} Podgląd nie jest liczony do analityki.</p>
           </div>
@@ -321,7 +439,7 @@ function ResetModal({ videoId, context, activeRange, userFilterMode, selectedUse
         userIds: userFilterMode === 'include' ? selectedUserIds : undefined,
         excludeUserIds: userFilterMode === 'exclude' ? selectedUserIds : undefined,
       });
-      toast.success(`Usunięto ${r.deletedEvents} zdarzeń i ${r.deletedViews} wyświetleń.`);
+      toast.success(`Usunięto ${r.deletedEvents} zdarzeń, ${r.deletedViews} wyświetleń i ${r.deletedSessions ?? 0} sesji źródeł.`);
       onDone();
     } catch (e) { toast.error('Błąd: ' + e.message); }
     setBusy(false);
@@ -347,6 +465,10 @@ function ResetModal({ videoId, context, activeRange, userFilterMode, selectedUse
             <div className="flex justify-between gap-3">
               <span className="text-zinc-400">Zakres dat</span>
               <span className="font-semibold text-zinc-700 dark:text-zinc-200">{rangeActive ? `${activeRange.after || '...'} – ${(activeRange.before || '').split(' ')[0] || '...'}` : 'cała historia'}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-zinc-400">Wersja</span>
+              <span className="font-semibold text-zinc-700 dark:text-zinc-200">wszystkie (film i wersje alternatywne)</span>
             </div>
             <div className="flex justify-between gap-3">
               <span className="text-zinc-400 shrink-0">Widzowie</span>
@@ -377,6 +499,9 @@ export default function VideoAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [context, setContext] = useState('all');
+  // 'main' = the film itself (main + regular mirrors), 'mirrorN' = that alternative version.
+  // Scopes the retention + interaction charts only.
+  const [version, setVersion] = useState('main');
   const [userFilterMode, setUserFilterMode] = useState('all');
   const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [showReset, setShowReset] = useState(false);
@@ -396,18 +521,20 @@ export default function VideoAnalyticsPage() {
 
   // Heatmap column clicked → docked preview player at that moment.
   const [moment, setMoment] = useState(null); // { kind, bucket, start, end, count, key } | null
-  const previewSource = useMemo(() => pickPreviewSource(video), [video]);
+  const previewSource = useMemo(() => pickPreviewSource(video, version), [video, version]);
   const closeMoment = useCallback(() => setMoment(null), []);
 
   useEffect(() => { api.getVideo(id).then(setVideo).catch(() => {}); }, [id]);
   // Bucket boundaries move with the filters (new duration/data), so a stale selection would point
-  // at the wrong fragment.
-  useEffect(() => { setMoment(null); }, [id, context, userFilterMode, selectedUserIds, activeRange]);
+  // at the wrong fragment. The zoom too, once the version (and so the timeline) changes.
+  useEffect(() => { setMoment(null); }, [id, context, version, userFilterMode, selectedUserIds, activeRange]);
+  useEffect(() => { setPosDrag(null); setPosRange(null); }, [id, version]);
 
   const loadAnalytics = useCallback(() => {
     setLoading(true); setError(null);
     api.getVideoAnalytics(id, {
       context,
+      version,
       userIds: userFilterMode === 'include' ? selectedUserIds : undefined,
       excludeUserIds: userFilterMode === 'exclude' ? selectedUserIds : undefined,
       after: activeRange.after || undefined,
@@ -416,7 +543,7 @@ export default function VideoAnalyticsPage() {
       .then(setData)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, [id, context, userFilterMode, selectedUserIds, activeRange]);
+  }, [id, context, version, userFilterMode, selectedUserIds, activeRange]);
 
   useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
 
@@ -434,6 +561,8 @@ export default function VideoAnalyticsPage() {
   const dailyViews = (data?.dailyViews || []).map(d => ({ ...d, dayLabel: formatDateShort(d.day) }));
   const heatmap = data?.heatmap;
   const viewers = data?.viewers || [];
+  const versions = data?.versions || [];
+  const versionInfo = versions.find(v => v.key === version);
   const bucketDuration = heatmap ? heatmap.duration / heatmap.buckets : 0;
   const retentionSeries = heatmap ? heatmap.retention.map((r, i) => ({
     idx: i,
@@ -524,6 +653,19 @@ export default function VideoAnalyticsPage() {
             </button>
           ))}
         </div>
+        {versions.length > 1 && (
+          <div className="flex gap-1 p-1 bg-zinc-100 dark:bg-zinc-800/50 rounded-xl" title="Retencja i interakcje osobno dla filmu i każdej wersji alternatywnej">
+            {versions.map(v => (
+              <button
+                key={v.key}
+                onClick={() => setVersion(v.key)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${version === v.key ? `bg-white dark:bg-zinc-900 shadow-sm ${v.isAlt ? 'text-lime-700 dark:text-lime-400' : 'text-violet-600 dark:text-violet-400'}` : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        )}
         <UserFilterControl
           viewers={viewers}
           mode={userFilterMode}
@@ -663,15 +805,17 @@ export default function VideoAnalyticsPage() {
         </ChartCard>
 
         {!heatmap ? (
-          <ChartCard title="Heatmapa odtwarzania">
+          <ChartCard title={versionInfo?.isAlt ? `Heatmapa odtwarzania: ${versionInfo.label}` : 'Heatmapa odtwarzania'}>
             <p className="text-sm text-zinc-400 py-4">
-              Za mało danych — heatmapa (retencja, cofnięcia, pominięcia, pauzy) pojawi się, gdy film zbierze więcej odtworzeń z zarejestrowanymi zdarzeniami odtwarzacza.
+              {versionInfo?.isAlt
+                ? 'Za mało danych dla tej wersji. Zdarzenia wersji alternatywnych są zbierane osobno od tej wersji aplikacji.'
+                : 'Za mało danych — heatmapa (retencja, cofnięcia, pominięcia, pauzy) pojawi się, gdy film zbierze więcej odtworzeń z zarejestrowanymi zdarzeniami odtwarzacza.'}
             </p>
           </ChartCard>
         ) : (
           <>
             <ChartCard
-              title="Retencja"
+              title={versionInfo?.isAlt ? `Retencja: ${versionInfo.label}` : 'Retencja'}
               subtitle={
                 zoomActive
                   ? `Przybliżono do fragmentu filmu — przeciągnij ponownie lub kliknij „Resetuj przybliżenie" (${heatmap.viewers} widzów)`
@@ -726,7 +870,7 @@ export default function VideoAnalyticsPage() {
             </ChartCard>
 
             <ChartCard
-              title="Interakcje widzów"
+              title={versionInfo?.isAlt ? `Interakcje widzów: ${versionInfo.label}` : 'Interakcje widzów'}
               subtitle={previewSource
                 ? 'Gdzie widzowie pauzują, cofają się i pomijają fragmenty. Kliknij słupek, by obejrzeć ten moment w podglądzie.'
                 : 'Gdzie widzowie pauzują, cofają się i pomijają fragmenty. Podgląd momentów wymaga źródła z przewijaniem (self-hosted lub YouTube).'}
@@ -737,10 +881,14 @@ export default function VideoAnalyticsPage() {
                 <HeatmapStrip label="Pominięcia (skip)" color={COLORS.skips} values={slicePos(heatmap.skips)} bucketDuration={bucketDuration} offset={zoomOffset} onSelect={selectMoment('skips')} selectedIdx={moment?.kind === 'skips' ? moment.bucket : null} />
               </div>
             </ChartCard>
-            {/* Room to scroll the strips out from under the docked preview. */}
-            {moment && <div className="h-80" aria-hidden="true" />}
           </>
         )}
+
+        <SourceUsageCard usage={data?.sourceUsage} />
+        <SourceTimelineCard usage={data?.sourceUsage} />
+
+        {/* Room to scroll the page out from under the docked preview. */}
+        {moment && <div className="h-80" aria-hidden="true" />}
       </div>
 
       {moment && previewSource && heatmap && (

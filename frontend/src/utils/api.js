@@ -366,9 +366,10 @@ export const api = {
   resetWatched: () => request('/watched', { method: 'DELETE' }),
 
   // Video analytics
-  getVideoAnalytics: (videoId, { context, userIds, excludeUserIds, after, before } = {}) => {
+  getVideoAnalytics: (videoId, { context, version, userIds, excludeUserIds, after, before } = {}) => {
     const q = new URLSearchParams();
     if (context && context !== 'all') q.set('context', context);
+    if (version && version !== 'main') q.set('version', version);
     if (userIds?.length) q.set('user_ids', userIds.join(','));
     else if (excludeUserIds?.length) q.set('exclude_user_ids', excludeUserIds.join(','));
     if (after) q.set('after', after);

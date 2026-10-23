@@ -19,6 +19,7 @@ function buildUserDataExport(userId) {
     comments: db.prepare('SELECT c.content, c.created_at, v.title AS video_title FROM comments c JOIN videos v ON c.video_id = v.id WHERE c.user_id = ? AND c.deleted = 0').all(userId),
     authored_videos: db.prepare('SELECT id, title, created_at, publish_date FROM videos WHERE author_id = ?').all(userId),
     watch_history: db.prepare('SELECT video_id, watched_at FROM watch_logs WHERE user_id = ?').all(userId),
+    source_sessions: db.prepare('SELECT video_id, source_key, source_label, started_at, start_position, max_position, watched_seconds FROM video_source_sessions WHERE user_id = ?').all(userId),
     favorites: db.prepare('SELECT video_id, created_at FROM favorites WHERE user_id = ?').all(userId),
     ratings: db.prepare('SELECT video_id, rating, created_at FROM video_ratings WHERE user_id = ?').all(userId),
     login_history: db.prepare('SELECT auth_method, ip_address, success, logged_at FROM login_logs WHERE user_id = ? ORDER BY logged_at DESC LIMIT 500').all(userId),
@@ -46,7 +47,7 @@ function anonymizeUser(userId) {
 // moderation/security trail kept by design even across deletions, not a personal activity log.
 function purgeUserActivityData(userId) {
   const tables = [
-    'watch_logs', 'video_playback_events', 'watch_progress', 'video_watched',
+    'watch_logs', 'video_playback_events', 'video_source_sessions', 'watch_progress', 'video_watched',
     'favorites', 'video_ratings', 'notifications', 'push_subscriptions', 'login_logs', 'comment_reactions',
   ];
   for (const t of tables) {

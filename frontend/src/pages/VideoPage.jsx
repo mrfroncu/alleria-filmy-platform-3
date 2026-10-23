@@ -639,6 +639,29 @@ async function copyText(text) {
   return ok;
 }
 
+// Ids for analytics visits/source sessions. crypto.randomUUID is secure-context only, same
+// plain-HTTP LAN case as copyText above.
+function analyticsId() {
+  try { if (window.crypto?.randomUUID) return window.crypto.randomUUID(); } catch (e) {}
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+// One stretch of viewing on one source within one visit (viewId). Only sent once something
+// actually played (`started`); pendingWatched is the watch time not yet flushed.
+function newSourceSession(videoId, viewId, sourceKey, isAlt) {
+  return {
+    id: analyticsId(), viewId, videoId, sourceKey, isAlt,
+    started: false, startPosition: null, position: 0, maxPosition: 0, duration: 0,
+    pendingWatched: 0, lastTime: null, lastWall: 0,
+  };
+}
+
+function markSessionStarted(ss, position) {
+  if (ss.started) return;
+  ss.started = true;
+  ss.startPosition = position;
+}
+
 // Whether VideoPage renders a player it can seek for this source (self-hosted or YouTube) —
 // raw HTML embeds and Plex hand-offs have no control surface.
 function isSeekableSource(video, key) {
@@ -829,6 +852,9 @@ export default function VideoPage() {
   // Sampled play/pause/seek events for the per-video analytics heatmap (self-hosted only —
   // see SecurePlayer's onPlay/onPause/onSeek). Buffered and flushed in batches, never per-event.
   const eventBufferRef = useRef([]);
+  // Current source session (see newSourceSession): which source is playing, for how long, and
+  // from where to where. Replaced on every source switch and on every new video.
+  const sourceSessionRef = useRef(null);
 
   const [devOpen, setDevOpen] = useState(false);
   const [devUserId, setDevUserId] = useState('');
@@ -898,13 +924,21 @@ export default function VideoPage() {
   }, [id]);
 
   const flushPlaybackEvents = useCallback((videoId) => {
-    if (eventBufferRef.current.length === 0) return;
+    const ss = sourceSessionRef.current;
+    const sendSession = !!ss?.started && ss.videoId === videoId && (ss.pendingWatched > 0 || eventBufferRef.current.length > 0);
+    if (eventBufferRef.current.length === 0 && !sendSession) return;
     const events = eventBufferRef.current;
     eventBufferRef.current = [];
+    const session = sendSession ? {
+      id: ss.id, view_id: ss.viewId, source_key: ss.sourceKey,
+      start_position: ss.startPosition, end_position: ss.position, max_position: ss.maxPosition,
+      duration: ss.duration || null, watched_delta: ss.pendingWatched,
+    } : undefined;
+    if (sendSession) ss.pendingWatched = 0;
     fetch(`/api/videos/${videoId}/playback-events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-      body: JSON.stringify({ events }),
+      body: JSON.stringify({ events, session }),
       credentials: 'include',
       keepalive: true,
     }).catch(() => {});
@@ -914,12 +948,16 @@ export default function VideoPage() {
   useEffect(() => {
     progressStateRef.current = { id, position: 0, duration: 0, completed: false, lastSaved: 0 };
     eventBufferRef.current = [];
+    // A new visit always starts on the main source (the effect resetting activeSource on id
+    // change); a share link's ?src= then shows up as a switch, which only gets recorded if the
+    // main source actually played first.
+    sourceSessionRef.current = newSourceSession(id, analyticsId(), 'main', false);
     const flushInterval = setInterval(() => flushPlaybackEvents(id), 15000);
     return () => {
       clearInterval(flushInterval);
       flushPlaybackEvents(id);
       const s = progressStateRef.current;
-      if (!s.id || !s.duration || s.completed) return;
+      if (!s.id || !s.duration || s.completed || sourceSessionRef.current?.isAlt) return;
       const pct = s.position / s.duration;
       if (pct < 0.05 || pct >= 0.90) return;
       fetch(`/api/progress/${s.id}`, {
@@ -1039,16 +1077,39 @@ export default function VideoPage() {
     s.position = currentTime;
     s.duration = duration;
 
+    // Watch time for the source session: only normal playback counts. A seek jumps further than
+    // wall-clock time allows (even at 2x speed), whatever the player's tick rate (SecurePlayer's
+    // timeupdate vs the YouTube players' polling).
+    const ss = sourceSessionRef.current;
+    if (ss) {
+      const now = Date.now();
+      if (ss.lastTime !== null) {
+        const delta = currentTime - ss.lastTime;
+        if (delta > 0 && delta <= ((now - ss.lastWall) / 1000) * 2.5 + 0.5) {
+          markSessionStarted(ss, ss.lastTime);
+          ss.pendingWatched += delta;
+        }
+      }
+      ss.lastTime = currentTime;
+      ss.lastWall = now;
+      ss.position = currentTime;
+      ss.maxPosition = Math.max(ss.maxPosition, currentTime);
+      ss.duration = duration;
+    }
+    // An alternative version has its own timeline, so it must not move the film's resume
+    // position ("Kontynuuj oglądanie"); finishing it still counts as having watched the film.
+    const isAlt = !!ss?.isAlt;
+
     if (pct >= 0.90) {
       if (!s.completed) {
         s.completed = true;
-        api.clearProgress(id).catch(() => {});
+        if (!isAlt) api.clearProgress(id).catch(() => {});
         api.markWatched(id).catch(() => {});
       }
       return;
     }
     s.completed = false;
-    if (pct < 0.05) return;
+    if (pct < 0.05 || isAlt) return;
 
     const now = Date.now();
     if (now - s.lastSaved > 10000) {
@@ -1061,15 +1122,31 @@ export default function VideoPage() {
   // has no seek event, so they infer one from a polling jump — see YT_SEEK_JUMP_THRESHOLD_S).
   // Feeds the per-video analytics heatmap. from_position comes from progressStateRef, which
   // handleTimeUpdate keeps fresh on every tick, so it reflects "where playback was right before
-  // this seek" without the player itself needing to know anything about analytics.
-  const handlePlayerPlay = useCallback((pos) => { eventBufferRef.current.push({ event_type: 'play', position: pos }); }, []);
-  const handlePlayerPause = useCallback((pos) => { eventBufferRef.current.push({ event_type: 'pause', position: pos }); }, []);
-  const handlePlayerSeek = useCallback((pos) => {
-    eventBufferRef.current.push({ event_type: 'seek', position: pos, from_position: progressStateRef.current.position });
+  // this seek" without the player itself needing to know anything about analytics. Each event is
+  // tagged with the source it played on, so alternative versions get their own heatmap.
+  const trackPlaybackEvent = useCallback((ev) => {
+    const ss = sourceSessionRef.current;
+    if (ss) markSessionStarted(ss, ev.position);
+    eventBufferRef.current.push({ ...ev, source_key: ss?.sourceKey });
   }, []);
+  const handlePlayerPlay = useCallback((pos) => { trackPlaybackEvent({ event_type: 'play', position: pos }); }, [trackPlaybackEvent]);
+  const handlePlayerPause = useCallback((pos) => { trackPlaybackEvent({ event_type: 'pause', position: pos }); }, [trackPlaybackEvent]);
+  const handlePlayerSeek = useCallback((pos) => {
+    trackPlaybackEvent({ event_type: 'seek', position: pos, from_position: progressStateRef.current.position });
+  }, [trackPlaybackEvent]);
 
   useEffect(() => { activeSourceRef.current = activeSource; }, [activeSource]);
   const sources = useMemo(() => buildSources(video), [video]);
+
+  // A source switch closes the current source session (flushed with its final numbers) and opens
+  // the next one in the same visit; the analytics page's "which mirror" stats and per-viewer
+  // source timeline are built from these.
+  useEffect(() => {
+    const ss = sourceSessionRef.current;
+    if (!ss || ss.videoId !== id || ss.sourceKey === activeSource) return;
+    flushPlaybackEvents(id);
+    sourceSessionRef.current = newSourceSession(id, ss.viewId, activeSource, !!sources.find(s => s.key === activeSource)?.isAlt);
+  }, [activeSource]);
   // The rating screen is about the film itself: main source and mirrors only, never an
   // alternative version (other cut, behind the scenes) marked with mirrorN_is_alt.
   const activeIsAlt = !!sources.find(s => s.key === activeSource)?.isAlt;

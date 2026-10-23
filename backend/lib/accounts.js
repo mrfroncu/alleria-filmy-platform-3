@@ -135,6 +135,7 @@ function mergeUsers(primaryId, secondaryId, { performedBy } = {}) {
     for (const [table, col] of [
       ['videos', 'author_id'], ['watch_logs', 'user_id'], ['login_logs', 'user_id'],
       ['audit_logs', 'user_id'], ['comments', 'user_id'],
+      ['video_playback_events', 'user_id'], ['video_source_sessions', 'user_id'],
     ]) {
       db.prepare(`UPDATE ${table} SET ${col} = ? WHERE ${col} = ?`).run(primaryId, secondaryId);
     }
