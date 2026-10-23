@@ -525,6 +525,10 @@ export default function SecurePlayer({
   }, []);
 
   useEffect(() => () => clearTimeout(endTimerRef.current), []);
+  useEffect(() => {
+    clearTimeout(endTimerRef.current);
+    setShowEnd(false);
+  }, [streamVideoId]);
 
   const handleEnded = () => {
     onEnded?.();

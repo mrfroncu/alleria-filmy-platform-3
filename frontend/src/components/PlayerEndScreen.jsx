@@ -3,12 +3,12 @@ import { Star, Heart, RotateCcw } from 'lucide-react';
 
 // Shown over the player a second after playback ends. The rating is only ever visible to editors
 // (in analytics); the viewer just sees their own pick.
-export default function PlayerEndScreen({ rating = 0, onRate, isFav, onToggleFav, favDisabled, onReplay }) {
+export default function PlayerEndScreen({ rating = 0, onRate, rateDisabled, isFav, onToggleFav, favDisabled, onReplay }) {
   const [hover, setHover] = React.useState(0);
   const shown = hover || rating;
   return (
-    <div className="absolute inset-0 z-40 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={e => e.stopPropagation()}>
-      <div className="text-center max-w-md w-full">
+    <div className="absolute inset-0 z-40 bg-black/90 backdrop-blur-sm flex overflow-y-auto p-4 animate-fade-in" onClick={e => e.stopPropagation()}>
+      <div className="text-center max-w-md w-full m-auto">
         {onRate && (
           <>
             <p className="text-white text-lg sm:text-xl font-bold font-display mb-4">Oceń film</p>
@@ -17,9 +17,10 @@ export default function PlayerEndScreen({ rating = 0, onRate, isFav, onToggleFav
                 <button
                   key={n}
                   onClick={() => onRate(n)}
+                  disabled={rateDisabled}
                   onMouseEnter={() => setHover(n)}
                   aria-label={`${n} / 5`}
-                  className="p-1 transition-transform hover:scale-125 active:scale-95"
+                  className="p-1 transition-transform hover:scale-125 active:scale-95 disabled:opacity-60"
                 >
                   <Star className={`w-8 h-8 sm:w-10 sm:h-10 transition-colors ${n <= shown ? 'fill-amber-400 text-amber-400' : 'text-zinc-600'}`} />
                 </button>

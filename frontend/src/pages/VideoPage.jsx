@@ -731,6 +731,9 @@ export default function VideoPage() {
   const [showPublication, setShowPublication] = useState(false);
   const [isFav, setIsFav] = useState(false);
   const [myRating, setMyRating] = useState(0);
+  const [ratingSaving, setRatingSaving] = useState(false);
+  const ratingVideoRef = useRef(id);
+  ratingVideoRef.current = id;
   const [favCount, setFavCount] = useState(0);
   const [favLoading, setFavLoading] = useState(false);
   const [prevVideo, setPrevVideo] = useState(null);
@@ -889,14 +892,21 @@ export default function VideoPage() {
   };
 
   useEffect(() => {
+    let cancelled = false;
     setMyRating(0);
-    api.getMyRating(id).then(r => setMyRating(r.rating || 0)).catch(() => {});
+    api.getMyRating(id).then(r => { if (!cancelled) setMyRating(r.rating || 0); }).catch(() => {});
+    return () => { cancelled = true; };
   }, [id]);
 
+  // One save at a time, so an older request can't overwrite or roll back a newer pick.
   const rateVideo = async (n) => {
+    if (ratingSaving) return;
     const prev = myRating;
+    const videoId = id;
+    setRatingSaving(true);
     setMyRating(n);
-    try { await api.rateVideo(id, n); } catch (e) { setMyRating(prev); }
+    try { await api.rateVideo(videoId, n); } catch (e) { if (ratingVideoRef.current === videoId) setMyRating(prev); }
+    setRatingSaving(false);
   };
 
   const toggleFav = async () => {
@@ -905,7 +915,7 @@ export default function VideoPage() {
     setFavLoading(false);
   };
 
-  const endScreen = { rating: myRating, onRate: rateVideo, isFav, onToggleFav: toggleFav, favDisabled: favLoading };
+  const endScreen = { rating: myRating, onRate: rateVideo, rateDisabled: ratingSaving, isFav, onToggleFav: toggleFav, favDisabled: favLoading };
 
   // Admin/dev only (same as editing) — hide = draft / take down without deleting, publish = make
   // visible again. The backend decides the date (see PUT /api/videos/:id/visibility).

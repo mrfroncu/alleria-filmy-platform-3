@@ -15,7 +15,7 @@ router.get('/api/videos/:id/rating', requireAuth, (req, res) => {
 router.put('/api/videos/:id/rating', requireAuth, (req, res) => {
   try {
     const user = req.session.user;
-    const rating = parseInt(req.body.rating, 10);
+    const rating = req.body.rating;
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) return res.status(400).json({ error: 'Ocena musi być liczbą od 1 do 5.' });
     const video = db.prepare('SELECT id, category_id, access_mode, publish_date, is_hidden FROM videos WHERE id = ?').get(req.params.id);
     if (!video) return res.status(404).json({ error: 'Nie znaleziono filmu.' });
