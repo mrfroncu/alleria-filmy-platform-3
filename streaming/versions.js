@@ -1,4 +1,4 @@
 // Streaming server version — edit here to bump
 module.exports = {
-  STREAM_VERSION: '1.13.0',
+  STREAM_VERSION: '1.13.1',
 };
