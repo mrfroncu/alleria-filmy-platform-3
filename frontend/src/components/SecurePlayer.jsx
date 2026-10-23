@@ -476,6 +476,7 @@ export default function SecurePlayer({
     if (!video) return;
 
     const onPlay = () => { setPlaying(true); clearTimeout(endTimerRef.current); setShowEnd(false); };
+    const onSeeking = () => { clearTimeout(endTimerRef.current); };
     const onWaiting = () => setBuffering(true);
     const onReady = () => setBuffering(false);
     const onPause = () => setPlaying(false);
@@ -493,7 +494,9 @@ export default function SecurePlayer({
     const onEnterPiP = () => setPipActive(true);
     const onLeavePiP = () => setPipActive(false);
 
+    if (video.duration > 0) setDuration(video.duration);
     video.addEventListener('play', onPlay);
+    video.addEventListener('seeking', onSeeking);
     video.addEventListener('waiting', onWaiting);
     video.addEventListener('stalled', onWaiting);
     video.addEventListener('playing', onReady);
@@ -509,6 +512,7 @@ export default function SecurePlayer({
 
     return () => {
       video.removeEventListener('play', onPlay);
+      video.removeEventListener('seeking', onSeeking);
       video.removeEventListener('waiting', onWaiting);
       video.removeEventListener('stalled', onWaiting);
       video.removeEventListener('playing', onReady);
@@ -522,7 +526,7 @@ export default function SecurePlayer({
       video.removeEventListener('enterpictureinpicture', onEnterPiP);
       video.removeEventListener('leavepictureinpicture', onLeavePiP);
     };
-  }, []);
+  }, [error, transcodingStatus]);
 
   useEffect(() => () => clearTimeout(endTimerRef.current), []);
   useEffect(() => {
@@ -534,7 +538,9 @@ export default function SecurePlayer({
     onEnded?.();
     if (!endScreen || loop) return;
     clearTimeout(endTimerRef.current);
-    endTimerRef.current = setTimeout(() => setShowEnd(true), Math.max(0, Number(endScreenDelay) || 0) * 1000);
+    endTimerRef.current = setTimeout(() => {
+      if (videoRef.current?.ended) setShowEnd(true);
+    }, Math.max(0, Number(endScreenDelay) || 0) * 1000);
   };
 
   const replay = () => {
