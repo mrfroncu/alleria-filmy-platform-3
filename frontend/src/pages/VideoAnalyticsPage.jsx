@@ -77,10 +77,17 @@ function RetentionTooltip({ active, payload, label, total }) {
   );
 }
 
+// m:ss.d — positions are stored to 0.1 s, so that's what the exact moments show.
+function formatPrecise(seconds) {
+  const tenths = Math.round(Math.max(0, seconds) * 10);
+  return `${formatTime(Math.floor(tenths / 10))}.${tenths % 10}`;
+}
+
 // The heatmap gets raw positions (sorted, in seconds) and is binned here for whatever window of
 // the film is on screen, so zooming in sharpens it instead of just enlarging the same coarse
-// bars. Never finer than 1 s: positions themselves are only about that precise (player ticks).
-const STRIP_COLUMNS = 100;
+// bars. A column is only a visual grouping: each one keeps its exact positions for the tooltip
+// and the preview. Columns are about MIN_COLUMN_PX wide, never finer than 1 s.
+const MIN_COLUMN_PX = 3;
 const RETENTION_POINTS = 400;
 const NICE_BIN_SIZES = [1, 2, 3, 4, 5, 10, 15, 20, 30, 60, 120, 180, 300, 600, 900, 1800];
 
@@ -94,8 +101,8 @@ function lowerBound(sorted, x, strict = false) {
   return lo;
 }
 
-function stripBinSize(windowLength) {
-  const raw = windowLength / STRIP_COLUMNS;
+function stripBinSize(windowLength, stripWidth) {
+  const raw = windowLength / Math.max(40, Math.floor(stripWidth / MIN_COLUMN_PX));
   return NICE_BIN_SIZES.find(s => s >= raw) || Math.ceil(raw);
 }
 
@@ -108,9 +115,17 @@ function binPositions(sorted, start, end, binSize) {
     const a = Math.max(start, i * binSize);
     const b = Math.min(end, (i + 1) * binSize);
     const isLast = b >= end - 1e-9;
-    bins.push({ start: a, end: b, count: lowerBound(sorted, b, isLast) - lowerBound(sorted, a) });
+    const lo = lowerBound(sorted, a), hi = lowerBound(sorted, b, isLast);
+    bins.push({ start: a, end: b, count: hi - lo, positions: sorted.slice(lo, hi) });
   }
   return bins;
+}
+
+const MAX_LISTED_MOMENTS = 8;
+
+function describeMoments(positions) {
+  const listed = positions.slice(0, MAX_LISTED_MOMENTS).map(formatPrecise).join(', ');
+  return positions.length > MAX_LISTED_MOMENTS ? `${listed} i ${positions.length - MAX_LISTED_MOMENTS} więcej` : listed;
 }
 
 // Share of viewers whose furthest point reached t, sampled across the window and always ending
@@ -150,16 +165,17 @@ function HeatmapStrip({ label, color, bins, onSelect, selectedAt }) {
         {bins.map(bin => {
           const v = bin.count;
           const clickable = !!onSelect && v > 0;
-          const active = selectedAt != null && selectedAt >= bin.start && selectedAt < bin.end;
+          const active = selectedAt != null && selectedAt >= bin.start && (selectedAt < bin.end || (selectedAt === bin.end && bin === bins[bins.length - 1]));
           const range = `${formatTime(bin.start)} - ${formatTime(bin.end)}`;
+          const text = v > 0 ? `${describeMoments(bin.positions)}` : `${range}: 0`;
           return (
             <button
               key={bin.start}
               type="button"
               disabled={!clickable}
               onClick={() => onSelect(bin)}
-              title={clickable ? `${range}: ${v} (kliknij, by obejrzeć)` : `${range}: ${v}`}
-              aria-label={`${label}, ${range}: ${v}`}
+              title={clickable ? `${text} (kliknij, by obejrzeć)` : text}
+              aria-label={`${label}: ${text}`}
               className={`flex-1 h-full flex items-end rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60 ${active ? 'bg-zinc-200 dark:bg-zinc-700' : clickable ? 'hover:bg-zinc-200/70 dark:hover:bg-zinc-700/50' : ''} ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
             >
               <span
@@ -331,10 +347,10 @@ function SourceTimelineCard({ usage }) {
   );
 }
 
-// Small docked player opened from a heatmap column (or a point on the retention curve): seeks
-// straight to that column's start so the editor sees what led up to the pauses/rewinds/skips. No onPlay/onPause/onSeek are passed, so
+// Small docked player opened from a heatmap column (or a point on the retention curve): seeks to
+// the exact moment of the column's first event; the column's other events are chips to jump to. No onPlay/onPause/onSeek are passed, so
 // watching here never feeds back into the analytics it's previewing.
-function MomentPreview({ source, moment, title, onClose }) {
+function MomentPreview({ source, moment, title, onClose, onPick }) {
   const controlRef = useRef(null);
   const kind = INTERACTION_KINDS[moment.kind];
 
@@ -373,11 +389,25 @@ function MomentPreview({ source, moment, title, onClose }) {
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: kind.color }} />
               <span className="text-sm font-bold text-zinc-900 dark:text-white truncate">
-                {kind.label} · {moment.end > moment.start ? `${formatTime(moment.start)} - ${formatTime(moment.end)}` : formatTime(moment.start)}
+                {kind.label} · {formatPrecise(moment.start)}
               </span>
               <span className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0">{kind.detail(moment)}</span>
             </div>
             <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">{kind.hint} Podgląd nie jest liczony do analityki.</p>
+            {moment.positions?.length > 1 && (
+              <div className="flex flex-wrap gap-1 mt-2 max-h-16 overflow-y-auto">
+                {moment.positions.map((t, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => onPick(t)}
+                    className={`px-1.5 py-0.5 rounded-md text-[11px] font-mono font-semibold transition-colors ${t === moment.start ? 'bg-violet-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}
+                  >
+                    {formatPrecise(t)}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <button onClick={onClose} className="btn-icon-zinc shrink-0" title="Zamknij podgląd"><X className="w-4 h-4" /></button>
         </div>
@@ -584,6 +614,19 @@ export default function VideoAnalyticsPage() {
   const [moment, setMoment] = useState(null); // { kind, start, end, count, total?, key } | null
   const previewSource = useMemo(() => pickPreviewSource(video, version), [video, version]);
   const closeMoment = useCallback(() => setMoment(null), []);
+  const pickMoment = useCallback((t) => setMoment(m => (m ? { ...m, start: t, key: Date.now() } : m)), []);
+
+  // Width of the strips' area, so columns stay ~MIN_COLUMN_PX wide on any screen. Callback ref:
+  // the strips only mount once the heatmap data has loaded.
+  const [stripWidth, setStripWidth] = useState(800);
+  const stripObserverRef = useRef(null);
+  const measureStrips = useCallback((el) => {
+    stripObserverRef.current?.disconnect();
+    stripObserverRef.current = null;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    stripObserverRef.current = new ResizeObserver(([entry]) => setStripWidth(entry.contentRect.width));
+    stripObserverRef.current.observe(el);
+  }, []);
 
   useEffect(() => { api.getVideo(id).then(setVideo).catch(() => {}); }, [id]);
   // Bucket boundaries move with the filters (new duration/data), so a stale selection would point
@@ -628,7 +671,7 @@ export default function VideoAnalyticsPage() {
   const view = posRange || { start: 0, end: heatmap?.duration || 0 };
   const zoomActive = !!posRange;
   const retentionSeries = heatmap ? retentionCurve(heatmap.furthest, view.start, view.end) : [];
-  const binSize = stripBinSize(view.end - view.start);
+  const binSize = stripBinSize(view.end - view.start, stripWidth);
   // Drop-offs = furthest points short of the end; whoever reached the end didn't leave early.
   const exits = heatmap ? heatmap.furthest.filter(p => p < heatmap.duration) : [];
   const strips = heatmap ? {
@@ -679,13 +722,13 @@ export default function VideoAnalyticsPage() {
     if (end - start >= 2) { setPosRange({ start, end }); return; }
     const p = retentionSeries.find(pt => pt.t >= start) || retentionSeries[retentionSeries.length - 1];
     if (previewSource && p) {
-      setMoment({ kind: 'retention', start: p.t, end: p.t, count: p.reached, total: heatmap.viewers, key: Date.now() });
+      setMoment({ kind: 'retention', start: p.t, count: p.reached, total: heatmap.viewers, key: Date.now() });
     }
   };
 
   // undefined (no preview source, e.g. Plex-only) leaves the strips non-clickable.
   const selectMoment = (kind) => (previewSource ? (bin) => setMoment({
-    kind, start: bin.start, end: bin.end, count: bin.count, key: Date.now(),
+    kind, start: bin.positions[0], count: bin.count, positions: bin.positions, key: Date.now(),
   }) : undefined);
 
   return (
@@ -918,10 +961,7 @@ export default function VideoAnalyticsPage() {
                   <YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} domain={[0, 1]} tickFormatter={v => `${Math.round(v * 100)}%`} width={36} />
                   <Tooltip content={<RetentionTooltip total={heatmap.viewers} />} cursor={{ stroke: '#3f3f46', strokeWidth: 1 }} />
                   <Area type="linear" dataKey="value" stroke={COLORS.retention} strokeWidth={2} fill="url(#retentionFill)" isAnimationActive={false} />
-                  {moment && moment.end > moment.start && (
-                    <ReferenceArea x1={moment.start} x2={moment.end} ifOverflow="hidden" fill={INTERACTION_KINDS[moment.kind].color} fillOpacity={0.2} stroke={INTERACTION_KINDS[moment.kind].color} strokeOpacity={0.6} />
-                  )}
-                  {moment && moment.end <= moment.start && (
+                  {moment && (
                     <ReferenceLine x={moment.start} ifOverflow="hidden" stroke={INTERACTION_KINDS[moment.kind].color} strokeWidth={2} strokeDasharray="4 3" />
                   )}
                   {posDrag && posDrag.start !== posDrag.end && (
@@ -944,15 +984,15 @@ export default function VideoAnalyticsPage() {
                 ? 'Gdzie widzowie kończą oglądanie, pauzują, cofają się i pomijają fragmenty. Kliknij słupek, by obejrzeć ten moment w podglądzie.'
                 : 'Gdzie widzowie kończą oglądanie, pauzują, cofają się i pomijają fragmenty. Podgląd momentów wymaga źródła z przewijaniem (self-hosted lub YouTube).'}
             >
-              <div className="space-y-5">
+              <div className="space-y-5" ref={measureStrips}>
                 <HeatmapStrip label="Koniec oglądania (bez tych, którzy dotrwali do końca)" color={COLORS.exits} bins={strips.exits} onSelect={selectMoment('exits')} selectedAt={moment?.kind === 'exits' ? moment.start : null} />
                 <HeatmapStrip label="Pauzy" color={COLORS.pauses} bins={strips.pauses} onSelect={selectMoment('pauses')} selectedAt={moment?.kind === 'pauses' ? moment.start : null} />
                 <HeatmapStrip label="Cofnięcia (ponowne obejrzenie)" color={COLORS.rewinds} bins={strips.rewinds} onSelect={selectMoment('rewinds')} selectedAt={moment?.kind === 'rewinds' ? moment.start : null} />
                 <HeatmapStrip label="Pominięcia (skip)" color={COLORS.skips} bins={strips.skips} onSelect={selectMoment('skips')} selectedAt={moment?.kind === 'skips' ? moment.start : null} />
               </div>
               <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-4">
-                1 słupek = {formatBinSize(binSize)}
-                {binSize > 1 && '. Przeciągnij po wykresie retencji, by przybliżyć fragment (aż do 1 s na słupek).'}
+                1 słupek = {formatBinSize(binSize)}. Dokładne momenty (co 0,1 s) są w dymku po najechaniu na słupek i w podglądzie po kliknięciu.
+                {binSize > 1 && ' Przeciągnij po wykresie retencji, by przybliżyć fragment (aż do 1 s na słupek).'}
               </p>
             </ChartCard>
           </>
@@ -966,7 +1006,7 @@ export default function VideoAnalyticsPage() {
       </div>
 
       {moment && previewSource && heatmap && (
-        <MomentPreview source={previewSource} moment={moment} title={video?.title} onClose={closeMoment} />
+        <MomentPreview source={previewSource} moment={moment} title={video?.title} onClose={closeMoment} onPick={pickMoment} />
       )}
 
       {showReset && (
