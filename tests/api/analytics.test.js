@@ -68,14 +68,30 @@ describe('Odczyt analityki per wersja', () => {
     expect(main.body.versions.map(v => v.key)).toEqual(['main', 'mirror2']);
     expect(main.body.version).toBe('main');
     expect(main.body.heatmap.duration).toBe(100);
-    expect(main.body.heatmap.pauses.reduce((a, b) => a + b, 0)).toBe(1);
+    expect(main.body.heatmap.pauses).toEqual([30]);
 
     const alt = await redaktor.get(`/api/videos/${videoId}/analytics?version=mirror2`).expect(200);
     expect(alt.body.version).toBe('mirror2');
     expect(alt.body.heatmap.duration).toBe(200);
-    expect(alt.body.heatmap.pauses.reduce((a, b) => a + b, 0)).toBe(1);
-    // pauza w 150 s z 200 s → kubełek 37 z 50
-    expect(alt.body.heatmap.pauses[37]).toBe(1);
+    expect(alt.body.heatmap.pauses).toEqual([150]);
+    expect(alt.body.heatmap.furthest).toEqual([180]);
+  });
+
+  it('pozycje są dokładne, a koniec filmu z tolerancją liczy się jako obejrzany do końca', async () => {
+    const v = await createVideo(redaktor, { title: 'Film 4:17' });
+    await member.post(`/api/videos/${v}/playback-events`).send({
+      events: [{ event_type: 'pause', position: 123.456, source_key: 'main' }],
+      session: { id: sid('end-1'), view_id: 'test-view-end1', source_key: 'main', start_position: 0, end_position: 256.4, max_position: 256.4, duration: 257, watched_delta: 256 },
+    }).expect(200);
+    await dev.post(`/api/videos/${v}/playback-events`).send({
+      events: [],
+      session: { id: sid('end-2'), view_id: 'test-view-end2', source_key: 'main', start_position: 0, end_position: 201.3, max_position: 201.3, duration: 257, watched_delta: 201 },
+    }).expect(200);
+    const r = await redaktor.get(`/api/videos/${v}/analytics`).expect(200);
+    expect(r.body.heatmap.duration).toBe(257);
+    expect(r.body.heatmap.pauses).toEqual([123.5]);
+    expect(r.body.heatmap.furthest).toEqual([201.3, 257]);
+    expect(r.body.summary.avgCompletionPct).toBe(89);
   });
 
   it('zwykły mirror nie jest osobną wersją', async () => {

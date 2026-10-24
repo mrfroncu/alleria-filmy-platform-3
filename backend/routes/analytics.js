@@ -167,18 +167,19 @@ function buildSourceUsage(video, rows) {
   };
 }
 
-function bucketPositions(positions, duration, bucketCount) {
-  const buckets = new Array(bucketCount).fill(0);
-  if (!duration || duration <= 0) return buckets;
-  const bucketSize = duration / bucketCount;
-  for (const pos of positions) {
-    const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor(pos / bucketSize)));
-    buckets[idx]++;
-  }
-  return buckets;
+// Positions go out raw (0.1 s precision, clamped to the film, sorted), not pre-binned: the page
+// bins them itself for whatever part of the film is on screen, so zooming in gets down to single
+// seconds instead of being stuck at a fixed fraction of the film.
+function sortedPositions(positions, duration) {
+  return positions
+    .map(p => Math.round(Math.min(duration, Math.max(0, p || 0)) * 10) / 10)
+    .sort((a, b) => a - b);
 }
 
-const ANALYTICS_BUCKETS = 50;
+// A player's last reported position rarely lands exactly on the reported duration (last
+// timeupdate, rounding, the ended event firing first) — this close to the end counts as having
+// watched it to the end.
+const END_TOLERANCE_S = 1.5;
 
 // Parses a "1,2,3" query-string param into an int array, or null if absent/empty.
 function parseIdListParam(raw) {
@@ -306,24 +307,20 @@ router.get('/api/videos/:id/analytics', requireAuth, (req, res) => {
       for (const r of [...progressPositions, ...eventPositions, ...sessionPositions]) {
         furthestByUser[r.user_id] = Math.max(furthestByUser[r.user_id] || 0, r.position || 0);
       }
-      const furthestValues = Object.values(furthestByUser);
-      const bucketSize = duration / ANALYTICS_BUCKETS;
-      const retention = new Array(ANALYTICS_BUCKETS).fill(0);
-      if (furthestValues.length > 0) {
-        for (let i = 0; i < ANALYTICS_BUCKETS; i++) {
-          const bucketStart = i * bucketSize;
-          retention[i] = furthestValues.filter(p => p >= bucketStart).length / furthestValues.length;
-        }
-      }
+      // One furthest position per viewer (anonymous) — the page computes the retention curve and
+      // the drop-off strip from these at any resolution.
+      const furthest = sortedPositions(
+        Object.values(furthestByUser).map(p => (p >= duration - END_TOLERANCE_S ? duration : p)),
+        duration,
+      );
 
       heatmap = {
         duration,
-        buckets: ANALYTICS_BUCKETS,
-        viewers: furthestValues.length,
-        retention,
-        pauses: bucketPositions(pauses, duration, ANALYTICS_BUCKETS),
-        rewinds: bucketPositions(rewinds, duration, ANALYTICS_BUCKETS),
-        skips: bucketPositions(skips, duration, ANALYTICS_BUCKETS),
+        viewers: furthest.length,
+        furthest,
+        pauses: sortedPositions(pauses, duration),
+        rewinds: sortedPositions(rewinds, duration),
+        skips: sortedPositions(skips, duration),
       };
     }
 
@@ -340,7 +337,7 @@ router.get('/api/videos/:id/analytics', requireAuth, (req, res) => {
     const summary = {
       uniqueViewers: filteredViewerCount,
       avgCompletionPct: (heatmap && heatmap.viewers > 0)
-        ? Math.round((heatmap.retention.reduce((a, b) => a + b, 0) / ANALYTICS_BUCKETS) * 100)
+        ? Math.round((heatmap.furthest.reduce((a, p) => a + p / heatmap.duration, 0) / heatmap.viewers) * 100)
         : null,
     };
 
